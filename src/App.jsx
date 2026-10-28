@@ -260,7 +260,7 @@ export default function App() {
       <main className="p-6 overflow-x-auto flex-1">
         {currentView === 'board' && (
           <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
-            <div className="flex gap-4 items-start">
+            <div className="flex gap-4 items-start justify-center">
               <SortableContext items={columns.map((c) => c.id)} strategy={verticalListSortingStrategy}>
                 {columns.map((col) => (
                   <Column

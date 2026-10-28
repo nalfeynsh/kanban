@@ -15,7 +15,8 @@ export default function CalendarView({ tasks, onTaskClick, onDateClick }) {
     }));
 
   return (
-    <div className="bg-white dark:bg-gray-900 rounded-xl p-4 border border-gray-300 dark:border-gray-700 shadow-sm h-[calc(100vh-140px)] overflow-auto calendar-container">
+    // ДОБАВЛЕНЫ КЛАССЫ mx-auto max-w-6xl ДЛЯ ЦЕНТРИРОВАНИЯ И ОГРАНИЧЕНИЯ ШИРИНЫ
+    <div className="bg-white dark:bg-gray-900 rounded-xl p-4 border border-gray-300 dark:border-gray-700 shadow-sm h-[calc(100vh-140px)] overflow-auto calendar-container mx-auto max-w-6xl">
       <FullCalendar
         plugins={[dayGridPlugin, interactionPlugin]}
         initialView="dayGridMonth"
@@ -26,7 +27,6 @@ export default function CalendarView({ tasks, onTaskClick, onDateClick }) {
           if (task && onTaskClick) onTaskClick(task);
         }}
         dateClick={(info) => {
-          // info.dateStr возвращает дату в формате "2026-10-28"
           if (onDateClick) onDateClick(info.dateStr);
         }}
         headerToolbar={{
