@@ -11,14 +11,20 @@ import Header from './components/Header';
 import Column from './components/Column';
 import CalendarView from './components/CalendarView';
 import TaskDetailModal from './components/TaskDetailModal';
+import LoginPage from './components/LoginPage';
+import ProfileModal from './components/ProfileModal';
 import { supabase } from './supabaseClient';
 
 export default function App() {
+  const [session, setSession] = useState(null);
+  const [profile, setProfile] = useState(null);
   const [columns, setColumns] = useState([]);
   const [tasks, setTasks] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [allProfiles, setAllProfiles] = useState([]);
   
   const [selectedTask, setSelectedTask] = useState(null);
+  const [isProfileOpen, setIsProfileOpen] = useState(false);
   const [currentView, setCurrentView] = useState('board');
 
   // --- Логика темы ---
@@ -35,18 +41,75 @@ export default function App() {
 
   const toggleTheme = () => setTheme(theme === 'light' ? 'dark' : 'light');
 
-  // --- Загрузка данных ---
+  // --- ПРОВЕРКА АВТОРИЗАЦИИ ---
   useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setSession(session);
+      if (session) fetchProfile(session.user.id);
+    });
+
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, session) => {
+      setSession(session);
+      if (session) fetchProfile(session.user.id);
+      else {
+        setProfile(null);
+        setAllProfiles([]);
+      }
+    });
+
+    return () => subscription.unsubscribe();
+  }, []);
+
+  // --- Загрузка профиля текущего пользователя ---
+  const fetchProfile = async (userId) => {
+    const { data } = await supabase
+      .from('profiles')
+      .select('*')
+      .eq('id', userId)
+      .maybeSingle(); 
+    
+    if (data) {
+      setProfile(data);
+    } else {
+      // Если профиля нет, создаем его
+      console.log("Профиль не найден, создаем новый...");
+      const { error: createError } = await supabase
+        .from('profiles')
+        .insert([{ 
+          id: userId, 
+          full_name: session?.user?.email || 'Новый пользователь',
+          work_email: session?.user?.email 
+        }]);
+
+      if (!createError) {
+        const { data: createdProfile } = await supabase
+          .from('profiles')
+          .select('*')
+          .eq('id', userId)
+          .maybeSingle();
+        if (createdProfile) setProfile(createdProfile);
+      }
+    }
+  };
+
+  // --- Загрузка данных (задачи + все профили) ---
+  useEffect(() => {
+    if (!session) return;
+
     let isMounted = true;
 
     async function fetchData() {
       try {
         const [
           { data: colsData, error: colsError },
-          { data: tasksData, error: tasksError }
+          { data: tasksData, error: tasksError },
+          { data: profilesData }
         ] = await Promise.all([
           supabase.from('columns').select('*').order('position', { ascending: true }),
-          supabase.from('tasks').select('*').order('position', { ascending: true })
+          supabase.from('tasks').select('*').order('position', { ascending: true }),
+          supabase.from('profiles').select('*')
         ]);
 
         if (colsError) throw colsError;
@@ -65,6 +128,8 @@ export default function App() {
           }));
           setColumns(colsWithTasks);
           setTasks(safeTasksData);
+          
+          if (profilesData) setAllProfiles(profilesData);
         }
       } catch (error) {
         console.error("Ошибка при загрузке данных:", error);
@@ -79,7 +144,7 @@ export default function App() {
     return () => {
       isMounted = false;
     };
-  }, []);
+  }, [session]);
 
   // --- Логика Drag-and-Drop ---
   const sensors = useSensors(
@@ -168,7 +233,8 @@ export default function App() {
           links: taskToSave.links || [],
           files: taskToSave.files || [],
           column_id: columnId, 
-          position: newPosition 
+          position: newPosition,
+          created_by: session.user.id
         }])
         .select();
 
@@ -240,6 +306,22 @@ export default function App() {
     setSelectedTask(null); 
   };
 
+  // --- ЛОГИКА ВЫХОДА ---
+  const handleLogout = async () => {
+    await supabase.auth.signOut();
+    setSession(null);
+    setProfile(null);
+    setAllProfiles([]);
+    setColumns([]);
+    setTasks([]);
+    setLoading(true);
+  };
+
+  // --- РЕНДЕР ---
+  if (!session) {
+    return <LoginPage />;
+  }
+
   if (loading) {
     return (
       <div className="min-h-screen bg-gray-200 dark:bg-gray-950 flex items-center justify-center">
@@ -254,7 +336,11 @@ export default function App() {
         theme={theme} 
         onToggleTheme={toggleTheme} 
         currentView={currentView} 
-        onViewChange={setCurrentView} 
+        onViewChange={setCurrentView}
+        onLogout={handleLogout}
+        user={session.user}
+        profile={profile}
+        onProfileClick={() => setIsProfileOpen(true)}
       />
 
       <main className="p-6 overflow-x-auto flex-1">
@@ -285,12 +371,23 @@ export default function App() {
         )}
       </main>
 
+      {/* Модалка задачи с ключом для полного пересоздания */}
       <TaskDetailModal 
+        key={selectedTask?.id || 'new'}
         isOpen={!!selectedTask} 
         onClose={() => setSelectedTask(null)} 
         task={selectedTask} 
         onSaveTask={handleSaveTask} 
         onDeleteTask={handleDeleteTask} 
+        allProfiles={allProfiles}
+      />
+
+      {/* Модалка профиля */}
+      <ProfileModal 
+        isOpen={isProfileOpen}
+        onClose={() => setIsProfileOpen(false)}
+        profile={profile}
+        onUpdateProfile={(updatedProfile) => setProfile(updatedProfile)}
       />
     </div>
   );

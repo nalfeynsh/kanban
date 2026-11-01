@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import { useEditor, EditorContent } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import Underline from '@tiptap/extension-underline';
@@ -11,9 +12,7 @@ export default function TipTapEditor({ content, onChange }) {
       StarterKit,
       Underline,
       Link.configure({ openOnClick: false }),
-      Placeholder.configure({
-        placeholder: 'Добавьте детали к задаче...',
-      }),
+      Placeholder.configure({ placeholder: 'Добавьте детали к задаче...' }),
     ],
     content: content || '',
     onUpdate: ({ editor }) => {
@@ -21,15 +20,19 @@ export default function TipTapEditor({ content, onChange }) {
     },
     editorProps: {
       attributes: {
-        // Добавили класс prose из Tailwind, но также мы добавили свои стили в index.css
         class: 'prose dark:prose-invert prose-sm max-w-none focus:outline-none min-h-[150px] p-3 text-gray-900 dark:text-gray-100',
       },
     },
   });
 
-  if (!editor) {
-    return null;
-  }
+  // Синхронизируем контент, если он изменился извне (например, открыли другую задачу)
+  useEffect(() => {
+    if (editor && content !== editor.getHTML()) {
+      editor.commands.setContent(content || '', false);
+    }
+  }, [content, editor]);
+
+  if (!editor) return null;
 
   const btnClass = (isActive) => 
     `p-1.5 rounded transition-colors ${isActive ? 'bg-blue-100 text-blue-600 dark:bg-blue-900/50 dark:text-blue-400' : 'text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700'}`;
@@ -37,24 +40,25 @@ export default function TipTapEditor({ content, onChange }) {
   return (
     <div className="border border-gray-300 dark:border-gray-600 rounded-lg overflow-hidden bg-gray-50 dark:bg-gray-900 flex flex-col">
       <div className="flex flex-wrap gap-1 p-2 border-b border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800">
-        <button onClick={() => editor.chain().focus().toggleBold().run()} className={btnClass(editor.isActive('bold'))} title="Жирный"><Bold size={16}/></button>
-        <button onClick={() => editor.chain().focus().toggleItalic().run()} className={btnClass(editor.isActive('italic'))} title="Курсив"><Italic size={16}/></button>
-        <button onClick={() => editor.chain().focus().toggleUnderline().run()} className={btnClass(editor.isActive('underline'))} title="Подчеркнутый"><UnderlineIcon size={16}/></button>
-        <button onClick={() => editor.chain().focus().toggleStrike().run()} className={btnClass(editor.isActive('strike'))} title="Зачеркнутый"><Strikethrough size={16}/></button>
+        <button type="button" onClick={() => editor.chain().focus().toggleBold().run()} className={btnClass(editor.isActive('bold'))} title="Жирный"><Bold size={16}/></button>
+        <button type="button" onClick={() => editor.chain().focus().toggleItalic().run()} className={btnClass(editor.isActive('italic'))} title="Курсив"><Italic size={16}/></button>
+        <button type="button" onClick={() => editor.chain().focus().toggleUnderline().run()} className={btnClass(editor.isActive('underline'))} title="Подчеркнутый"><UnderlineIcon size={16}/></button>
+        <button type="button" onClick={() => editor.chain().focus().toggleStrike().run()} className={btnClass(editor.isActive('strike'))} title="Зачеркнутый"><Strikethrough size={16}/></button>
         
         <div className="w-px h-6 bg-gray-300 dark:bg-gray-600 mx-1 self-center"></div>
         
-        <button onClick={() => editor.chain().focus().toggleHeading({ level: 1 }).run()} className={btnClass(editor.isActive('heading', { level: 1 }))} title="Заголовок 1"><Heading1 size={16}/></button>
-        <button onClick={() => editor.chain().focus().toggleHeading({ level: 2 }).run()} className={btnClass(editor.isActive('heading', { level: 2 }))} title="Заголовок 2"><Heading2 size={16}/></button>
+        <button type="button" onClick={() => editor.chain().focus().toggleHeading({ level: 1 }).run()} className={btnClass(editor.isActive('heading', { level: 1 }))} title="Заголовок 1"><Heading1 size={16}/></button>
+        <button type="button" onClick={() => editor.chain().focus().toggleHeading({ level: 2 }).run()} className={btnClass(editor.isActive('heading', { level: 2 }))} title="Заголовок 2"><Heading2 size={16}/></button>
         
         <div className="w-px h-6 bg-gray-300 dark:bg-gray-600 mx-1 self-center"></div>
         
-        <button onClick={() => editor.chain().focus().toggleBulletList().run()} className={btnClass(editor.isActive('bulletList'))} title="Маркированный список"><List size={16}/></button>
-        <button onClick={() => editor.chain().focus().toggleOrderedList().run()} className={btnClass(editor.isActive('orderedList'))} title="Нумерованный список"><ListOrdered size={16}/></button>
+        <button type="button" onClick={() => editor.chain().focus().toggleBulletList().run()} className={btnClass(editor.isActive('bulletList'))} title="Маркированный список"><List size={16}/></button>
+        <button type="button" onClick={() => editor.chain().focus().toggleOrderedList().run()} className={btnClass(editor.isActive('orderedList'))} title="Нумерованный список"><ListOrdered size={16}/></button>
         
         <div className="w-px h-6 bg-gray-300 dark:bg-gray-600 mx-1 self-center"></div>
         
         <button 
+          type="button"
           onClick={() => {
             const url = window.prompt('Введите URL ссылки:');
             if (url) editor.chain().focus().setLink({ href: url }).run();
@@ -67,8 +71,8 @@ export default function TipTapEditor({ content, onChange }) {
 
         <div className="flex-1"></div>
 
-        <button onClick={() => editor.chain().focus().undo().run()} className={btnClass(false)} disabled={!editor.can().undo()} title="Отменить"><Undo size={16}/></button>
-        <button onClick={() => editor.chain().focus().redo().run()} className={btnClass(false)} disabled={!editor.can().redo()} title="Повторить"><Redo size={16}/></button>
+        <button type="button" onClick={() => editor.chain().focus().undo().run()} className={btnClass(false)} disabled={!editor.can().undo()} title="Отменить"><Undo size={16}/></button>
+        <button type="button" onClick={() => editor.chain().focus().redo().run()} className={btnClass(false)} disabled={!editor.can().redo()} title="Повторить"><Redo size={16}/></button>
       </div>
 
       <EditorContent editor={editor} />

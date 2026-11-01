@@ -1,16 +1,16 @@
 import ThemeToggle from './ThemeToggle';
-import { LayoutDashboard, Calendar as CalendarIcon } from 'lucide-react';
+import { LayoutDashboard, Calendar as CalendarIcon, LogOut, User } from 'lucide-react';
 
-export default function Header({ theme, onToggleTheme, currentView, onViewChange }) {
+export default function Header({ theme, onToggleTheme, currentView, onViewChange, onLogout, user, profile, onProfileClick }) {
   return (
     <header className="bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-800 px-6 py-3 flex justify-between items-center sticky top-0 z-10">
       <div className="flex items-center gap-6">
         <div className="flex items-center gap-2">
-          <div className="w-6 h-6 bg-blue-600 rounded"></div>
+          {/* Заменили div на img */}
+          <img src="/logo.png" alt="Logo" className="w-8 h-8 object-contain" />
           <h1 className="font-bold text-lg text-gray-900 dark:text-gray-100">Мой Канбан</h1>
         </div>
 
-        {/* Кнопки переключения видов */}
         <div className="flex bg-gray-100 dark:bg-gray-800 rounded-lg p-1">
           <button
             onClick={() => onViewChange('board')}
@@ -35,7 +35,35 @@ export default function Header({ theme, onToggleTheme, currentView, onViewChange
         </div>
       </div>
       
-      <ThemeToggle theme={theme} onToggle={onToggleTheme} />
+      <div className="flex items-center gap-4">
+        {user && (
+          <button 
+            onClick={onProfileClick}
+            className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 px-2 py-1 rounded-lg transition-colors"
+            title="Настройки профиля"
+          >
+            <div 
+              className="w-8 h-8 rounded-full flex items-center justify-center text-white"
+              style={{ backgroundColor: profile?.color || '#3b82f6' }}
+            >
+              <User size={16} />
+            </div>
+            <span className="hidden sm:block max-w-[150px] truncate">
+              {profile?.full_name || user.email}
+            </span>
+          </button>
+        )}
+
+        <button 
+          onClick={onLogout}
+          className="p-2 rounded-full hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-900/20 text-gray-500 dark:text-gray-400 transition-colors"
+          title="Выйти"
+        >
+          <LogOut size={20} />
+        </button>
+
+        <ThemeToggle theme={theme} onToggle={onToggleTheme} />
+      </div>
     </header>
   );
 }
