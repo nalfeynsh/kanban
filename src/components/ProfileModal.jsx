@@ -30,7 +30,18 @@ export default function ProfileModal({ isOpen, onClose, profile, onUpdateProfile
     }
   }, [profile]);
 
-  if (!isOpen) return null;
+  // Закрытие по клавише Esc (без сохранения)
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (e.key === 'Escape') {
+        onClose();
+      }
+    };
+    if (isOpen) document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [isOpen, onClose]);
+
+  if (!isOpen || !profile) return null;
 
   const handleSave = async () => {
     if (!profile) {
@@ -59,7 +70,8 @@ export default function ProfileModal({ isOpen, onClose, profile, onUpdateProfile
   };
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={onClose}>
+    // Убрали onClick={onClose} с этого фонового div
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
       <div 
         className="bg-white dark:bg-gray-800 rounded-xl shadow-xl w-full max-w-md p-6 max-h-[90vh] overflow-y-auto" 
         onClick={e => e.stopPropagation()}

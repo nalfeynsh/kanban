@@ -27,7 +27,7 @@ export default function TaskDetailModal({ isOpen, onClose, task, onSaveTask, onD
         column_id: task.column_id,
         created_at: task.created_at,
         created_by: task.created_by,
-        is_private: task.is_private || false // <-- Добавили поле
+        is_private: task.is_private || false
       });
       setIsCopied(false);
       setNewLinkTitle('');
@@ -128,7 +128,8 @@ export default function TaskDetailModal({ isOpen, onClose, task, onSaveTask, onD
 
   return (
     <>
-      <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={handleCancel}>
+      {/* Убрали onClick={handleCancel} с этого div */}
+      <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
         <div className="bg-white dark:bg-gray-800 rounded-xl shadow-xl w-full max-w-3xl p-6 max-h-[95vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
           
           <div className="flex justify-between items-start mb-2 gap-4">
@@ -190,7 +191,6 @@ export default function TaskDetailModal({ isOpen, onClose, task, onSaveTask, onD
                 onChange={(html) => setEditedTask({ ...editedTask, description: html })}
               />
 
-              {/* Ссылки */}
               <div className="mt-6 pt-4 border-t border-gray-200 dark:border-gray-700">
                 <div className="flex items-center gap-2 text-gray-700 dark:text-gray-300 font-medium mb-3">
                   <LinkIcon size={18} /> <span>Ссылки</span>
@@ -212,7 +212,6 @@ export default function TaskDetailModal({ isOpen, onClose, task, onSaveTask, onD
                 </div>
               </div>
 
-              {/* Файлы */}
               <div className="mt-6 pt-4 border-t border-gray-200 dark:border-gray-700">
                 <div className="flex items-center gap-2 text-gray-700 dark:text-gray-300 font-medium mb-3">
                   <Paperclip size={18} /> <span>Файлы</span>
@@ -253,7 +252,6 @@ export default function TaskDetailModal({ isOpen, onClose, task, onSaveTask, onD
                 <input type="date" value={editedTask.date || ''} onChange={(e) => setEditedTask({ ...editedTask, date: e.target.value })} className="w-full px-2 py-1 text-sm border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500" />
               </div>
               
-              {/* Переключатель "Личная задача" */}
               <div className="pt-2">
                 <label className="flex items-center gap-2 cursor-pointer p-2 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors border border-gray-200 dark:border-gray-700">
                   <input

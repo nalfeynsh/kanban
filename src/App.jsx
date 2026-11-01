@@ -5,6 +5,7 @@ import {
   PointerSensor,
   useSensor,
   useSensors,
+  DragOverlay,
 } from '@dnd-kit/core';
 import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import Header from './components/Header';
@@ -13,6 +14,8 @@ import CalendarView from './components/CalendarView';
 import TaskDetailModal from './components/TaskDetailModal';
 import LoginPage from './components/LoginPage';
 import ProfileModal from './components/ProfileModal';
+import ArchiveModal from './components/ArchiveModal';
+import TaskCard from './components/TaskCard';
 import { supabase } from './supabaseClient';
 
 export default function App() {
@@ -20,13 +23,17 @@ export default function App() {
   const [profile, setProfile] = useState(null);
   const [columns, setColumns] = useState([]);
   const [tasks, setTasks] = useState([]);
+  const [archivedTasks, setArchivedTasks] = useState([]);
   const [loading, setLoading] = useState(true);
   const [allProfiles, setAllProfiles] = useState([]);
   
   const [selectedTask, setSelectedTask] = useState(null);
   const [isProfileOpen, setIsProfileOpen] = useState(false);
+  const [isArchiveOpen, setIsArchiveOpen] = useState(false);
   const [currentView, setCurrentView] = useState('board');
-  const [filterMode, setFilterMode] = useState('team'); // 'team' или 'personal'
+  const [filterMode, setFilterMode] = useState('team');
+  
+  const [activeTask, setActiveTask] = useState(null);
 
   // --- Логика темы ---
   const [theme, setTheme] = useState(localStorage.getItem('theme') || 'light');
@@ -86,15 +93,18 @@ export default function App() {
         const [
           { data: colsData, error: colsError },
           { data: tasksData, error: tasksError },
+          { data: archiveData, error: archiveError },
           { data: profilesData }
         ] = await Promise.all([
           supabase.from('columns').select('*').order('position', { ascending: true }),
-          supabase.from('tasks').select('*').order('position', { ascending: true }),
+          supabase.from('tasks').select('*').is('deleted_at', null).order('position', { ascending: true }),
+          supabase.from('tasks').select('*').not('deleted_at', 'is', null).order('deleted_at', { ascending: false }),
           supabase.from('profiles').select('*')
         ]);
 
         if (colsError) throw colsError;
         if (tasksError) throw tasksError;
+        if (archiveError) throw archiveError;
 
         if (isMounted && colsData && tasksData) {
           const safeTasksData = tasksData.map(task => ({
@@ -103,9 +113,10 @@ export default function App() {
             files: Array.isArray(task.files) ? task.files : []
           }));
 
-          setColumns(colsData); // Сохраняем колонки как есть
+          setColumns(colsData);
           setTasks(safeTasksData);
           
+          if (archiveData) setArchivedTasks(archiveData);
           if (profilesData) setAllProfiles(profilesData);
         }
       } catch (error) {
@@ -123,23 +134,44 @@ export default function App() {
     };
   }, [session]);
 
+  // --- ФИЛЬТРАЦИЯ ЗАДАЧ ---
+  const visibleTasks = tasks.filter(task => {
+    if (filterMode === 'personal') {
+      return task.is_private === true;
+    } else {
+      return task.is_private === false;
+    }
+  });
+
+  const filteredColumns = columns.map(col => ({
+    ...col,
+    taskIds: visibleTasks.filter(t => t.column_id === col.id).map(t => t.id)
+  }));
+
   // --- Логика Drag-and-Drop ---
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } })
   );
 
+  const handleDragStart = (event) => {
+    const { active } = event;
+    const task = tasks.find(t => t.id === active.id);
+    if (task) setActiveTask(task);
+  };
+
   const handleDragEnd = async (event) => {
-    // ... (код drag-and-drop остается без изменений)
     const { active, over } = event;
+    setActiveTask(null);
+
     if (!over) return;
 
     const activeId = active.id;
     const overId = over.id;
     if (activeId === overId) return;
 
-    const sourceCol = columns.find((col) => col.taskIds?.includes(activeId));
-    const destCol = columns.find(
-      (col) => col.id === overId || col.taskIds?.includes(overId)
+    const sourceCol = filteredColumns.find((col) => col.taskIds.includes(activeId));
+    const destCol = filteredColumns.find(
+      (col) => col.id === overId || col.taskIds.includes(overId)
     );
 
     if (!sourceCol || !destCol) return;
@@ -154,7 +186,7 @@ export default function App() {
       newTaskIds.splice(oldIndex, 1);
       newTaskIds.splice(newIndex, 0, activeId);
 
-      newColumns = columns.map((col) =>
+      newColumns = filteredColumns.map((col) =>
         col.id === sourceCol.id ? { ...col, taskIds: newTaskIds } : col
       );
     } else {
@@ -168,14 +200,12 @@ export default function App() {
         destIds.push(activeId);
       }
 
-      newColumns = columns.map((col) => {
+      newColumns = filteredColumns.map((col) => {
         if (col.id === sourceCol.id) return { ...col, taskIds: sourceIds };
         if (col.id === destCol.id) return { ...col, taskIds: destIds };
         return col;
       });
     }
-
-    setColumns(newColumns);
 
     const destTaskIds = newColumns.find(c => c.id === destCol.id).taskIds;
     const newPosition = destTaskIds.indexOf(activeId);
@@ -187,13 +217,17 @@ export default function App() {
         position: newPosition 
       })
       .eq('id', activeId);
+
+    setTasks(prevTasks => 
+      prevTasks.map(t => t.id === activeId ? { ...t, column_id: destCol.id, position: newPosition } : t)
+    );
   };
 
   const handleDateClick = (dateStr) => {
     setSelectedTask({ 
       date: dateStr, 
       column_id: columns[0]?.id,
-      is_private: filterMode === 'personal' // Если мы в режиме "Личное", создаем личную задачу
+      is_private: filterMode === 'personal'
     });
   };
 
@@ -254,23 +288,47 @@ export default function App() {
     setSelectedTask(null);
   };
 
-  // --- Логика удаления задачи ---
+  // --- Логика МЯГКОГО УДАЛЕНИЯ ---
   const handleDeleteTask = async (taskId) => {
-    if (!window.confirm("Вы уверены, что хотите удалить эту задачу?")) return;
+    if (!window.confirm("Переместить задачу в архив?")) return;
 
     const { error } = await supabase
       .from('tasks')
-      .delete()
+      .update({ deleted_at: new Date().toISOString() })
       .eq('id', taskId);
 
     if (error) {
       console.error("Ошибка при удалении:", error);
-      alert("Не удалось удалить задачу: " + error.message);
+      alert("Не удалось переместить в архив: " + error.message);
       return;
     }
 
-    setTasks(prevTasks => prevTasks.filter(t => t.id !== taskId));
+    const taskToArchive = tasks.find(t => t.id === taskId);
+    if (taskToArchive) {
+      setArchivedTasks([taskToArchive, ...archivedTasks]);
+      setTasks(prevTasks => prevTasks.filter(t => t.id !== taskId));
+    }
+    
     setSelectedTask(null); 
+  };
+
+  const handleRestoreTask = async (taskId) => {
+    const { error } = await supabase
+      .from('tasks')
+      .update({ deleted_at: null })
+      .eq('id', taskId);
+
+    if (error) {
+      console.error("Ошибка при восстановлении:", error);
+      alert("Не удалось восстановить задачу: " + error.message);
+      return;
+    }
+
+    const taskToRestore = archivedTasks.find(t => t.id === taskId);
+    if (taskToRestore) {
+      setTasks([...tasks, taskToRestore]);
+      setArchivedTasks(prev => prev.filter(t => t.id !== taskId));
+    }
   };
 
   // --- ЛОГИКА ВЫХОДА ---
@@ -281,25 +339,9 @@ export default function App() {
     setAllProfiles([]);
     setColumns([]);
     setTasks([]);
+    setArchivedTasks([]);
     setLoading(true);
   };
-
-  // --- ФИЛЬТРАЦИЯ ЗАДАЧ ДЛЯ ОТОБРАЖЕНИЯ ---
-  const visibleTasks = tasks.filter(task => {
-    if (filterMode === 'personal') {
-      return task.is_private === true;
-    } else {
-      // В режиме "Команда" показываем только командные задачи (is_private = false)
-      // В будущем здесь можно добавить фильтр "показывать только мои командные" или "все командные"
-      return task.is_private === false;
-    }
-  });
-
-  // Формируем колонки с учетом отфильтрованных задач
-  const filteredColumns = columns.map(col => ({
-    ...col,
-    taskIds: visibleTasks.filter(t => t.column_id === col.id).map(t => t.id)
-  }));
 
   if (!session) {
     return <LoginPage />;
@@ -326,11 +368,17 @@ export default function App() {
         onProfileClick={() => setIsProfileOpen(true)}
         filterMode={filterMode}
         onFilterChange={setFilterMode}
+        onArchiveClick={() => setIsArchiveOpen(true)}
       />
 
       <main className="p-6 overflow-x-auto flex-1">
         {currentView === 'board' && (
-          <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+          <DndContext 
+            sensors={sensors} 
+            collisionDetection={closestCenter} 
+            onDragStart={handleDragStart}
+            onDragEnd={handleDragEnd}
+          >
             <div className="flex gap-4 items-start justify-center">
               <SortableContext items={filteredColumns.map((c) => c.id)} strategy={verticalListSortingStrategy}>
                 {filteredColumns.map((col) => (
@@ -343,10 +391,17 @@ export default function App() {
                       column_id: col.id, 
                       is_private: filterMode === 'personal' 
                     })}
+                    onDeleteTask={handleDeleteTask} // <-- ПЕРЕДАЕМ ФУНКЦИЮ УДАЛЕНИЯ
                   />
                 ))}
               </SortableContext>
             </div>
+            
+            <DragOverlay>
+              {activeTask ? (
+                <TaskCard task={activeTask} onClick={() => {}} onDelete={() => {}} />
+              ) : null}
+            </DragOverlay>
           </DndContext>
         )}
 
@@ -374,6 +429,13 @@ export default function App() {
         onClose={() => setIsProfileOpen(false)}
         profile={profile}
         onUpdateProfile={(updatedProfile) => setProfile(updatedProfile)}
+      />
+
+      <ArchiveModal
+        isOpen={isArchiveOpen}
+        onClose={() => setIsArchiveOpen(false)}
+        archivedTasks={archivedTasks}
+        onRestore={handleRestoreTask}
       />
     </div>
   );

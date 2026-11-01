@@ -1,7 +1,7 @@
 import ThemeToggle from './ThemeToggle';
-import { LayoutDashboard, Calendar as CalendarIcon, LogOut, User, Lock, Users } from 'lucide-react';
+import { LayoutDashboard, Calendar as CalendarIcon, LogOut, User, Lock, Users, Archive } from 'lucide-react';
 
-export default function Header({ theme, onToggleTheme, currentView, onViewChange, onLogout, user, profile, onProfileClick, filterMode, onFilterChange }) {
+export default function Header({ theme, onToggleTheme, currentView, onViewChange, onLogout, user, profile, onProfileClick, filterMode, onFilterChange, onArchiveClick }) {
   return (
     <header className="bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-800 px-6 py-3 flex justify-between items-center sticky top-0 z-10">
       <div className="flex items-center gap-6">
@@ -10,7 +10,6 @@ export default function Header({ theme, onToggleTheme, currentView, onViewChange
           <h1 className="font-bold text-lg text-gray-900 dark:text-gray-100">Мой Канбан</h1>
         </div>
 
-        {/* Переключатель Канбан / Календарь */}
         <div className="flex bg-gray-100 dark:bg-gray-800 rounded-lg p-1">
           <button
             onClick={() => onViewChange('board')}
@@ -34,7 +33,6 @@ export default function Header({ theme, onToggleTheme, currentView, onViewChange
           </button>
         </div>
 
-        {/* Переключатель Личное / Команда */}
         <div className="flex bg-gray-100 dark:bg-gray-800 rounded-lg p-1 ml-2">
           <button
             onClick={() => onFilterChange('team')}
@@ -60,6 +58,16 @@ export default function Header({ theme, onToggleTheme, currentView, onViewChange
       </div>
       
       <div className="flex items-center gap-4">
+        {/* Кнопка Архива с подписью */}
+        <button 
+          onClick={onArchiveClick}
+          className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-gray-600 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-800 rounded-lg transition-colors"
+          title="Архив задач"
+        >
+          <Archive size={18} />
+          <span className="hidden sm:inline">Архив</span> {/* <-- Подпись */}
+        </button>
+
         {user && (
           <button 
             onClick={onProfileClick}
