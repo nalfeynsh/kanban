@@ -26,6 +26,7 @@ export default function App() {
   const [selectedTask, setSelectedTask] = useState(null);
   const [isProfileOpen, setIsProfileOpen] = useState(false);
   const [currentView, setCurrentView] = useState('board');
+  const [filterMode, setFilterMode] = useState('team'); // 'team' или 'personal'
 
   // --- Логика темы ---
   const [theme, setTheme] = useState(localStorage.getItem('theme') || 'light');
@@ -62,7 +63,6 @@ export default function App() {
     return () => subscription.unsubscribe();
   }, []);
 
-  // --- Загрузка профиля текущего пользователя ---
   const fetchProfile = async (userId) => {
     const { data } = await supabase
       .from('profiles')
@@ -72,29 +72,10 @@ export default function App() {
     
     if (data) {
       setProfile(data);
-    } else {
-      // Если профиля нет, создаем его
-      console.log("Профиль не найден, создаем новый...");
-      const { error: createError } = await supabase
-        .from('profiles')
-        .insert([{ 
-          id: userId, 
-          full_name: session?.user?.email || 'Новый пользователь',
-          work_email: session?.user?.email 
-        }]);
-
-      if (!createError) {
-        const { data: createdProfile } = await supabase
-          .from('profiles')
-          .select('*')
-          .eq('id', userId)
-          .maybeSingle();
-        if (createdProfile) setProfile(createdProfile);
-      }
     }
   };
 
-  // --- Загрузка данных (задачи + все профили) ---
+  // --- Загрузка данных ---
   useEffect(() => {
     if (!session) return;
 
@@ -122,11 +103,7 @@ export default function App() {
             files: Array.isArray(task.files) ? task.files : []
           }));
 
-          const colsWithTasks = colsData.map(col => ({
-            ...col,
-            taskIds: safeTasksData.filter(t => t.column_id === col.id).map(t => t.id)
-          }));
-          setColumns(colsWithTasks);
+          setColumns(colsData); // Сохраняем колонки как есть
           setTasks(safeTasksData);
           
           if (profilesData) setAllProfiles(profilesData);
@@ -152,6 +129,7 @@ export default function App() {
   );
 
   const handleDragEnd = async (event) => {
+    // ... (код drag-and-drop остается без изменений)
     const { active, over } = event;
     if (!over) return;
 
@@ -159,9 +137,9 @@ export default function App() {
     const overId = over.id;
     if (activeId === overId) return;
 
-    const sourceCol = columns.find((col) => col.taskIds.includes(activeId));
+    const sourceCol = columns.find((col) => col.taskIds?.includes(activeId));
     const destCol = columns.find(
-      (col) => col.id === overId || col.taskIds.includes(overId)
+      (col) => col.id === overId || col.taskIds?.includes(overId)
     );
 
     if (!sourceCol || !destCol) return;
@@ -214,7 +192,8 @@ export default function App() {
   const handleDateClick = (dateStr) => {
     setSelectedTask({ 
       date: dateStr, 
-      column_id: columns[0]?.id 
+      column_id: columns[0]?.id,
+      is_private: filterMode === 'personal' // Если мы в режиме "Личное", создаем личную задачу
     });
   };
 
@@ -234,7 +213,8 @@ export default function App() {
           files: taskToSave.files || [],
           column_id: columnId, 
           position: newPosition,
-          created_by: session.user.id
+          created_by: session.user.id,
+          is_private: taskToSave.is_private || false
         }])
         .select();
 
@@ -247,14 +227,6 @@ export default function App() {
       if (data && data[0]) {
         const newTask = data[0];
         setTasks([...tasks, newTask]);
-        
-        setColumns(prevCols => 
-          prevCols.map(col => 
-            col.id === columnId 
-              ? { ...col, taskIds: [...col.taskIds, newTask.id] } 
-              : col
-          )
-        );
       }
     } else {
       const { error } = await supabase
@@ -264,7 +236,8 @@ export default function App() {
           description: taskToSave.description,
           date: taskToSave.date || null,
           links: taskToSave.links || [],
-          files: taskToSave.files || []
+          files: taskToSave.files || [],
+          is_private: taskToSave.is_private
         })
         .eq('id', taskToSave.id);
 
@@ -297,12 +270,6 @@ export default function App() {
     }
 
     setTasks(prevTasks => prevTasks.filter(t => t.id !== taskId));
-    setColumns(prevCols => 
-      prevCols.map(col => ({
-        ...col,
-        taskIds: col.taskIds.filter(id => id !== taskId)
-      }))
-    );
     setSelectedTask(null); 
   };
 
@@ -317,7 +284,23 @@ export default function App() {
     setLoading(true);
   };
 
-  // --- РЕНДЕР ---
+  // --- ФИЛЬТРАЦИЯ ЗАДАЧ ДЛЯ ОТОБРАЖЕНИЯ ---
+  const visibleTasks = tasks.filter(task => {
+    if (filterMode === 'personal') {
+      return task.is_private === true;
+    } else {
+      // В режиме "Команда" показываем только командные задачи (is_private = false)
+      // В будущем здесь можно добавить фильтр "показывать только мои командные" или "все командные"
+      return task.is_private === false;
+    }
+  });
+
+  // Формируем колонки с учетом отфильтрованных задач
+  const filteredColumns = columns.map(col => ({
+    ...col,
+    taskIds: visibleTasks.filter(t => t.column_id === col.id).map(t => t.id)
+  }));
+
   if (!session) {
     return <LoginPage />;
   }
@@ -341,20 +324,25 @@ export default function App() {
         user={session.user}
         profile={profile}
         onProfileClick={() => setIsProfileOpen(true)}
+        filterMode={filterMode}
+        onFilterChange={setFilterMode}
       />
 
       <main className="p-6 overflow-x-auto flex-1">
         {currentView === 'board' && (
           <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
             <div className="flex gap-4 items-start justify-center">
-              <SortableContext items={columns.map((c) => c.id)} strategy={verticalListSortingStrategy}>
-                {columns.map((col) => (
+              <SortableContext items={filteredColumns.map((c) => c.id)} strategy={verticalListSortingStrategy}>
+                {filteredColumns.map((col) => (
                   <Column
                     key={col.id}
                     column={col}
-                    tasks={tasks.filter((t) => col.taskIds.includes(t.id))}
+                    tasks={visibleTasks.filter((t) => col.taskIds.includes(t.id))}
                     onTaskClick={setSelectedTask}
-                    onAddNewTask={() => setSelectedTask({ column_id: col.id })}
+                    onAddNewTask={() => setSelectedTask({ 
+                      column_id: col.id, 
+                      is_private: filterMode === 'personal' 
+                    })}
                   />
                 ))}
               </SortableContext>
@@ -364,14 +352,13 @@ export default function App() {
 
         {currentView === 'calendar' && (
           <CalendarView 
-            tasks={tasks} 
+            tasks={visibleTasks} 
             onTaskClick={setSelectedTask} 
             onDateClick={handleDateClick} 
           />
         )}
       </main>
 
-      {/* Модалка задачи с ключом для полного пересоздания */}
       <TaskDetailModal 
         key={selectedTask?.id || 'new'}
         isOpen={!!selectedTask} 
@@ -382,7 +369,6 @@ export default function App() {
         allProfiles={allProfiles}
       />
 
-      {/* Модалка профиля */}
       <ProfileModal 
         isOpen={isProfileOpen}
         onClose={() => setIsProfileOpen(false)}

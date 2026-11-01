@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
-import { X, Calendar, AlignLeft, Check, Trash2, Copy, User, Clock, Link as LinkIcon, Plus, Paperclip, FileText, Loader2, Eye } from 'lucide-react';
+import { X, Calendar, AlignLeft, Check, Trash2, Copy, User, Clock, Link as LinkIcon, Plus, Paperclip, FileText, Loader2, Eye, Lock } from 'lucide-react';
 import TipTapEditor from './TipTapEditor';
-import FilePreviewModal from './FilePreviewModal'; // <-- Импортируем новую модалку
+import FilePreviewModal from './FilePreviewModal';
 import { supabase } from '../supabaseClient';
 
 export default function TaskDetailModal({ isOpen, onClose, task, onSaveTask, onDeleteTask, allProfiles = [] }) {
@@ -12,7 +12,6 @@ export default function TaskDetailModal({ isOpen, onClose, task, onSaveTask, onD
   const [newLinkUrl, setNewLinkUrl] = useState('');
   const [isUploading, setIsUploading] = useState(false);
   
-  // Состояния для предпросмотра файла
   const [previewFile, setPreviewFile] = useState(null);
   const [isPreviewOpen, setIsPreviewOpen] = useState(false);
 
@@ -27,7 +26,8 @@ export default function TaskDetailModal({ isOpen, onClose, task, onSaveTask, onD
         files: Array.isArray(task.files) ? task.files : [],
         column_id: task.column_id,
         created_at: task.created_at,
-        created_by: task.created_by
+        created_by: task.created_by,
+        is_private: task.is_private || false // <-- Добавили поле
       });
       setIsCopied(false);
       setNewLinkTitle('');
@@ -64,9 +64,7 @@ export default function TaskDetailModal({ isOpen, onClose, task, onSaveTask, onD
 
   const isNewTask = !editedTask.id;
 
-  const handleCancel = () => {
-    onClose();
-  };
+  const handleCancel = () => onClose();
 
   const handleSave = () => {
     if (!editedTask.title.trim()) {
@@ -112,9 +110,7 @@ export default function TaskDetailModal({ isOpen, onClose, task, onSaveTask, onD
     setEditedTask({ ...editedTask, files: editedTask.files.filter(f => f.id !== fileId) });
   };
 
-  // Функция для открытия предпросмотра
   const handlePreviewFile = (file) => {
-    // Проверяем, можно ли предпросмотреть (картинка или PDF)
     const isImage = file.type?.startsWith('image/') || file.name.match(/\.(jpeg|jpg|gif|png|bmp|svg)$/i);
     const isPdf = file.type === 'application/pdf' || file.name.match(/\.pdf$/i);
     
@@ -122,7 +118,6 @@ export default function TaskDetailModal({ isOpen, onClose, task, onSaveTask, onD
       setPreviewFile(file);
       setIsPreviewOpen(true);
     } else {
-      // Для Word, Excel и других — скачиваем
       window.open(file.url, '_blank');
     }
   };
@@ -231,7 +226,6 @@ export default function TaskDetailModal({ isOpen, onClose, task, onSaveTask, onD
                           <span className="text-sm text-gray-700 dark:text-gray-300 truncate">{file.name}</span>
                         </div>
                         <div className="flex items-center gap-1">
-                          {/* Кнопка просмотра для картинок и PDF */}
                           {(file.type?.startsWith('image/') || file.type === 'application/pdf' || file.name.match(/\.(jpeg|jpg|gif|png|bmp|svg|pdf)$/i)) && (
                             <button onClick={() => handlePreviewFile(file)} className="p-1 text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded" title="Просмотреть">
                               <Eye size={16} />
@@ -258,6 +252,22 @@ export default function TaskDetailModal({ isOpen, onClose, task, onSaveTask, onD
                 <div className="text-xs font-semibold text-gray-500 uppercase mb-1 flex items-center gap-1"><Calendar size={14} /> Дата</div>
                 <input type="date" value={editedTask.date || ''} onChange={(e) => setEditedTask({ ...editedTask, date: e.target.value })} className="w-full px-2 py-1 text-sm border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500" />
               </div>
+              
+              {/* Переключатель "Личная задача" */}
+              <div className="pt-2">
+                <label className="flex items-center gap-2 cursor-pointer p-2 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors border border-gray-200 dark:border-gray-700">
+                  <input
+                    type="checkbox"
+                    checked={editedTask.is_private}
+                    onChange={(e) => setEditedTask({ ...editedTask, is_private: e.target.checked })}
+                    className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                  />
+                  <span className="text-sm text-gray-700 dark:text-gray-300 flex items-center gap-1">
+                    <Lock size={14} /> Личная
+                  </span>
+                </label>
+              </div>
+
               <button onClick={handleSave} className="w-full flex items-center justify-center gap-2 px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors mt-4">
                 <Check size={16} /> {isNewTask ? 'Создать' : 'Готово'}
               </button>
@@ -271,7 +281,6 @@ export default function TaskDetailModal({ isOpen, onClose, task, onSaveTask, onD
         </div>
       </div>
 
-      {/* Модалка предпросмотра файла */}
       <FilePreviewModal 
         isOpen={isPreviewOpen}
         onClose={() => setIsPreviewOpen(false)}

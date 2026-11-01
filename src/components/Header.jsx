@@ -1,16 +1,16 @@
 import ThemeToggle from './ThemeToggle';
-import { LayoutDashboard, Calendar as CalendarIcon, LogOut, User } from 'lucide-react';
+import { LayoutDashboard, Calendar as CalendarIcon, LogOut, User, Lock, Users } from 'lucide-react';
 
-export default function Header({ theme, onToggleTheme, currentView, onViewChange, onLogout, user, profile, onProfileClick }) {
+export default function Header({ theme, onToggleTheme, currentView, onViewChange, onLogout, user, profile, onProfileClick, filterMode, onFilterChange }) {
   return (
     <header className="bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-800 px-6 py-3 flex justify-between items-center sticky top-0 z-10">
       <div className="flex items-center gap-6">
         <div className="flex items-center gap-2">
-          {/* Заменили div на img */}
           <img src="/logo.png" alt="Logo" className="w-8 h-8 object-contain" />
           <h1 className="font-bold text-lg text-gray-900 dark:text-gray-100">Мой Канбан</h1>
         </div>
 
+        {/* Переключатель Канбан / Календарь */}
         <div className="flex bg-gray-100 dark:bg-gray-800 rounded-lg p-1">
           <button
             onClick={() => onViewChange('board')}
@@ -31,6 +31,30 @@ export default function Header({ theme, onToggleTheme, currentView, onViewChange
             }`}
           >
             <CalendarIcon size={16} /> Календарь
+          </button>
+        </div>
+
+        {/* Переключатель Личное / Команда */}
+        <div className="flex bg-gray-100 dark:bg-gray-800 rounded-lg p-1 ml-2">
+          <button
+            onClick={() => onFilterChange('team')}
+            className={`flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-md transition-colors ${
+              filterMode === 'team' 
+                ? 'bg-white dark:bg-gray-700 text-blue-600 dark:text-blue-400 shadow-sm' 
+                : 'text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200'
+            }`}
+          >
+            <Users size={16} /> Команда
+          </button>
+          <button
+            onClick={() => onFilterChange('personal')}
+            className={`flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-md transition-colors ${
+              filterMode === 'personal' 
+                ? 'bg-white dark:bg-gray-700 text-blue-600 dark:text-blue-400 shadow-sm' 
+                : 'text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200'
+            }`}
+          >
+            <Lock size={16} /> Личное
           </button>
         </div>
       </div>

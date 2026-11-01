@@ -1,6 +1,6 @@
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { Calendar } from 'lucide-react';
+import { Calendar, Lock } from 'lucide-react';
 
 export default function TaskCard({ task, onClick }) {
   const { attributes, listeners, setNodeRef, transform, transition } = useSortable({
@@ -21,12 +21,20 @@ export default function TaskCard({ task, onClick }) {
       onClick={onClick}
       className="bg-gray-50 dark:bg-gray-800 p-3 rounded-lg shadow-md border border-gray-300 dark:border-gray-600 mb-2 cursor-grab active:cursor-grabbing hover:border-blue-400 dark:hover:border-blue-500 transition-colors"
     >
-      <div className="flex flex-wrap gap-1 mb-2">
-        {task.tags?.map((tag, i) => (
-          <span key={i} className={`${tag.color} text-white text-xs px-2 py-0.5 rounded font-medium shadow-sm`}>
-            {tag.text}
-          </span>
-        ))}
+      <div className="flex justify-between items-start gap-2 mb-2">
+        <div className="flex flex-wrap gap-1">
+          {task.tags?.map((tag, i) => (
+            <span key={i} className={`${tag.color} text-white text-xs px-2 py-0.5 rounded font-medium shadow-sm`}>
+              {tag.text}
+            </span>
+          ))}
+        </div>
+        {/* Иконка замка для личных задач */}
+        {task.is_private && (
+          <div className="text-gray-400 dark:text-gray-500" title="Личная задача">
+            <Lock size={14} />
+          </div>
+        )}
       </div>
       
       <p className="text-sm font-medium text-gray-800 dark:text-gray-200">{task.title}</p>
