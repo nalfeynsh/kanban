@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom'; // <-- Импорт портала
 import { X, Save } from 'lucide-react';
 import { supabase } from '../supabaseClient';
 
@@ -30,12 +31,10 @@ export default function ProfileModal({ isOpen, onClose, profile, onUpdateProfile
     }
   }, [profile]);
 
-  // Закрытие по клавише Esc (без сохранения)
+  // Закрытие по клавише Esc
   useEffect(() => {
     const handleKeyDown = (e) => {
-      if (e.key === 'Escape') {
-        onClose();
-      }
+      if (e.key === 'Escape') onClose();
     };
     if (isOpen) document.addEventListener('keydown', handleKeyDown);
     return () => document.removeEventListener('keydown', handleKeyDown);
@@ -69,9 +68,9 @@ export default function ProfileModal({ isOpen, onClose, profile, onUpdateProfile
     setLoading(false);
   };
 
-  return (
-    // Убрали onClick={onClose} с этого фонового div
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+  // Оборачиваем в createPortal, чтобы модалка рендерилась прямо в body
+  return createPortal(
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[9999] p-4">
       <div 
         className="bg-white dark:bg-gray-800 rounded-xl shadow-xl w-full max-w-md p-6 max-h-[90vh] overflow-y-auto" 
         onClick={e => e.stopPropagation()}
@@ -181,6 +180,7 @@ export default function ProfileModal({ isOpen, onClose, profile, onUpdateProfile
           </button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body // <-- Рендерим прямо в body
   );
 }
