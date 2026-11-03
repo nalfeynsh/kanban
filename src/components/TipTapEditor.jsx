@@ -9,10 +9,16 @@ import { Bold, Italic, Underline as UnderlineIcon, Strikethrough, List, ListOrde
 export default function TipTapEditor({ content, onChange }) {
   const editor = useEditor({
     extensions: [
-      StarterKit,
-      Underline,
-      Link.configure({ openOnClick: false }),
-      Placeholder.configure({ placeholder: 'Добавьте детали к задаче...' }),
+      StarterKit.configure({
+        // Отключаем встроенные версии, чтобы не было дублей с нашими настройками
+        link: false,
+        underline: false,
+      }),
+      Underline, // <-- Наше явное подключение (сработает)
+      Link.configure({ openOnClick: false }), // <-- Наше явное подключение (сработает)
+      Placeholder.configure({
+        placeholder: 'Добавьте детали к задаче...',
+      }),
     ],
     content: content || '',
     onUpdate: ({ editor }) => {
@@ -25,7 +31,7 @@ export default function TipTapEditor({ content, onChange }) {
     },
   });
 
-  // Синхронизируем контент, если он изменился извне (например, открыли другую задачу)
+  // Синхронизируем контент, если он изменился извне
   useEffect(() => {
     if (editor && content !== editor.getHTML()) {
       editor.commands.setContent(content || '', false);
