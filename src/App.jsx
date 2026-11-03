@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import {
   DndContext,
   closestCenter,
@@ -424,13 +425,15 @@ export default function App() {
         allProfiles={allProfiles}
       />
 
-      {isProfileOpen && (
-       <ProfileModal 
-  isOpen={isProfileOpen}
-  onClose={() => setIsProfileOpen(false)}
-  profile={profile}
-  onUpdateProfile={(updatedProfile) => setProfile(updatedProfile)}
-/>
+      {/* Портал для модалки профиля. Рендерится всегда, но сама модалка решает, показываться или нет */}
+      {createPortal(
+        <ProfileModal 
+          isOpen={isProfileOpen}
+          onClose={() => setIsProfileOpen(false)}
+          profile={profile}
+          onUpdateProfile={(updatedProfile) => setProfile(updatedProfile)}
+        />,
+        document.body
       )}
 
       <ArchiveModal
