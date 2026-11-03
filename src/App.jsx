@@ -424,12 +424,14 @@ export default function App() {
         allProfiles={allProfiles}
       />
 
-      <ProfileModal 
-        isOpen={isProfileOpen}
-        onClose={() => setIsProfileOpen(false)}
-        profile={profile}
-        onUpdateProfile={(updatedProfile) => setProfile(updatedProfile)}
-      />
+      {isProfileOpen && (
+        <ProfileModal 
+          isOpen={isProfileOpen}
+          onClose={() => setIsProfileOpen(false)}
+          profile={profile}
+          onUpdateProfile={(updatedProfile) => setProfile(updatedProfile)}
+        />
+      )}
 
       <ArchiveModal
         isOpen={isArchiveOpen}
