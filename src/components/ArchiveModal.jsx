@@ -48,3 +48,4 @@ export default function ArchiveModal({ isOpen, onClose, archivedTasks, onRestore
     </div>
   );
 }
+}

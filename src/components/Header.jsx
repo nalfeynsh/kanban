@@ -58,14 +58,13 @@ export default function Header({ theme, onToggleTheme, currentView, onViewChange
       </div>
       
       <div className="flex items-center gap-4">
-        {/* Кнопка Архива с подписью */}
         <button 
           onClick={onArchiveClick}
           className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-gray-600 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-800 rounded-lg transition-colors"
           title="Архив задач"
         >
           <Archive size={18} />
-          <span className="hidden sm:inline">Архив</span> {/* <-- Подпись */}
+          <span className="hidden sm:inline">Архив</span>
         </button>
 
         {user && (

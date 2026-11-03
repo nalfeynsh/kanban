@@ -391,7 +391,7 @@ export default function App() {
                       column_id: col.id, 
                       is_private: filterMode === 'personal' 
                     })}
-                    onDeleteTask={handleDeleteTask} // <-- ПЕРЕДАЕМ ФУНКЦИЮ УДАЛЕНИЯ
+                    onDeleteTask={handleDeleteTask}
                   />
                 ))}
               </SortableContext>
