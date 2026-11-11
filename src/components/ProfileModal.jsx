@@ -1,186 +1,419 @@
-import { useState, useEffect } from 'react';
-import { createPortal } from 'react-dom'; // <-- Импорт портала
-import { X, Save } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { createPortal } from 'react-dom';
+import {
+  X,
+  Save,
+  Loader2,
+  Mail,
+  Phone,
+  Palette,
+  EyeOff,
+  Send,
+  BadgeCheck,
+  AlertTriangle,
+  Copy,
+  Check,
+  ExternalLink,
+} from 'lucide-react';
 import { supabase } from '../supabaseClient';
+import { pickFields, supports } from '../lib/schema';
+import { normalizeTelegram, telegramUrl } from '../lib/telegram';
 
-export default function ProfileModal({ isOpen, onClose, profile, onUpdateProfile }) {
-  const [formData, setFormData] = useState({
-    full_name: '',
-    work_phone: '',
-    personal_phone: '',
-    work_email: '',
-    personal_email: '',
-    color: '#3b82f6',
-    show_personal_data: false,
-  });
+const EMPTY_FORM = {
+  full_name: '',
+  position_title: '',
+  work_phone: '',
+  personal_phone: '',
+  work_email: '',
+  personal_email: '',
+  telegram: '',
+  color: '#6366f1',
+  show_personal_data: false,
+};
+
+function toForm(profile) {
+  if (!profile) return { ...EMPTY_FORM };
+  return {
+    full_name: profile.full_name || '',
+    position_title: profile.position_title || '',
+    work_phone: profile.work_phone || '',
+    personal_phone: profile.personal_phone || '',
+    work_email: profile.work_email || '',
+    personal_email: profile.personal_email || '',
+    telegram: profile.telegram || '',
+    color: profile.color || '#6366f1',
+    show_personal_data: Boolean(profile.show_personal_data),
+  };
+}
+
+export default function ProfileModal({
+  isOpen,
+  onClose,
+  profile,
+  user,
+  allowedFields,
+  onUpdateProfile,
+}) {
+  const [formData, setFormData] = useState(() => toForm(profile));
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
+  const [savedMsg, setSavedMsg] = useState('');
+  const [sqlCopied, setSqlCopied] = useState(false);
 
-  // Загружаем данные в форму только когда профиль реально есть
-  useEffect(() => {
-    if (profile) {
-      setFormData({
-        full_name: profile.full_name || '',
-        work_phone: profile.work_phone || '',
-        personal_phone: profile.personal_phone || '',
-        work_email: profile.work_email || '',
-        personal_email: profile.personal_email || '',
-        color: profile.color || '#3b82f6',
-        show_personal_data: profile.show_personal_data || false,
-      });
+  const profileId = profile?.id || user?.id || null;
+  const telegramSupported = supports(allowedFields, 'telegram');
+  const telegramPreview = telegramUrl(formData.telegram);
+  const telegramSql = 'alter table public.profiles add column if not exists telegram text;';
+
+  const copyTelegramSql = async () => {
+    try {
+      await navigator.clipboard.writeText(telegramSql);
+      setSqlCopied(true);
+      setTimeout(() => setSqlCopied(false), 2000);
+    } catch {
+      setSqlCopied(false);
     }
-  }, [profile]);
+  };
 
-  // Закрытие по клавише Esc
   useEffect(() => {
-    const handleKeyDown = (e) => {
-      if (e.key === 'Escape') onClose();
+    if (!isOpen) return undefined;
+    const handleKeyDown = (event) => {
+      if (event.key === 'Escape') onClose();
     };
-    if (isOpen) document.addEventListener('keydown', handleKeyDown);
-    return () => document.removeEventListener('keydown', handleKeyDown);
+    document.addEventListener('keydown', handleKeyDown);
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown);
+      document.body.style.overflow = '';
+    };
   }, [isOpen, onClose]);
 
-  if (!isOpen || !profile) return null;
+  if (!isOpen) return null;
+
+  const setField = (key, value) => setFormData((prev) => ({ ...prev, [key]: value }));
 
   const handleSave = async () => {
-    if (!profile) {
-      setErrorMsg("Профиль не загружен. Попробуйте обновить страницу.");
+    if (!profileId) {
+      setErrorMsg('Не удалось определить пользователя. Обновите страницу и войдите заново.');
       return;
     }
 
     setLoading(true);
     setErrorMsg('');
+    setSavedMsg('');
 
-    const { data, error } = await supabase
-      .from('profiles')
-      .update(formData)
-      .eq('id', profile.id)
-      .select()
-      .single();
+    const telegramValue = normalizeTelegram(formData.telegram) || null;
+
+    const desired = {
+      id: profileId,
+      full_name: formData.full_name.trim() || user?.email?.split('@')[0] || 'Сотрудник',
+      position_title: formData.position_title.trim() || null,
+      work_phone: formData.work_phone.trim() || null,
+      personal_phone: formData.personal_phone.trim() || null,
+      work_email: formData.work_email.trim() || null,
+      personal_email: formData.personal_email.trim() || null,
+      telegram: telegramValue,
+      color: formData.color,
+      show_personal_data: formData.show_personal_data,
+    };
+
+    const migrationHint = telegramSupported
+      ? ''
+      : ' Колонки profiles.telegram ещё нет в базе — ник сохранён только в этом браузере.';
+
+    const upsert = async (payload) =>
+      supabase.from('profiles').upsert(payload, { onConflict: 'id' }).select().maybeSingle();
+
+    let { data, error } = await upsert(pickFields(desired, allowedFields));
+
+    // Страховка: если новых колонок ещё нет — сохраняем базовый набор полей
+    if (error && /column|schema cache|does not exist/i.test(error.message || '')) {
+      const fallback = pickFields(
+        desired,
+        new Set([
+          'id',
+          'full_name',
+          'color',
+          'show_personal_data',
+          'work_phone',
+          'personal_phone',
+          'work_email',
+          'personal_email',
+        ]),
+      );
+      const retry = await upsert(fallback);
+      data = retry.data;
+      error = retry.error;
+    }
 
     if (error) {
-      console.error(error);
-      setErrorMsg('Ошибка сохранения: ' + error.message);
-    } else {
-      onUpdateProfile(data);
-      onClose();
+      console.error('Профиль не сохранён:', error);
+      const hint =
+        error.code === '42501'
+          ? ' Нет прав на запись профиля: примените RLS-политики из миграции.'
+          : '';
+      setErrorMsg(`Ошибка сохранения: ${error.message}.${hint}${migrationHint}`);
+      setLoading(false);
+      return;
     }
+
+    const updated = data || { ...profile, ...pickFields(desired, allowedFields) };
+    onUpdateProfile(updated, { telegram: telegramValue || '', localOnly: !telegramSupported });
+    setSavedMsg(
+      telegramSupported
+        ? 'Профиль сохранён'
+        : 'Профиль сохранён. Telegram пока хранится в этом браузере — примените миграцию для синхронизации.',
+    );
     setLoading(false);
+    setTimeout(() => onClose(), telegramSupported ? 500 : 1600);
   };
 
-  // Оборачиваем в createPortal, чтобы модалка рендерилась прямо в body
   return createPortal(
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[9999] p-4">
-      <div 
-        className="bg-white dark:bg-gray-800 rounded-xl shadow-xl w-full max-w-md p-6 max-h-[90vh] overflow-y-auto" 
-        onClick={e => e.stopPropagation()}
-      >
-        <div className="flex justify-between items-center mb-6">
-          <h2 className="text-xl font-bold text-gray-900 dark:text-gray-100">Мой профиль</h2>
-          <button onClick={onClose} className="text-gray-500 hover:text-gray-700 dark:hover:text-gray-300">
-            <X size={24} />
+    <div
+      className="modal-overlay"
+      onMouseDown={(event) => {
+        if (event.target === event.currentTarget) onClose();
+      }}
+    >
+      <div className="modal-panel glass-panel w-full max-w-xl overflow-hidden rounded-3xl">
+        <div className="flex items-start justify-between gap-4 border-b border-white/30 px-6 py-4 dark:border-white/10">
+          <div className="flex items-center gap-3">
+            <span
+              className="flex h-11 w-11 items-center justify-center rounded-2xl text-sm font-bold text-white shadow-lg"
+              style={{ backgroundColor: formData.color || '#6366f1' }}
+            >
+              {(formData.full_name || user?.email || '?').trim().slice(0, 1).toUpperCase()}
+            </span>
+            <div>
+              <h2 className="text-lg font-bold text-slate-900 dark:text-white">Мой профиль</h2>
+              <p className="flex items-center gap-1 text-xs text-slate-500 dark:text-slate-400">
+                <Mail size={12} /> {user?.email || 'аккаунт'}
+              </p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-xl p-1.5 text-slate-500 transition hover:bg-white/60 hover:text-slate-800 dark:text-slate-400 dark:hover:bg-white/10 dark:hover:text-white"
+            title="Закрыть"
+          >
+            <X size={20} />
           </button>
         </div>
 
-        <div className="space-y-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">ФИО</label>
-            <input
-              type="text"
-              value={formData.full_name}
-              onChange={(e) => setFormData({ ...formData, full_name: e.target.value })}
-              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-gray-100"
-              placeholder="Иванов Иван"
-            />
-          </div>
+        <div className="scrollbar-slim max-h-[70vh] space-y-6 overflow-y-auto px-6 py-5">
+          <section className="space-y-3">
+            <h3 className="flex items-center gap-1.5 text-[0.68rem] font-semibold tracking-[0.12em] text-slate-500 uppercase dark:text-slate-400">
+              <BadgeCheck size={13} /> Основное
+            </h3>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <label className="block">
+                <span className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-300">ФИО</span>
+                <input
+                  type="text"
+                  value={formData.full_name}
+                  onChange={(event) => setField('full_name', event.target.value)}
+                  className="glass-input"
+                  placeholder="Иванов Иван"
+                />
+              </label>
+              <label className="block">
+                <span className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-300">Должность</span>
+                <input
+                  type="text"
+                  value={formData.position_title}
+                  onChange={(event) => setField('position_title', event.target.value)}
+                  className="glass-input"
+                  placeholder="Например, дизайнер"
+                  disabled={!supports(allowedFields, 'position_title')}
+                />
+              </label>
+            </div>
 
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Рабочий телефон</label>
-              <input
-                type="text"
-                value={formData.work_phone}
-                onChange={(e) => setFormData({ ...formData, work_phone: e.target.value })}
-                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-gray-100"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Личный телефон</label>
-              <input
-                type="text"
-                value={formData.personal_phone}
-                onChange={(e) => setFormData({ ...formData, personal_phone: e.target.value })}
-                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-gray-100"
-              />
-            </div>
-          </div>
-
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Рабочая почта</label>
-              <input
-                type="email"
-                value={formData.work_email}
-                onChange={(e) => setFormData({ ...formData, work_email: e.target.value })}
-                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-gray-100"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Личная почта</label>
-              <input
-                type="email"
-                value={formData.personal_email}
-                onChange={(e) => setFormData({ ...formData, personal_email: e.target.value })}
-                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-gray-100"
-              />
-            </div>
-          </div>
-
-          <div className="flex items-center gap-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Ваш цвет</label>
-              <input
-                type="color"
-                value={formData.color}
-                onChange={(e) => setFormData({ ...formData, color: e.target.value })}
-                className="w-12 h-10 p-0 border-none rounded cursor-pointer"
-              />
-            </div>
-            <div className="flex-1">
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Приватность</label>
-              <label className="flex items-center gap-2 cursor-pointer mt-1">
+            <div className="grid items-end gap-3 sm:grid-cols-[auto_1fr]">
+              <label className="block">
+                <span className="mb-1 flex items-center gap-1 text-xs font-medium text-slate-600 dark:text-slate-300">
+                  <Palette size={12} /> Цвет
+                </span>
+                <input
+                  type="color"
+                  value={formData.color}
+                  onChange={(event) => setField('color', event.target.value)}
+                  className="h-10 w-16 cursor-pointer rounded-xl border border-white/50 bg-transparent p-0 dark:border-white/15"
+                />
+              </label>
+              <label className="flex cursor-pointer items-center gap-2 rounded-xl border border-white/40 bg-white/30 px-3 py-2.5 dark:border-white/10 dark:bg-white/5">
                 <input
                   type="checkbox"
                   checked={formData.show_personal_data}
-                  onChange={(e) => setFormData({ ...formData, show_personal_data: e.target.checked })}
-                  className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                  onChange={(event) => setField('show_personal_data', event.target.checked)}
+                  className="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
                 />
-                <span className="text-sm text-gray-600 dark:text-gray-400">Показывать личные данные команде</span>
+                <span className="flex items-center gap-1.5 text-xs text-slate-600 dark:text-slate-300">
+                  <EyeOff size={13} /> Показывать личные контакты команде
+                </span>
               </label>
             </div>
-          </div>
+          </section>
+
+          <section className="space-y-3">
+            <h3 className="flex items-center gap-1.5 text-[0.68rem] font-semibold tracking-[0.12em] text-slate-500 uppercase dark:text-slate-400">
+              <Phone size={13} /> Контакты
+            </h3>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <label className="block">
+                <span className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-300">Рабочий телефон</span>
+                <input
+                  type="tel"
+                  value={formData.work_phone}
+                  onChange={(event) => setField('work_phone', event.target.value)}
+                  className="glass-input"
+                  placeholder="+7 900 000-00-00"
+                />
+              </label>
+              <label className="block">
+                <span className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-300">Личный телефон</span>
+                <input
+                  type="tel"
+                  value={formData.personal_phone}
+                  onChange={(event) => setField('personal_phone', event.target.value)}
+                  className="glass-input"
+                  placeholder="+7 900 000-00-00"
+                />
+              </label>
+              <label className="block">
+                <span className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-300">Рабочая почта</span>
+                <input
+                  type="email"
+                  value={formData.work_email}
+                  onChange={(event) => setField('work_email', event.target.value)}
+                  className="glass-input"
+                  placeholder="ivanov@company.ru"
+                />
+              </label>
+              <label className="block">
+                <span className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-300">Личная почта</span>
+                <input
+                  type="email"
+                  value={formData.personal_email}
+                  onChange={(event) => setField('personal_email', event.target.value)}
+                  className="glass-input"
+                  placeholder="ivan@mail.ru"
+                />
+              </label>
+            </div>
+
+            <div>
+              <span className="mb-1 flex items-center gap-1 text-xs font-medium text-slate-600 dark:text-slate-300">
+                <Send size={12} /> Telegram
+              </span>
+
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  value={formData.telegram}
+                  onChange={(event) => setField('telegram', event.target.value)}
+                  onBlur={(event) => setField('telegram', normalizeTelegram(event.target.value))}
+                  className="glass-input flex-1"
+                  placeholder="@username или t.me/username"
+                  autoComplete="off"
+                  spellCheck={false}
+                />
+
+                <a
+                  href={telegramPreview || undefined}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  aria-disabled={!telegramPreview}
+                  onClick={(event) => {
+                    if (!telegramPreview) event.preventDefault();
+                  }}
+                  className={`glass-btn shrink-0 !px-2.5 ${
+                    telegramPreview ? '' : 'pointer-events-none opacity-40'
+                  }`}
+                  title={telegramPreview ? 'Открыть чат в Telegram' : 'Сначала укажите ник'}
+                >
+                  <ExternalLink size={15} />
+                  Открыть
+                </a>
+              </div>
+
+              {telegramPreview ? (
+                <span className="mt-1.5 flex flex-wrap items-center gap-1.5 text-[0.7rem] text-slate-500 dark:text-slate-400">
+                  Ссылка в профиле:
+                  <a
+                    href={telegramPreview}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="font-medium text-sky-700 hover:underline dark:text-sky-300"
+                  >
+                    t.me/{telegramPreview.replace('https://t.me/', '')}
+                  </a>
+                  · откроет чат с вами
+                </span>
+              ) : (
+                <span className="mt-1.5 block text-[0.7rem] text-slate-500 dark:text-slate-400">
+                  Ник покажется ссылкой в профиле сотрудника — коллега сразу откроет чат с вами.
+                </span>
+              )}
+
+              {!telegramSupported && (
+                <div className="mt-2 rounded-xl border border-amber-400/40 bg-amber-400/10 px-2.5 py-2 text-[0.68rem] text-amber-800 dark:text-amber-200">
+                  <p className="flex items-start gap-1.5">
+                    <AlertTriangle size={12} className="mt-0.5 shrink-0" />
+                    <span>
+                      В базе ещё нет колонки <code className="font-mono">profiles.telegram</code>, поэтому ник
+                      сохранится только в этом браузере. Команда увидит его после миграции.
+                    </span>
+                  </p>
+                  <div className="mt-1.5 flex items-center gap-1.5">
+                    <code className="min-w-0 flex-1 truncate rounded-md bg-white/50 px-1.5 py-1 font-mono text-[0.62rem] dark:bg-black/25">
+                      {telegramSql}
+                    </code>
+                    <button
+                      type="button"
+                      onClick={copyTelegramSql}
+                      className="glass-btn shrink-0 !px-2 !py-1 !text-[0.65rem]"
+                      title="Скопировать SQL"
+                    >
+                      {sqlCopied ? <Check size={12} className="text-emerald-500" /> : <Copy size={12} />}
+                      {sqlCopied ? 'Скопировано' : 'SQL'}
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          </section>
+
+          {errorMsg && (
+            <div className="flex items-start gap-2 rounded-xl border border-rose-400/40 bg-rose-500/10 px-3 py-2 text-xs text-rose-700 dark:text-rose-300">
+              <AlertTriangle size={14} className="mt-0.5 shrink-0" />
+              <span>{errorMsg}</span>
+            </div>
+          )}
+          {savedMsg && (
+            <div className="rounded-xl border border-emerald-400/40 bg-emerald-500/10 px-3 py-2 text-xs text-emerald-700 dark:text-emerald-300">
+              {savedMsg}
+            </div>
+          )}
         </div>
 
-        {errorMsg && <p className="text-red-500 text-sm mt-4">{errorMsg}</p>}
-
-        <div className="mt-6 flex justify-end gap-3">
-          <button
-            onClick={onClose}
-            className="px-4 py-2 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"
-          >
+        <div className="flex items-center justify-end gap-2 border-t border-white/30 px-6 py-4 dark:border-white/10">
+          <button type="button" onClick={onClose} className="glass-btn">
             Отмена
           </button>
           <button
+            type="button"
             onClick={handleSave}
             disabled={loading}
-            className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-lg transition-colors disabled:opacity-50"
+            className="glass-btn glass-btn-primary"
           >
-            <Save size={18} />
-            {loading ? 'Сохранение...' : 'Сохранить'}
+            {loading ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
+            {loading ? 'Сохранение…' : 'Сохранить'}
           </button>
         </div>
       </div>
     </div>,
-    document.body // <-- Рендерим прямо в body
+    document.body,
   );
 }

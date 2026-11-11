@@ -1,285 +1,625 @@
-import { useState, useEffect } from 'react';
-import { X, Calendar, AlignLeft, Check, Trash2, Copy, User, Clock, Link as LinkIcon, Plus, Paperclip, FileText, Loader2, Eye, Lock } from 'lucide-react';
+import { useEffect, useMemo, useState } from 'react';
+import {
+  X,
+  CalendarClock,
+  AlignLeft,
+  Check,
+  Trash2,
+  Copy,
+  Clock,
+  Link as LinkIcon,
+  Plus,
+  Paperclip,
+  FileText,
+  Loader2,
+  Eye,
+  UserRound,
+  Flag,
+  Hash,
+  Loader,
+  AlertTriangle,
+  Send,
+} from 'lucide-react';
 import TipTapEditor from './TipTapEditor';
 import FilePreviewModal from './FilePreviewModal';
 import { supabase } from '../supabaseClient';
+import {
+  formatCreated,
+  formatDueLong,
+  getDueValue,
+  toDateTimeLocalValue,
+  toDateInputValue,
+  fromDateTimeLocalValue,
+} from '../lib/format';
+import { PRIORITIES, getPriority, normalizePriority } from '../lib/priority';
+import { supports } from '../lib/schema';
 
-export default function TaskDetailModal({ isOpen, onClose, task, onSaveTask, onDeleteTask, allProfiles = [] }) {
-  const [editedTask, setEditedTask] = useState(null);
-  const [authorProfile, setAuthorProfile] = useState(null);
+function initials(name) {
+  if (!name) return '?';
+  return name
+    .trim()
+    .split(/\s+/)
+    .slice(0, 2)
+    .map((part) => part.charAt(0).toUpperCase())
+    .join('');
+}
+
+/** props.task → редактируемая копия (модалка монтируется заново на каждую задачу) */
+function toEditableTask(task) {
+  if (!task) return null;
+  return {
+    id: task.id || null,
+    title: task.title || '',
+    description: task.description || '',
+    start_at: task.start_at || null,
+    due_at: getDueValue(task),
+    links: Array.isArray(task.links) ? task.links : [],
+    files: Array.isArray(task.files) ? task.files : [],
+    column_id: task.column_id,
+    created_at: task.created_at,
+    created_by: task.created_by,
+    is_private: Boolean(task.is_private),
+    priority: normalizePriority(task.priority),
+    assignee_id: task.assignee_id || '',
+  };
+}
+
+export default function TaskDetailModal({
+  isOpen,
+  onClose,
+  task,
+  number,
+  onSaveTask,
+  onDeleteTask,
+  allProfiles = [],
+  allowedFields,
+  currentUserId,
+}) {
+  const [editedTask, setEditedTask] = useState(() => toEditableTask(task));
   const [isCopied, setIsCopied] = useState(false);
   const [newLinkTitle, setNewLinkTitle] = useState('');
   const [newLinkUrl, setNewLinkUrl] = useState('');
   const [isUploading, setIsUploading] = useState(false);
-  
+  const [isSaving, setIsSaving] = useState(false);
   const [previewFile, setPreviewFile] = useState(null);
   const [isPreviewOpen, setIsPreviewOpen] = useState(false);
+  const [formError, setFormError] = useState('');
+
+  const dueSupported = supports(allowedFields, 'due_at');
+  const startSupported = supports(allowedFields, 'start_at');
+  const prioritySupported = supports(allowedFields, 'priority');
+  const assigneeSupported = supports(allowedFields, 'assignee_id');
+
+  const authorProfile = useMemo(
+    () => allProfiles.find((profile) => profile.id === task?.created_by) || null,
+    [allProfiles, task?.created_by],
+  );
 
   useEffect(() => {
-    if (task) {
-      setEditedTask({
-        id: task.id || null,
-        title: task.title || '',
-        description: task.description || '',
-        date: task.date || '',
-        links: Array.isArray(task.links) ? task.links : [],
-        files: Array.isArray(task.files) ? task.files : [],
-        column_id: task.column_id,
-        created_at: task.created_at,
-        created_by: task.created_by,
-        is_private: task.is_private || false
-      });
-      setIsCopied(false);
-      setNewLinkTitle('');
-      setNewLinkUrl('');
-    }
-  }, [task]);
-
-  useEffect(() => {
-    if (!task || !task.created_by) {
-      setAuthorProfile(null);
-      return;
-    }
-    const foundInList = allProfiles.find(p => p.id === task.created_by);
-    if (foundInList) {
-      setAuthorProfile(foundInList);
-    } else {
-      const fetchAuthor = async () => {
-        const { data } = await supabase.from('profiles').select('*').eq('id', task.created_by).maybeSingle();
-        if (data) setAuthorProfile(data);
-      };
-      fetchAuthor();
-    }
-  }, [task, allProfiles]);
-
-  useEffect(() => {
-    const handleKeyDown = (e) => {
-      if (e.key === 'Escape') handleCancel();
+    if (!isOpen) return undefined;
+    const handleKeyDown = (event) => {
+      if (event.key === 'Escape') onClose();
     };
-    if (isOpen) document.addEventListener('keydown', handleKeyDown);
-    return () => document.removeEventListener('keydown', handleKeyDown);
-  }, [isOpen]);
+    document.addEventListener('keydown', handleKeyDown);
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown);
+      document.body.style.overflow = '';
+    };
+  }, [isOpen, onClose]);
 
   if (!isOpen || !editedTask) return null;
 
   const isNewTask = !editedTask.id;
+  // Приватность меняет только постановщик: иначе можно «запереть» чужую задачу
+  const canTogglePrivacy = isNewTask || !editedTask.created_by || editedTask.created_by === currentUserId;
 
-  const handleCancel = () => onClose();
+  const setField = (key, value) => setEditedTask((prev) => ({ ...prev, [key]: value }));
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (!editedTask.title.trim()) {
-      alert('Название задачи не может быть пустым');
+      setFormError('Название задачи не может быть пустым');
       return;
     }
-    onSaveTask(editedTask, editedTask.column_id);
+    setFormError('');
+    setIsSaving(true);
+    await onSaveTask({ ...editedTask, title: editedTask.title.trim() }, editedTask.column_id);
+    setIsSaving(false);
   };
 
   const handleAddLink = () => {
     if (!newLinkUrl.trim()) return;
     let formattedUrl = newLinkUrl.trim();
     if (!/^https?:\/\//i.test(formattedUrl)) formattedUrl = `https://${formattedUrl}`;
-    const newLink = { id: Date.now().toString(), title: newLinkTitle.trim() || formattedUrl, url: formattedUrl };
-    setEditedTask({ ...editedTask, links: [...editedTask.links, newLink] });
+    const newLink = {
+      id: Date.now().toString(),
+      title: newLinkTitle.trim() || formattedUrl,
+      url: formattedUrl,
+    };
+    setField('links', [...editedTask.links, newLink]);
     setNewLinkTitle('');
     setNewLinkUrl('');
   };
 
-  const handleRemoveLink = (linkId) => {
-    setEditedTask({ ...editedTask, links: editedTask.links.filter(l => l.id !== linkId) });
-  };
-
-  const handleFileUpload = async (e) => {
-    const file = e.target.files[0];
+  const handleFileUpload = async (event) => {
+    const file = event.target.files?.[0];
     if (!file) return;
     setIsUploading(true);
     const fileExt = file.name.split('.').pop();
     const fileName = `${Date.now()}.${fileExt}`;
-    const { error: uploadError } = await supabase.storage.from('task-files').upload(fileName, file);
-    if (uploadError) {
-      alert("Не удалось загрузить файл: " + uploadError.message);
+    const { error } = await supabase.storage.from('task-files').upload(fileName, file);
+    if (error) {
+      setFormError(`Не удалось загрузить файл: ${error.message}`);
       setIsUploading(false);
       return;
     }
     const { data: urlData } = supabase.storage.from('task-files').getPublicUrl(fileName);
-    const newFile = { id: Date.now().toString(), name: file.name, url: urlData.publicUrl, type: file.type };
-    setEditedTask({ ...editedTask, files: [...editedTask.files, newFile] });
+    setField('files', [
+      ...editedTask.files,
+      { id: Date.now().toString(), name: file.name, url: urlData.publicUrl, type: file.type },
+    ]);
     setIsUploading(false);
   };
 
-  const handleRemoveFile = (fileId) => {
-    setEditedTask({ ...editedTask, files: editedTask.files.filter(f => f.id !== fileId) });
+  const handleCopyAll = async () => {
+    const tempDiv = document.createElement('div');
+    tempDiv.innerHTML = editedTask.description;
+    tempDiv.querySelectorAll('p, h1, h2, h3, li, br').forEach((el) => el.insertAdjacentText('afterend', '\n'));
+    const text = tempDiv.textContent || '';
+    const due = editedTask.due_at ? `\n\nСрок: ${formatDueLong(editedTask.due_at)}` : '';
+    await navigator.clipboard.writeText(`${editedTask.title}\n\n${text.trim()}${due}`);
+    setIsCopied(true);
+    setTimeout(() => setIsCopied(false), 2000);
   };
 
-  const handlePreviewFile = (file) => {
-    const isImage = file.type?.startsWith('image/') || file.name.match(/\.(jpeg|jpg|gif|png|bmp|svg)$/i);
-    const isPdf = file.type === 'application/pdf' || file.name.match(/\.pdf$/i);
-    
-    if (isImage || isPdf) {
-      setPreviewFile(file);
-      setIsPreviewOpen(true);
+  const dueInputValue = dueSupported
+    ? toDateTimeLocalValue(editedTask.due_at)
+    : toDateInputValue(editedTask.due_at);
+
+  const handleDueChange = (raw) => {
+    if (!raw) {
+      setField('due_at', null);
+      return;
+    }
+    if (dueSupported) {
+      const iso = fromDateTimeLocalValue(raw);
+      setField('due_at', iso);
     } else {
-      window.open(file.url, '_blank');
+      // Колонка date — храним как есть, без времени
+      const [year, month, day] = raw.split('-');
+      setField('due_at', raw ? `${year}-${month}-${day}` : null);
     }
   };
 
-  const createdDate = editedTask.created_at 
-    ? new Date(editedTask.created_at).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' })
-    : 'Только что';
+  const priorityInfo = getPriority(editedTask.priority);
+  const assignee = allProfiles.find((profile) => profile.id === editedTask.assignee_id);
 
   return (
     <>
-      {/* Убрали onClick={handleCancel} с этого div */}
-      <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-        <div className="bg-white dark:bg-gray-800 rounded-xl shadow-xl w-full max-w-3xl p-6 max-h-[95vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
-          
-          <div className="flex justify-between items-start mb-2 gap-4">
-            <input
-              type="text"
-              value={editedTask.title}
-              onChange={(e) => setEditedTask({ ...editedTask, title: e.target.value })}
-              className="text-xl font-bold text-gray-900 dark:text-gray-100 bg-transparent border-b-2 border-transparent hover:border-gray-300 dark:hover:border-gray-600 focus:border-blue-500 outline-none w-full pb-1 transition-colors"
-              placeholder="Название задачи"
-              autoFocus={isNewTask}
-            />
-            <button onClick={handleCancel} className="text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 mt-1">
-              <X size={24} />
+      <div className="modal-overlay" onMouseDown={(event) => {
+        if (event.target === event.currentTarget) onClose();
+      }}>
+        <div className="modal-panel glass-panel scrollbar-slim max-h-[94vh] w-full max-w-4xl overflow-y-auto rounded-3xl">
+          {/* Шапка */}
+          <div className="sticky top-0 z-10 flex items-start justify-between gap-4 border-b border-white/30 bg-white/40 px-6 py-4 backdrop-blur-xl dark:border-white/10 dark:bg-slate-950/40">
+            <div className="min-w-0 flex-1">
+              <div className="mb-1 flex flex-wrap items-center gap-1.5">
+                {number != null && (
+                  <span className="glass-chip font-mono !text-[0.65rem]" title="Номер задачи">
+                    <Hash size={10} />{number}
+                  </span>
+                )}
+                {editedTask.is_private && (
+                  <span className="flex items-center gap-1 rounded-full border border-violet-400/50 bg-violet-500/15 px-2 py-0.5 text-[0.62rem] font-semibold text-violet-700 dark:text-violet-300">
+                    <UserRound size={10} /> Личная — видна только вам
+                  </span>
+                )}
+                {priorityInfo.value > 0 && (
+                  <span className={`flex items-center gap-1 rounded-full border px-2 py-0.5 text-[0.62rem] font-semibold ${priorityInfo.chip}`}>
+                    <Flag size={10} /> {priorityInfo.label}
+                  </span>
+                )}
+              </div>
+
+              <input
+                type="text"
+                value={editedTask.title}
+                onChange={(event) => setField('title', event.target.value)}
+                className="w-full border-b-2 border-transparent bg-transparent pb-1 text-xl font-bold text-slate-900 outline-none transition-colors placeholder:text-slate-400 hover:border-white/60 focus:border-indigo-500 dark:text-white dark:hover:border-white/15"
+                placeholder="Название задачи"
+                autoFocus={isNewTask}
+              />
+
+              <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-[0.7rem] text-slate-500 dark:text-slate-400">
+                {authorProfile ? (
+                  <span className="flex items-center gap-1.5">
+                    <span
+                      className="flex h-5 w-5 items-center justify-center rounded-full text-[0.55rem] font-bold text-white"
+                      style={{ backgroundColor: authorProfile.color || '#6366f1' }}
+                    >
+                      {initials(authorProfile.full_name)}
+                    </span>
+                    Постановщик: {authorProfile.full_name}
+                  </span>
+                ) : (
+                  !isNewTask && <span>Постановщик: загрузка…</span>
+                )}
+
+                <span className="flex items-center gap-1.5">
+                  <Clock size={12} />
+                  Создана: {formatCreated(editedTask.created_at)}
+                </span>
+
+                {editedTask.due_at && (
+                  <span className="flex items-center gap-1.5 font-medium text-indigo-600 dark:text-indigo-300">
+                    <CalendarClock size={12} />
+                    Срок: {formatDueLong(editedTask.due_at)}
+                  </span>
+                )}
+
+                {assignee && (
+                  <span className="flex items-center gap-1.5">
+                    <span
+                      className="flex h-5 w-5 items-center justify-center rounded-full text-[0.55rem] font-bold text-white"
+                      style={{ backgroundColor: assignee.color || '#6366f1' }}
+                    >
+                      {initials(assignee.full_name)}
+                    </span>
+                    Исполнитель: {assignee.full_name}
+                  </span>
+                )}
+              </div>
+            </div>
+
+            <button
+              type="button"
+              onClick={onClose}
+              className="rounded-xl p-1.5 text-slate-500 transition hover:bg-white/60 hover:text-slate-800 dark:text-slate-400 dark:hover:bg-white/10 dark:hover:text-white"
+              title="Закрыть"
+            >
+              <X size={20} />
             </button>
           </div>
 
-          <div className="flex items-center gap-4 text-xs text-gray-500 dark:text-gray-400 mb-6 pb-4 border-b border-gray-200 dark:border-gray-700">
-            {authorProfile ? (
-              <div className="flex items-center gap-1.5">
-                <div className="w-5 h-5 rounded-full flex items-center justify-center text-white text-[10px]" style={{ backgroundColor: authorProfile.color || '#3b82f6' }}>
-                  {authorProfile.full_name?.charAt(0) || '?'}
-                </div>
-                <span>Автор: {authorProfile.full_name}</span>
-              </div>
-            ) : (
-              !isNewTask && <span>Автор: Загрузка...</span>
-            )}
-            <div className="flex items-center gap-1.5">
-              <Clock size={14} />
-              <span>Создано: {createdDate}</span>
-            </div>
-          </div>
-
-          <div className="flex gap-6">
-            <div className="flex-1">
-              <div className="flex items-center justify-between mb-2">
-                <div className="flex items-center gap-2 text-gray-700 dark:text-gray-300 font-medium">
-                  <AlignLeft size={18} /> <span>Описание</span>
+          <div className="grid gap-6 px-6 py-5 lg:grid-cols-[1fr_16rem]">
+            {/* Основная колонка */}
+            <div className="min-w-0">
+              <div className="mb-2 flex items-center justify-between gap-2">
+                <div className="flex items-center gap-2 text-sm font-semibold text-slate-700 dark:text-slate-200">
+                  <AlignLeft size={16} /> Описание
                 </div>
                 {(editedTask.description || editedTask.links.length > 0 || editedTask.files.length > 0) && (
-                  <button onClick={async () => {
-                    const tempDiv = document.createElement("div");
-                    tempDiv.innerHTML = editedTask.description;
-                    tempDiv.querySelectorAll('p, h1, h2, h3, li, br').forEach(el => el.insertAdjacentText('afterend', '\n'));
-                    const text = tempDiv.textContent || "";
-                    await navigator.clipboard.writeText(`${editedTask.title}\n\n${text.trim()}`);
-                    setIsCopied(true);
-                    setTimeout(() => setIsCopied(false), 2000);
-                  }} className="flex items-center gap-1.5 px-2 py-1 text-xs font-medium text-gray-600 bg-gray-100 hover:bg-gray-200 dark:text-gray-300 dark:bg-gray-700 dark:hover:bg-gray-600 rounded transition-colors">
-                    {isCopied ? <Check size={14} className="text-green-500" /> : <Copy size={14} />}
+                  <button
+                    type="button"
+                    onClick={handleCopyAll}
+                    className="glass-btn !px-2 !py-1 !text-[0.7rem]"
+                  >
+                    {isCopied ? <Check size={12} className="text-emerald-500" /> : <Copy size={12} />}
                     {isCopied ? 'Скопировано' : 'Копировать всё'}
                   </button>
                 )}
               </div>
-              
-              <TipTapEditor 
-                key={editedTask.id || 'new'} 
-                content={editedTask.description} 
-                onChange={(html) => setEditedTask({ ...editedTask, description: html })}
-              />
 
-              <div className="mt-6 pt-4 border-t border-gray-200 dark:border-gray-700">
-                <div className="flex items-center gap-2 text-gray-700 dark:text-gray-300 font-medium mb-3">
-                  <LinkIcon size={18} /> <span>Ссылки</span>
+              <div className="overflow-hidden rounded-2xl border border-white/40 bg-white/30 backdrop-blur-md dark:border-white/10 dark:bg-white/5">
+                <TipTapEditor
+                  key={editedTask.id || 'new'}
+                  content={editedTask.description}
+                  onChange={(html) => setField('description', html)}
+                />
+              </div>
+
+              {/* Ссылки */}
+              <div className="mt-5">
+                <div className="mb-2 flex items-center gap-2 text-sm font-semibold text-slate-700 dark:text-slate-200">
+                  <LinkIcon size={16} /> Ссылки
+                  {editedTask.links.length > 0 && (
+                    <span className="glass-chip !text-[0.6rem]">{editedTask.links.length}</span>
+                  )}
                 </div>
+
                 {editedTask.links.length > 0 && (
-                  <ul className="space-y-2 mb-4">
+                  <ul className="mb-3 space-y-1.5">
                     {editedTask.links.map((link) => (
-                      <li key={link.id} className="flex items-center justify-between bg-gray-50 dark:bg-gray-900 px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-700">
-                        <a href={link.url} target="_blank" rel="noopener noreferrer" className="text-sm text-blue-600 dark:text-blue-400 hover:underline truncate max-w-[250px]">{link.title}</a>
-                        <button onClick={() => handleRemoveLink(link.id)} className="text-gray-400 hover:text-red-500"><X size={16} /></button>
+                      <li
+                        key={link.id}
+                        className="flex items-center justify-between gap-2 rounded-xl border border-white/40 bg-white/35 px-3 py-2 dark:border-white/10 dark:bg-white/5"
+                      >
+                        <a
+                          href={link.url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="truncate text-xs font-medium text-indigo-700 hover:underline dark:text-indigo-300"
+                        >
+                          {link.title}
+                        </a>
+                        <button
+                          type="button"
+                          onClick={() => setField('links', editedTask.links.filter((item) => item.id !== link.id))}
+                          className="rounded p-1 text-slate-400 transition hover:bg-rose-500/10 hover:text-rose-500"
+                          title="Удалить ссылку"
+                        >
+                          <X size={13} />
+                        </button>
                       </li>
                     ))}
                   </ul>
                 )}
-                <div className="flex gap-2 items-center">
-                  <input type="text" placeholder="Название" value={newLinkTitle} onChange={(e) => setNewLinkTitle(e.target.value)} className="flex-1 px-2 py-1.5 text-sm border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100" />
-                  <input type="url" placeholder="URL (https://...)" value={newLinkUrl} onChange={(e) => setNewLinkUrl(e.target.value)} className="flex-[2] px-2 py-1.5 text-sm border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100" onKeyDown={(e) => { if (e.key === 'Enter') handleAddLink(); }} />
-                  <button onClick={handleAddLink} className="p-1.5 bg-gray-200 hover:bg-gray-300 dark:bg-gray-700 dark:hover:bg-gray-600 rounded text-gray-700 dark:text-gray-300"><Plus size={18} /></button>
-                </div>
-              </div>
 
-              <div className="mt-6 pt-4 border-t border-gray-200 dark:border-gray-700">
-                <div className="flex items-center gap-2 text-gray-700 dark:text-gray-300 font-medium mb-3">
-                  <Paperclip size={18} /> <span>Файлы</span>
-                </div>
-                {editedTask.files.length > 0 && (
-                  <ul className="space-y-2 mb-4">
-                    {editedTask.files.map((file) => (
-                      <li key={file.id} className="flex items-center justify-between bg-gray-50 dark:bg-gray-900 px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-700 group">
-                        <div className="flex items-center gap-2 truncate max-w-[250px]">
-                          <FileText size={16} className="text-gray-400" />
-                          <span className="text-sm text-gray-700 dark:text-gray-300 truncate">{file.name}</span>
-                        </div>
-                        <div className="flex items-center gap-1">
-                          {(file.type?.startsWith('image/') || file.type === 'application/pdf' || file.name.match(/\.(jpeg|jpg|gif|png|bmp|svg|pdf)$/i)) && (
-                            <button onClick={() => handlePreviewFile(file)} className="p-1 text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded" title="Просмотреть">
-                              <Eye size={16} />
-                            </button>
-                          )}
-                          <button onClick={() => handleRemoveFile(file.id)} className="p-1 text-gray-400 hover:text-red-500 rounded"><X size={16} /></button>
-                        </div>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-                <div>
-                  <input type="file" id="file-upload" className="hidden" onChange={handleFileUpload} disabled={isUploading} />
-                  <label htmlFor="file-upload" className={`inline-flex items-center gap-2 px-3 py-2 text-sm font-medium rounded-lg cursor-pointer transition-colors ${isUploading ? 'bg-gray-200 text-gray-500 dark:bg-gray-700 dark:text-gray-400 cursor-not-allowed' : 'bg-blue-50 text-blue-600 hover:bg-blue-100 dark:bg-blue-900/20 dark:text-blue-400 dark:hover:bg-blue-900/40'}`}>
-                    {isUploading ? <Loader2 size={16} className="animate-spin" /> : <Paperclip size={16} />}
-                    {isUploading ? 'Загрузка...' : 'Прикрепить файл'}
-                  </label>
-                </div>
-              </div>
-            </div>
-
-            <div className="w-48 space-y-4">
-              <div>
-                <div className="text-xs font-semibold text-gray-500 uppercase mb-1 flex items-center gap-1"><Calendar size={14} /> Дата</div>
-                <input type="date" value={editedTask.date || ''} onChange={(e) => setEditedTask({ ...editedTask, date: e.target.value })} className="w-full px-2 py-1 text-sm border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500" />
-              </div>
-              
-              <div className="pt-2">
-                <label className="flex items-center gap-2 cursor-pointer p-2 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors border border-gray-200 dark:border-gray-700">
+                <div className="flex flex-wrap gap-2">
                   <input
-                    type="checkbox"
-                    checked={editedTask.is_private}
-                    onChange={(e) => setEditedTask({ ...editedTask, is_private: e.target.checked })}
-                    className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                    type="text"
+                    placeholder="Название"
+                    value={newLinkTitle}
+                    onChange={(event) => setNewLinkTitle(event.target.value)}
+                    className="glass-input !w-auto min-w-[7rem] flex-1 !py-1.5 !text-xs"
                   />
-                  <span className="text-sm text-gray-700 dark:text-gray-300 flex items-center gap-1">
-                    <Lock size={14} /> Личная
-                  </span>
+                  <input
+                    type="url"
+                    placeholder="https://…"
+                    value={newLinkUrl}
+                    onChange={(event) => setNewLinkUrl(event.target.value)}
+                    onKeyDown={(event) => {
+                      if (event.key === 'Enter') {
+                        event.preventDefault();
+                        handleAddLink();
+                      }
+                    }}
+                    className="glass-input !w-auto min-w-[9rem] flex-[2] !py-1.5 !text-xs"
+                  />
+                  <button type="button" onClick={handleAddLink} className="glass-btn !px-2.5" title="Добавить ссылку">
+                    <Plus size={14} />
+                  </button>
+                </div>
+              </div>
+
+              {/* Файлы */}
+              <div className="mt-5">
+                <div className="mb-2 flex items-center gap-2 text-sm font-semibold text-slate-700 dark:text-slate-200">
+                  <Paperclip size={16} /> Файлы
+                  {editedTask.files.length > 0 && (
+                    <span className="glass-chip !text-[0.6rem]">{editedTask.files.length}</span>
+                  )}
+                </div>
+
+                {editedTask.files.length > 0 && (
+                  <ul className="mb-3 space-y-1.5">
+                    {editedTask.files.map((file) => {
+                      const previewable =
+                        file.type?.startsWith('image/') ||
+                        file.type === 'application/pdf' ||
+                        /\.(jpeg|jpg|gif|png|bmp|svg|pdf)$/i.test(file.name);
+                      return (
+                        <li
+                          key={file.id}
+                          className="group flex items-center justify-between gap-2 rounded-xl border border-white/40 bg-white/35 px-3 py-2 dark:border-white/10 dark:bg-white/5"
+                        >
+                          <div className="flex min-w-0 items-center gap-2">
+                            <FileText size={14} className="shrink-0 text-slate-400" />
+                            <span className="truncate text-xs text-slate-700 dark:text-slate-300">{file.name}</span>
+                          </div>
+                          <div className="flex shrink-0 items-center gap-0.5">
+                            {previewable && (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setPreviewFile(file);
+                                  setIsPreviewOpen(true);
+                                }}
+                                className="rounded p-1 text-indigo-500 transition hover:bg-indigo-500/10"
+                                title="Просмотреть"
+                              >
+                                <Eye size={14} />
+                              </button>
+                            )}
+                            <button
+                              type="button"
+                              onClick={() => setField('files', editedTask.files.filter((item) => item.id !== file.id))}
+                              className="rounded p-1 text-slate-400 transition hover:bg-rose-500/10 hover:text-rose-500"
+                              title="Удалить файл"
+                            >
+                              <X size={14} />
+                            </button>
+                          </div>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                )}
+
+                <input
+                  type="file"
+                  id="task-file-upload"
+                  className="hidden"
+                  onChange={handleFileUpload}
+                  disabled={isUploading}
+                />
+                <label
+                  htmlFor="task-file-upload"
+                  className={`glass-btn !py-1.5 !text-xs ${
+                    isUploading ? 'pointer-events-none opacity-60' : 'cursor-pointer'
+                  }`}
+                >
+                  {isUploading ? <Loader2 size={14} className="animate-spin" /> : <Paperclip size={14} />}
+                  {isUploading ? 'Загрузка…' : 'Прикрепить файл'}
                 </label>
               </div>
-
-              <button onClick={handleSave} className="w-full flex items-center justify-center gap-2 px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors mt-4">
-                <Check size={16} /> {isNewTask ? 'Создать' : 'Готово'}
-              </button>
-              {!isNewTask && (
-                <button onClick={() => onDeleteTask(editedTask.id)} className="w-full flex items-center justify-center gap-2 px-4 py-2 text-sm font-medium text-red-600 bg-red-50 hover:bg-red-100 dark:text-red-400 dark:bg-red-900/20 dark:hover:bg-red-900/40 rounded-lg transition-colors">
-                  <Trash2 size={16} /> Удалить задачу
-                </button>
-              )}
             </div>
+
+            {/* Боковая панель */}
+            <aside className="space-y-4 lg:border-l lg:border-white/30 lg:pl-5 dark:lg:border-white/10">
+              {startSupported && (
+                <div>
+                  <label className="mb-1.5 flex items-center gap-1.5 text-[0.68rem] font-semibold tracking-[0.1em] text-slate-500 uppercase dark:text-slate-400">
+                    <CalendarClock size={12} /> Начало
+                  </label>
+                  <input
+                    type="datetime-local"
+                    value={toDateTimeLocalValue(editedTask.start_at)}
+                    onChange={(event) =>
+                      setField('start_at', event.target.value ? fromDateTimeLocalValue(event.target.value) : null)
+                    }
+                    className="glass-input !py-1.5 !text-xs"
+                  />
+                  <p className="mt-1 text-[0.65rem] text-slate-500 dark:text-slate-400">
+                    {editedTask.start_at ? formatDueLong(editedTask.start_at) : 'Не задано — берётся дата создания'}
+                  </p>
+                </div>
+              )}
+
+              <div>
+                <label className="mb-1.5 flex items-center gap-1.5 text-[0.68rem] font-semibold tracking-[0.1em] text-slate-500 uppercase dark:text-slate-400">
+                  <CalendarClock size={12} /> Срок
+                </label>
+                <input
+                  type={dueSupported ? 'datetime-local' : 'date'}
+                  value={dueInputValue}
+                  onChange={(event) => handleDueChange(event.target.value)}
+                  className="glass-input !py-1.5 !text-xs"
+                />
+                <p className="mt-1 text-[0.65rem] text-slate-500 dark:text-slate-400">
+                  {editedTask.due_at
+                    ? formatDueLong(editedTask.due_at)
+                    : 'Срок не задан'}
+                  {!dueSupported && ' · время появится после миграции БД'}
+                </p>
+              </div>
+
+              <div>
+                <label className="mb-1.5 flex items-center gap-1.5 text-[0.68rem] font-semibold tracking-[0.1em] text-slate-500 uppercase dark:text-slate-400">
+                  <Flag size={12} /> Приоритет
+                </label>
+                <div className="grid grid-cols-2 gap-1.5">
+                  {PRIORITIES.map((option) => (
+                    <button
+                      key={option.value}
+                      type="button"
+                      disabled={!prioritySupported}
+                      onClick={() => setField('priority', option.value)}
+                      className={`flex items-center justify-center gap-1.5 rounded-xl border px-2 py-1.5 text-[0.7rem] font-medium transition ${
+                        editedTask.priority === option.value
+                          ? option.chip
+                          : 'border-white/40 bg-white/25 text-slate-600 hover:bg-white/50 dark:border-white/10 dark:bg-white/5 dark:text-slate-300'
+                      } ${!prioritySupported ? 'cursor-not-allowed opacity-50' : ''}`}
+                    >
+                      <span className={`h-1.5 w-1.5 rounded-full ${option.dot}`} />
+                      {option.short}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div>
+                <label className="mb-1.5 flex items-center gap-1.5 text-[0.68rem] font-semibold tracking-[0.1em] text-slate-500 uppercase dark:text-slate-400">
+                  <UserRound size={12} /> Исполнитель
+                </label>
+                <select
+                  value={editedTask.assignee_id}
+                  onChange={(event) => setField('assignee_id', event.target.value)}
+                  disabled={!assigneeSupported}
+                  className="glass-input !py-1.5 !text-xs"
+                >
+                  <option value="">Не назначен</option>
+                  {allProfiles.map((profile) => (
+                    <option key={profile.id} value={profile.id}>
+                      {profile.full_name || profile.work_email || 'Сотрудник'}
+                      {profile.id === currentUserId ? ' (я)' : ''}
+                    </option>
+                  ))}
+                </select>
+                {!assigneeSupported && (
+                  <p className="mt-1 text-[0.62rem] text-slate-500 dark:text-slate-400">
+                    Выбор исполнителя включится после миграции БД (колонка tasks.assignee_id).
+                  </p>
+                )}
+              </div>
+
+              <button
+                type="button"
+                disabled={!canTogglePrivacy}
+                onClick={() => setField('is_private', !editedTask.is_private)}
+                className={`flex w-full items-center gap-2 rounded-xl border px-3 py-2 text-left text-xs font-medium transition disabled:cursor-not-allowed disabled:opacity-60 ${
+                  editedTask.is_private
+                    ? 'border-violet-400/60 bg-violet-500/15 text-violet-700 dark:text-violet-300'
+                    : 'border-white/40 bg-white/25 text-slate-600 hover:bg-white/50 dark:border-white/10 dark:bg-white/5 dark:text-slate-300'
+                }`}
+                title={canTogglePrivacy ? 'Сделать задачу личной' : 'Приватность меняет постановщик задачи'}
+              >
+                <span
+                  className={`flex h-8 w-8 items-center justify-center rounded-lg ${
+                    editedTask.is_private ? 'bg-violet-500/25' : 'bg-slate-500/10'
+                  }`}
+                >
+                  <UserRound size={15} />
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="block">Личная задача</span>
+                  <span className="block text-[0.65rem] font-normal opacity-70">
+                    {!canTogglePrivacy
+                      ? 'Приватность меняет постановщик'
+                      : editedTask.is_private
+                        ? 'Видна только вам'
+                        : 'Видна всей команде'}
+                  </span>
+                </span>
+                <span
+                  className={`relative h-4 w-7 shrink-0 rounded-full transition ${
+                    editedTask.is_private ? 'bg-violet-500' : 'bg-slate-400/40'
+                  }`}
+                >
+                  <span
+                    className={`absolute top-0.5 h-3 w-3 rounded-full bg-white shadow transition-all ${
+                      editedTask.is_private ? 'left-3.5' : 'left-0.5'
+                    }`}
+                  />
+                </span>
+              </button>
+
+              {!editedTask.is_private && (
+                <p className="rounded-xl border border-sky-400/35 bg-sky-500/10 px-2.5 py-2 text-[0.65rem] text-sky-800 dark:text-sky-200">
+                  Командная задача: после удаления останется в архиве у всех, у кого есть доступ.
+                </p>
+              )}
+
+              {formError && (
+                <div className="flex items-start gap-1.5 rounded-xl border border-rose-400/40 bg-rose-500/10 px-2.5 py-2 text-[0.68rem] text-rose-700 dark:text-rose-300">
+                  <AlertTriangle size={13} className="mt-0.5 shrink-0" />
+                  {formError}
+                </div>
+              )}
+
+              <div className="space-y-2 pt-1">
+                <button
+                  type="button"
+                  onClick={handleSave}
+                  disabled={isSaving}
+                  className="glass-btn glass-btn-primary w-full"
+                >
+                  {isSaving ? <Loader size={15} className="animate-spin" /> : <Check size={15} />}
+                  {isNewTask ? 'Создать задачу' : 'Сохранить'}
+                </button>
+
+                {!isNewTask && (
+                  <button
+                    type="button"
+                    onClick={() => onDeleteTask(editedTask.id)}
+                    className="glass-btn glass-btn-danger w-full"
+                  >
+                    <Trash2 size={15} /> В архив
+                  </button>
+                )}
+
+                {!isNewTask && task?.created_by !== currentUserId && (
+                  <p className="flex items-center gap-1 text-[0.62rem] text-slate-500 dark:text-slate-400">
+                    <Send size={10} /> Задача поставлена другим сотрудником
+                  </p>
+                )}
+              </div>
+            </aside>
           </div>
         </div>
       </div>
 
-      <FilePreviewModal 
+      <FilePreviewModal
         isOpen={isPreviewOpen}
         onClose={() => setIsPreviewOpen(false)}
         file={previewFile}

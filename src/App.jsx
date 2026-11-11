@@ -1,23 +1,49 @@
-import { useState, useEffect } from 'react';
-import { createPortal } from 'react-dom';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   DndContext,
-  closestCenter,
+  DragOverlay,
+  KeyboardSensor,
   PointerSensor,
+  closestCenter,
+  pointerWithin,
   useSensor,
   useSensors,
-  DragOverlay,
 } from '@dnd-kit/core';
-import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable';
+import { AlertTriangle, X, ListChecks, AlarmClock, UserRound, Loader2, LayoutGrid, CheckSquare } from 'lucide-react';
+
 import Header from './components/Header';
 import Column from './components/Column';
 import CalendarView from './components/CalendarView';
+import GanttView from './components/GanttView';
 import TaskDetailModal from './components/TaskDetailModal';
 import LoginPage from './components/LoginPage';
 import ProfileModal from './components/ProfileModal';
 import ArchiveModal from './components/ArchiveModal';
-import TaskCard from './components/TaskCard';
+import TeamModal from './components/TeamModal';
+import MemberProfileModal from './components/MemberProfileModal';
+import BulkActions from './components/BulkActions';
+import AccessModal from './components/AccessModal';
+import { TaskCardView } from './components/TaskCard';
 import { supabase } from './supabaseClient';
+import { collectFields, mergeFields, pickFields, profileFields, supports, taskFields } from './lib/schema';
+import { canSeeTask, matchesMode } from './lib/access';
+import { byPosition, getDueValue, isOverdue } from './lib/format';
+import { normalizePriority } from './lib/priority';
+import { clearLocalTelegram, getLocalTelegram, setLocalTelegram } from './lib/localProfile';
+import { applyTaskUpdates, planTaskMove } from './lib/dnd';
+import { can } from './lib/permissions';
+
+/** Приводим задачу к безопасному виду (старые записи могут иметь null) */
+function sanitizeTask(task) {
+  if (!task) return task;
+  return {
+    ...task,
+    links: Array.isArray(task.links) ? task.links : [],
+    files: Array.isArray(task.files) ? task.files : [],
+    position: Number.isFinite(Number(task.position)) ? Number(task.position) : 0,
+    is_private: task.is_private === true,
+  };
+}
 
 export default function App() {
   const [session, setSession] = useState(null);
@@ -25,314 +51,679 @@ export default function App() {
   const [columns, setColumns] = useState([]);
   const [tasks, setTasks] = useState([]);
   const [archivedTasks, setArchivedTasks] = useState([]);
-  const [loading, setLoading] = useState(true);
   const [allProfiles, setAllProfiles] = useState([]);
-  
+  const [loading, setLoading] = useState(true);
+  const [banner, setBanner] = useState('');
+
   const [selectedTask, setSelectedTask] = useState(null);
+  const [draftKey, setDraftKey] = useState(0);
+  const [selectedMember, setSelectedMember] = useState(null);
   const [isProfileOpen, setIsProfileOpen] = useState(false);
   const [isArchiveOpen, setIsArchiveOpen] = useState(false);
-  const [currentView, setCurrentView] = useState('board');
-  const [filterMode, setFilterMode] = useState('team');
-  
-  const [activeTask, setActiveTask] = useState(null);
+  const [isTeamOpen, setIsTeamOpen] = useState(false);
+  const [isAccessOpen, setIsAccessOpen] = useState(false);
+  const [roleSaving, setRoleSaving] = useState(false);
 
-  // --- Логика темы ---
-  const [theme, setTheme] = useState(localStorage.getItem('theme') || 'light');
+  const [currentView, setCurrentView] = useState('board');
+  const [filterMode, setFilterMode] = useState('all');
+  const [memberFilter, setMemberFilter] = useState(null);
+  const [activeTask, setActiveTask] = useState(null);
+  const lastOverRef = useRef(null);
+  const [selectionMode, setSelectionMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState(() => new Set());
+
+  const [taskSchema, setTaskSchema] = useState(new Set());
+  const [profileSchema, setProfileSchema] = useState(new Set());
+
+  const userId = session?.user?.id ?? null;
+  const userEmail = session?.user?.email ?? '';
+
+  // --- Тема ---
+  const [theme, setTheme] = useState(() => localStorage.getItem('theme') || 'light');
 
   useEffect(() => {
-    if (theme === 'dark') {
-      document.documentElement.classList.add('dark');
-    } else {
-      document.documentElement.classList.remove('dark');
-    }
+    document.documentElement.classList.toggle('dark', theme === 'dark');
     localStorage.setItem('theme', theme);
   }, [theme]);
 
-  const toggleTheme = () => setTheme(theme === 'light' ? 'dark' : 'light');
+  const toggleTheme = () => setTheme((prev) => (prev === 'light' ? 'dark' : 'light'));
 
-  // --- ПРОВЕРКА АВТОРИЗАЦИИ ---
+  // --- Авторизация ---
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session);
-      if (session) fetchProfile(session.user.id);
+    let alive = true;
+
+    supabase.auth.getSession().then(({ data: { session: nextSession } }) => {
+      if (!alive) return;
+      setSession(nextSession);
+      if (!nextSession) setLoading(false);
     });
 
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, session) => {
-      setSession(session);
-      if (session) fetchProfile(session.user.id);
-      else {
+    } = supabase.auth.onAuthStateChange((_event, nextSession) => {
+      setSession(nextSession);
+      if (!nextSession) {
         setProfile(null);
         setAllProfiles([]);
+        setColumns([]);
+        setTasks([]);
+        setArchivedTasks([]);
+        setSelectedTask(null);
+        setMemberFilter(null);
+        setLoading(false);
       }
     });
 
-    return () => subscription.unsubscribe();
+    return () => {
+      alive = false;
+      subscription.unsubscribe();
+    };
   }, []);
 
-  const fetchProfile = async (userId) => {
-    const { data } = await supabase
-      .from('profiles')
-      .select('*')
-      .eq('id', userId)
-      .maybeSingle(); 
-    
-    if (data) {
-      setProfile(data);
-    }
-  };
-
-  // --- Загрузка данных ---
+  // --- Профиль ---
   useEffect(() => {
-    if (!session) return;
+    if (!userId) return undefined;
+    let alive = true;
 
-    let isMounted = true;
+    (async () => {
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', userId)
+        .maybeSingle();
 
-    async function fetchData() {
-      try {
-        const [
-          { data: colsData, error: colsError },
-          { data: tasksData, error: tasksError },
-          { data: archiveData, error: archiveError },
-          { data: profilesData }
-        ] = await Promise.all([
-          supabase.from('columns').select('*').order('position', { ascending: true }),
-          supabase.from('tasks').select('*').is('deleted_at', null).order('position', { ascending: true }),
-          supabase.from('tasks').select('*').not('deleted_at', 'is', null).order('deleted_at', { ascending: false }),
-          supabase.from('profiles').select('*')
-        ]);
-
-        if (colsError) throw colsError;
-        if (tasksError) throw tasksError;
-        if (archiveError) throw archiveError;
-
-        if (isMounted && colsData && tasksData) {
-          const safeTasksData = tasksData.map(task => ({
-            ...task,
-            links: Array.isArray(task.links) ? task.links : [],
-            files: Array.isArray(task.files) ? task.files : []
-          }));
-
-          setColumns(colsData);
-          setTasks(safeTasksData);
-          
-          if (archiveData) setArchivedTasks(archiveData);
-          if (profilesData) setAllProfiles(profilesData);
-        }
-      } catch (error) {
-        console.error("Ошибка при загрузке данных:", error);
-        if (isMounted) alert("Ошибка базы данных: " + error.message);
-      } finally {
-        if (isMounted) setLoading(false);
+      if (!alive) return;
+      if (error) {
+        setBanner(`Профиль не загружен: ${error.message}`);
+        return;
       }
-    }
-    
-    fetchData();
+
+      if (data) {
+        let merged = data;
+        const localTelegram = getLocalTelegram(userId);
+
+        if (localTelegram) {
+          if ('telegram' in data) {
+            // Колонка уже есть: переносим локальное значение в базу
+            if (!data.telegram) {
+              const { error: syncError } = await supabase
+                .from('profiles')
+                .update({ telegram: localTelegram })
+                .eq('id', userId);
+              if (!syncError) {
+                merged = { ...data, telegram: localTelegram };
+                clearLocalTelegram(userId);
+              }
+            } else {
+              clearLocalTelegram(userId);
+            }
+          } else {
+            // Колонки ещё нет — показываем локальное значение
+            merged = { ...data, telegram: localTelegram };
+          }
+        }
+
+        if (!alive) return;
+        setProfile(merged);
+        setProfileSchema((prev) => mergeFields(prev, collectFields([merged])));
+        return;
+      }
+
+      // Строки профиля может не быть (триггер не сработал) — создаём её сами.
+      const seed = {
+        id: userId,
+        full_name: userEmail ? userEmail.split('@')[0] : 'Сотрудник',
+      };
+      const { data: created, error: createError } = await supabase
+        .from('profiles')
+        .upsert(seed, { onConflict: 'id' })
+        .select()
+        .maybeSingle();
+
+      if (!alive) return;
+      if (createError) {
+        // Модалка всё равно должна открываться — работаем с тем, что есть
+        setProfile(seed);
+        setProfileSchema((prev) => mergeFields(prev, collectFields([seed])));
+        setBanner(
+          `Профиль не создан автоматически: ${createError.message}. Примените RLS-политики из миграции.`,
+        );
+        return;
+      }
+
+      setProfile(created || seed);
+      setProfileSchema((prev) => mergeFields(prev, collectFields([created || seed])));
+    })();
 
     return () => {
-      isMounted = false;
+      alive = false;
     };
-  }, [session]);
+  }, [userId, userEmail]);
 
-  // --- ФИЛЬТРАЦИЯ ЗАДАЧ ---
-  const visibleTasks = tasks.filter(task => {
-    if (filterMode === 'personal') {
-      return task.is_private === true;
-    } else {
-      return task.is_private === false;
+  // --- Данные ---
+  const loadData = useCallback(async () => {
+    if (!userId) return;
+    try {
+      const [columnsResult, activeResult, archiveResult, profilesResult] = await Promise.all([
+        supabase.from('columns').select('*').order('position', { ascending: true }),
+        supabase.from('tasks').select('*').is('deleted_at', null).order('position', { ascending: true }),
+        supabase.from('tasks').select('*').not('deleted_at', 'is', null).order('deleted_at', { ascending: false }),
+        supabase.from('profiles').select('*'),
+      ]);
+
+      const firstError = [columnsResult.error, activeResult.error, archiveResult.error].find(Boolean);
+      if (firstError) throw firstError;
+
+      const activeRows = (activeResult.data ?? []).map(sanitizeTask);
+      const archiveRows = (archiveResult.data ?? []).map(sanitizeTask);
+      const profileRows = profilesResult.data ?? [];
+
+      setColumns(columnsResult.data ?? []);
+      setTasks(activeRows);
+      setArchivedTasks(archiveRows);
+      setAllProfiles(profileRows);
+      setTaskSchema((prev) => mergeFields(prev, taskFields([...activeRows, ...archiveRows])));
+      setProfileSchema((prev) => mergeFields(prev, profileFields([...profileRows, ...(profile ? [profile] : [])])));
+      setBanner('');
+    } catch (error) {
+      setBanner(`Ошибка базы данных: ${error.message}`);
+    } finally {
+      setLoading(false);
     }
-  });
+    // profile намеренно не в зависимостях: иначе цикл перезагрузок
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [userId]);
 
-  const filteredColumns = columns.map(col => ({
-    ...col,
-    taskIds: visibleTasks.filter(t => t.column_id === col.id).map(t => t.id)
-  }));
+  useEffect(() => {
+    // Загрузка данных — внешний побочный эффект; setState происходит после await.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    loadData();
+  }, [loadData]);
 
-  // --- Логика Drag-and-Drop ---
+  // --- Производные данные ---
+  const authorById = useMemo(() => new Map(allProfiles.map((item) => [item.id, item])), [allProfiles]);
+
+  const numberById = useMemo(() => {
+    const ordered = [...tasks, ...archivedTasks].sort(
+      (a, b) => (Date.parse(a.created_at) || 0) - (Date.parse(b.created_at) || 0),
+    );
+    const map = new Map();
+    ordered.forEach((task, index) => {
+      const explicit = Number(task.task_no);
+      map.set(task.id, Number.isFinite(explicit) && task.task_no != null ? explicit : index + 1);
+    });
+    return map;
+  }, [tasks, archivedTasks]);
+
+  const visibleTasks = useMemo(
+    () =>
+      tasks.filter(
+        (task) =>
+          matchesMode(task, filterMode, userId) &&
+          (!memberFilter || task.created_by === memberFilter.id),
+      ),
+    [tasks, filterMode, userId, memberFilter],
+  );
+
+  const boardColumns = useMemo(
+    () =>
+      columns.map((column) => ({
+        ...column,
+        tasks: visibleTasks.filter((task) => task.column_id === column.id).sort(byPosition),
+      })),
+    [columns, visibleTasks],
+  );
+
+  const archivedVisible = useMemo(
+    () =>
+      archivedTasks.filter(
+        (task) =>
+          canSeeTask(task, userId) && (!memberFilter || task.created_by === memberFilter.id),
+      ),
+    [archivedTasks, userId, memberFilter],
+  );
+
+  const taskCountByUser = useMemo(() => {
+    const map = new Map();
+    tasks.forEach((task) => {
+      if (!task.created_by) return;
+      map.set(task.created_by, (map.get(task.created_by) ?? 0) + 1);
+    });
+    return map;
+  }, [tasks]);
+
+  const stats = useMemo(() => {
+    const overdue = visibleTasks.filter((task) => {
+      const due = getDueValue(task);
+      return due && isOverdue(due);
+    }).length;
+    const personal = visibleTasks.filter((task) => task.is_private).length;
+    return { total: visibleTasks.length, overdue, personal };
+  }, [visibleTasks]);
+
+  // Перетаскивание полос в Ганте возможно, только если есть и начало, и срок
+  const canEditGantt = useMemo(
+    () =>
+      supports(taskSchema, 'start_at') &&
+      (supports(taskSchema, 'due_at') || supports(taskSchema, 'date')),
+    [taskSchema],
+  );
+
+  const canManageRoles = profile?.role === 'admin';
+  const canOpenAccess = can(profile, 'team.view');
+
+  // --- Drag & Drop ---
+  const visibleTaskIds = useMemo(() => new Set(visibleTasks.map((task) => task.id)), [visibleTasks]);
+  const columnIdSet = useMemo(() => new Set(columns.map((column) => column.id)), [columns]);
+
   const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 5 } })
+    useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
+    useSensor(KeyboardSensor),
+  );
+
+  /**
+   * Коллизии: сначала ищем карточку под курсором, потом колонку.
+   * Без этого пустая область колонки не принимала задачу,
+   * а карточка из другой колонки не находилась.
+   */
+  const collisionDetection = useCallback(
+    (args) => {
+      const pointerHits = pointerWithin(args);
+      if (pointerHits.length > 0) {
+        const overTask = pointerHits.find((hit) => visibleTaskIds.has(hit.id));
+        if (overTask) return [overTask];
+        const overColumn = pointerHits.find((hit) => columnIdSet.has(hit.id));
+        if (overColumn) return [overColumn];
+        return pointerHits;
+      }
+
+      const closest = closestCenter(args);
+      const closestTask = closest.find((hit) => visibleTaskIds.has(hit.id));
+      return closestTask ? [closestTask] : closest;
+    },
+    [visibleTaskIds, columnIdSet],
   );
 
   const handleDragStart = (event) => {
-    const { active } = event;
-    const task = tasks.find(t => t.id === active.id);
+    lastOverRef.current = null;
+    const task = tasks.find((item) => item.id === event.active.id);
     if (task) setActiveTask(task);
   };
+
+  const persistPositions = useCallback(async (updates) => {
+    if (updates.length === 0) return true;
+    const results = await Promise.all(
+      updates.map((update) =>
+        supabase
+          .from('tasks')
+          .update({ column_id: update.column_id, position: update.position })
+          .eq('id', update.id),
+      ),
+    );
+    const failed = results.find((result) => result.error);
+    if (failed) {
+      setBanner(`Не удалось сохранить порядок задач: ${failed.error.message}`);
+      return false;
+    }
+    return true;
+  }, []);
 
   const handleDragEnd = async (event) => {
     const { active, over } = event;
     setActiveTask(null);
 
-    if (!over) return;
+    // Если отпустили за пределами droppable-зоны — берём последнюю цель под курсором
+    const overId = over ? String(over.id) : lastOverRef.current;
+    lastOverRef.current = null;
+    if (!overId) return;
 
-    const activeId = active.id;
-    const overId = over.id;
+    const activeId = String(active.id);
     if (activeId === overId) return;
 
-    const sourceCol = filteredColumns.find((col) => col.taskIds.includes(activeId));
-    const destCol = filteredColumns.find(
-      (col) => col.id === overId || col.taskIds.includes(overId)
-    );
+    const moving = tasks.find((task) => task.id === activeId);
+    if (!moving) return;
 
-    if (!sourceCol || !destCol) return;
+    const isColumnTarget = columnIdSet.has(overId);
+    let overColumnId = null;
 
-    let newColumns = [];
-    if (sourceCol.id === destCol.id) {
-      const oldIndex = sourceCol.taskIds.indexOf(activeId);
-      const newIndex = sourceCol.taskIds.indexOf(overId);
-      if (newIndex === -1) return;
-
-      const newTaskIds = Array.from(sourceCol.taskIds);
-      newTaskIds.splice(oldIndex, 1);
-      newTaskIds.splice(newIndex, 0, activeId);
-
-      newColumns = filteredColumns.map((col) =>
-        col.id === sourceCol.id ? { ...col, taskIds: newTaskIds } : col
-      );
-    } else {
-      const sourceIds = sourceCol.taskIds.filter((id) => id !== activeId);
-      const destIds = [...destCol.taskIds];
-      const overIndex = destIds.indexOf(overId);
-
-      if (overIndex !== -1) {
-        destIds.splice(overIndex, 0, activeId);
-      } else {
-        destIds.push(activeId);
-      }
-
-      newColumns = filteredColumns.map((col) => {
-        if (col.id === sourceCol.id) return { ...col, taskIds: sourceIds };
-        if (col.id === destCol.id) return { ...col, taskIds: destIds };
-        return col;
-      });
+    if (!isColumnTarget) {
+      const overTask = tasks.find((task) => task.id === overId);
+      if (!overTask) return;
+      overColumnId = overTask.column_id;
     }
 
-    const destTaskIds = newColumns.find(c => c.id === destCol.id).taskIds;
-    const newPosition = destTaskIds.indexOf(activeId);
+    const columnsToTaskIds = {};
+    boardColumns.forEach((column) => {
+      columnsToTaskIds[column.id] = column.tasks.map((task) => task.id);
+    });
 
-    await supabase
-      .from('tasks')
-      .update({ 
-        column_id: destCol.id, 
-        position: newPosition 
-      })
-      .eq('id', activeId);
+    const plan = planTaskMove({
+      activeId,
+      overId,
+      isColumnTarget,
+      sourceColumnId: moving.column_id,
+      overColumnId,
+      columnsToTaskIds,
+    });
+    if (!plan) return;
 
-    setTasks(prevTasks => 
-      prevTasks.map(t => t.id === activeId ? { ...t, column_id: destCol.id, position: newPosition } : t)
-    );
+    // Оптимистичное обновление, затем сохранение; при ошибке — откат через reload
+    setTasks((prev) => applyTaskUpdates(prev, plan.updates));
+    const ok = await persistPositions(plan.updates);
+    if (!ok) await loadData();
   };
 
-  const handleDateClick = (dateStr) => {
-    setSelectedTask({ 
-      date: dateStr, 
-      column_id: columns[0]?.id,
-      is_private: filterMode === 'personal'
+  // --- CRUD задач ---
+  const handleNewTask = (columnId) => {
+    setDraftKey((key) => key + 1);
+    setSelectedTask({
+      id: null,
+      title: '',
+      description: '',
+      due_at: null,
+      links: [],
+      files: [],
+      column_id: columnId ?? columns[0]?.id ?? null,
+      is_private: filterMode === 'personal',
+      priority: 0,
+      assignee_id: '',
     });
   };
 
-  // --- Логика СОХРАНЕНИЯ ---
+  const handleDateClick = (dateStr) => {
+    const due = dateStr ? `${dateStr}T18:00:00` : null;
+    setDraftKey((key) => key + 1);
+    setSelectedTask({
+      id: null,
+      title: '',
+      description: '',
+      due_at: due,
+      links: [],
+      files: [],
+      column_id: columns[0]?.id ?? null,
+      is_private: filterMode === 'personal',
+      priority: 0,
+      assignee_id: '',
+    });
+  };
+
   const handleSaveTask = async (taskToSave, columnId) => {
+    if (!userId) return;
+
+    const due = taskToSave.due_at || null;
+    const isNew = !taskToSave.id;
+    const startValue = taskToSave.start_at || (isNew ? new Date().toISOString() : null);
+
+    const payloadBase = {
+      title: taskToSave.title.trim(),
+      description: taskToSave.description || '',
+      links: Array.isArray(taskToSave.links) ? taskToSave.links : [],
+      files: Array.isArray(taskToSave.files) ? taskToSave.files : [],
+      is_private: Boolean(taskToSave.is_private),
+      ...(supports(taskSchema, 'due_at') ? { due_at: due } : {}),
+      ...(supports(taskSchema, 'start_at') ? { start_at: startValue } : {}),
+      ...(supports(taskSchema, 'date') ? { date: due ? String(due).slice(0, 10) : null } : {}),
+      ...(supports(taskSchema, 'priority')
+        ? { priority: normalizePriority(taskToSave.priority) }
+        : {}),
+      ...(supports(taskSchema, 'assignee_id')
+        ? { assignee_id: taskToSave.assignee_id || null }
+        : {}),
+    };
+
     if (!taskToSave.id) {
-      const currentTasks = tasks.filter(t => t.column_id === columnId);
-      const newPosition = currentTasks.length;
-
-      const { data, error } = await supabase
-        .from('tasks')
-        .insert([{ 
-          title: taskToSave.title, 
-          description: taskToSave.description,
-          date: taskToSave.date || null,
-          links: taskToSave.links || [],
-          files: taskToSave.files || [],
-          column_id: columnId, 
-          position: newPosition,
-          created_by: session.user.id,
-          is_private: taskToSave.is_private || false
-        }])
-        .select();
-
-      if (error) {
-        console.error("Ошибка при создании:", error);
-        alert("Не удалось создать задачу: " + error.message);
+      const targetColumn = columnId || columns[0]?.id;
+      if (!targetColumn) {
+        setBanner('Сначала создайте хотя бы одну колонку.');
         return;
       }
 
-      if (data && data[0]) {
-        const newTask = data[0];
-        setTasks([...tasks, newTask]);
-      }
-    } else {
-      const { error } = await supabase
-        .from('tasks')
-        .update({ 
-          title: taskToSave.title, 
-          description: taskToSave.description,
-          date: taskToSave.date || null,
-          links: taskToSave.links || [],
-          files: taskToSave.files || [],
-          is_private: taskToSave.is_private
-        })
-        .eq('id', taskToSave.id);
-
-      if (error) {
-        console.error("Ошибка при обновлении:", error);
-        alert("Ошибка сохранения: " + error.message);
-        return;
-      }
-
-      setTasks(prevTasks => 
-        prevTasks.map(t => t.id === taskToSave.id ? { ...t, ...taskToSave } : t)
+      const position = tasks.filter((task) => task.column_id === targetColumn).length;
+      const payload = pickFields(
+        { ...payloadBase, column_id: targetColumn, position, created_by: userId },
+        taskSchema,
       );
+
+      const { data, error } = await supabase.from('tasks').insert([payload]).select().single();
+      if (error) {
+        setBanner(`Не удалось создать задачу: ${error.message}`);
+        return;
+      }
+
+      setTasks((prev) => [...prev, sanitizeTask(data)]);
+      setSelectedTask(null);
+      return;
+    }
+
+    const payload = pickFields(payloadBase, taskSchema);
+    const { data, error } = await supabase
+      .from('tasks')
+      .update(payload)
+      .eq('id', taskToSave.id)
+      .select()
+      .maybeSingle();
+
+    if (error) {
+      setBanner(`Не удалось сохранить задачу: ${error.message}`);
+      return;
+    }
+
+    const updated = sanitizeTask(data) || { ...taskToSave, ...payload };
+    setTasks((prev) => prev.map((task) => (task.id === updated.id ? { ...task, ...updated } : task)));
+    setSelectedTask(null);
+  };
+
+  const handleDeleteTask = async (taskId) => {
+    if (!window.confirm('Переместить задачу в архив? Восстановить её смогут те, у кого есть доступ.')) {
+      return;
+    }
+
+    const payload = { deleted_at: new Date().toISOString() };
+    if (supports(taskSchema, 'deleted_by')) payload.deleted_by = userId;
+
+    const { error } = await supabase.from('tasks').update(payload).eq('id', taskId);
+    if (error) {
+      setBanner(`Не удалось переместить в архив: ${error.message}`);
+      return;
+    }
+
+    const task = tasks.find((item) => item.id === taskId);
+    if (task) {
+      setArchivedTasks((prev) => [{ ...task, ...payload }, ...prev]);
+      setTasks((prev) => prev.filter((item) => item.id !== taskId));
     }
     setSelectedTask(null);
   };
 
-  // --- Логика МЯГКОГО УДАЛЕНИЯ ---
-  const handleDeleteTask = async (taskId) => {
-    if (!window.confirm("Переместить задачу в архив?")) return;
-
-    const { error } = await supabase
-      .from('tasks')
-      .update({ deleted_at: new Date().toISOString() })
-      .eq('id', taskId);
-
-    if (error) {
-      console.error("Ошибка при удалении:", error);
-      alert("Не удалось переместить в архив: " + error.message);
-      return;
-    }
-
-    const taskToArchive = tasks.find(t => t.id === taskId);
-    if (taskToArchive) {
-      setArchivedTasks([taskToArchive, ...archivedTasks]);
-      setTasks(prevTasks => prevTasks.filter(t => t.id !== taskId));
-    }
-    
-    setSelectedTask(null); 
-  };
-
   const handleRestoreTask = async (taskId) => {
-    const { error } = await supabase
-      .from('tasks')
-      .update({ deleted_at: null })
-      .eq('id', taskId);
+    const archived = archivedTasks.find((task) => task.id === taskId);
+    const payload = { deleted_at: null };
+    if (supports(taskSchema, 'deleted_by')) payload.deleted_by = null;
 
+    const { error } = await supabase.from('tasks').update(payload).eq('id', taskId);
     if (error) {
-      console.error("Ошибка при восстановлении:", error);
-      alert("Не удалось восстановить задачу: " + error.message);
+      setBanner(`Не удалось восстановить задачу: ${error.message}`);
       return;
     }
 
-    const taskToRestore = archivedTasks.find(t => t.id === taskId);
-    if (taskToRestore) {
-      setTasks([...tasks, taskToRestore]);
-      setArchivedTasks(prev => prev.filter(t => t.id !== taskId));
+    if (archived) {
+      const position = tasks.filter((task) => task.column_id === archived.column_id).length;
+      await supabase.from('tasks').update({ position }).eq('id', taskId);
+      setTasks((prev) => [...prev, { ...archived, ...payload, position }]);
+      setArchivedTasks((prev) => prev.filter((task) => task.id !== taskId));
     }
   };
 
-  // --- ЛОГИКА ВЫХОДА ---
+  const handleDeleteForever = async (taskId) => {
+    if (!window.confirm('Удалить задачу навсегда? Восстановить её будет нельзя.')) return;
+
+    const { error } = await supabase.from('tasks').delete().eq('id', taskId);
+    if (error) {
+      setBanner(`Не удалось удалить задачу: ${error.message}`);
+      return;
+    }
+    setArchivedTasks((prev) => prev.filter((task) => task.id !== taskId));
+  };
+
+  /** Сдвиг/изменение сроков из диаграммы Ганта */
+  const handleScheduleChange = async (taskId, next) => {
+    if (!next?.start || !next?.finish) return;
+
+    const payload = {};
+    if (supports(taskSchema, 'start_at')) payload.start_at = next.start.toISOString();
+    if (supports(taskSchema, 'due_at')) payload.due_at = next.finish.toISOString();
+    if (supports(taskSchema, 'date')) {
+      const finish = next.finish;
+      payload.date = `${finish.getFullYear()}-${String(finish.getMonth() + 1).padStart(2, '0')}-${String(finish.getDate()).padStart(2, '0')}`;
+    }
+    if (Object.keys(payload).length === 0) return;
+
+    const previous = tasks.find((task) => task.id === taskId);
+    setTasks((prev) => prev.map((task) => (task.id === taskId ? { ...task, ...payload } : task)));
+
+    const { error } = await supabase.from('tasks').update(payload).eq('id', taskId);
+    if (error) {
+      setBanner(`Не удалось сохранить сроки задачи: ${error.message}`);
+      if (previous) {
+        setTasks((prev) => prev.map((task) => (task.id === taskId ? previous : task)));
+      }
+    }
+  };
+
+  // --- Массовое выделение ---
+  const exitSelection = () => {
+    setSelectionMode(false);
+    setSelectedIds(new Set());
+  };
+
+  const toggleSelectionMode = () => {
+    if (selectionMode) exitSelection();
+    else setSelectionMode(true);
+  };
+
+  const toggleTaskSelection = (taskId) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(taskId)) next.delete(taskId);
+      else next.add(taskId);
+      return next;
+    });
+  };
+
+  const selectAllVisible = () => setSelectedIds(new Set(visibleTasks.map((task) => task.id)));
+
+  const selectColumn = (columnId) => {
+    const ids = visibleTasks.filter((task) => task.column_id === columnId).map((task) => task.id);
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      const allSelected = ids.length > 0 && ids.every((id) => next.has(id));
+      ids.forEach((id) => (allSelected ? next.delete(id) : next.add(id)));
+      return next;
+    });
+  };
+
+  const changeView = (view) => {
+    exitSelection();
+    setCurrentView(view);
+  };
+
+  const changeFilter = (mode) => {
+    exitSelection();
+    setFilterMode(mode);
+  };
+
+  /** Применяет патчи к выбранным задачам и сохраняет их в базе */
+  const applyBulkPatch = async (ids, buildPatch) => {
+    const patches = new Map();
+    ids.forEach((id) => {
+      const patch = buildPatch(id);
+      if (patch) patches.set(id, patch);
+    });
+    if (patches.size === 0) return true;
+
+    setTasks((prev) =>
+      prev.map((task) => (patches.has(task.id) ? { ...task, ...patches.get(task.id) } : task)),
+    );
+
+    const results = await Promise.all(
+      [...patches.entries()].map(([id, patch]) => supabase.from('tasks').update(patch).eq('id', id)),
+    );
+    const failed = results.find((result) => result.error);
+    if (failed) {
+      setBanner(`Не удалось применить изменения: ${failed.error.message}`);
+      await loadData();
+      return false;
+    }
+    return true;
+  };
+
+  const handleBulkMove = async (columnId) => {
+    if (!columnId || selectedIds.size === 0) return;
+    const ids = [...selectedIds];
+    const base = tasks.filter((task) => task.column_id === columnId).length;
+    let index = 0;
+    const ok = await applyBulkPatch(ids, () => {
+      const patch = { column_id: columnId, position: base + index };
+      index += 1;
+      return patch;
+    });
+    if (ok) setSelectedIds(new Set());
+  };
+
+  const handleBulkAssign = async (assigneeId) => {
+    if (!supports(taskSchema, 'assignee_id')) {
+      setBanner('Назначение исполнителей включится после миграции БД (колонка tasks.assignee_id).');
+      return;
+    }
+    const ok = await applyBulkPatch([...selectedIds], () => ({ assignee_id: assigneeId || null }));
+    if (ok) setSelectedIds(new Set());
+  };
+
+  const handleBulkPriority = async (priority) => {
+    if (!supports(taskSchema, 'priority')) {
+      setBanner('Приоритет включится после миграции БД (колонка tasks.priority).');
+      return;
+    }
+    const ok = await applyBulkPatch([...selectedIds], () => ({ priority }));
+    if (ok) setSelectedIds(new Set());
+  };
+
+  const handleBulkArchive = async () => {
+    if (selectedIds.size === 0) return;
+    if (!window.confirm(`Переместить в архив ${selectedIds.size} задач?`)) return;
+
+    const ids = [...selectedIds];
+    const payload = { deleted_at: new Date().toISOString() };
+    if (supports(taskSchema, 'deleted_by')) payload.deleted_by = userId;
+
+    const moving = tasks.filter((task) => ids.includes(task.id));
+    setArchivedTasks((prev) => [...moving.map((task) => ({ ...task, ...payload })), ...prev]);
+    setTasks((prev) => prev.filter((task) => !ids.includes(task.id)));
+    setSelectedIds(new Set());
+
+    const results = await Promise.all(
+      ids.map((id) => supabase.from('tasks').update(payload).eq('id', id)),
+    );
+    const failed = results.find((result) => result.error);
+    if (failed) {
+      setBanner(`Не удалось отправить в архив: ${failed.error.message}`);
+      await loadData();
+    }
+  };
+
+  // Esc выходит из режима выделения
+  useEffect(() => {
+    if (!selectionMode) return undefined;
+    const handleKeyDown = (event) => {
+      if (event.key === 'Escape') {
+        setSelectionMode(false);
+        setSelectedIds(new Set());
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [selectionMode]);
+
   const handleLogout = async () => {
     await supabase.auth.signOut();
     setSession(null);
@@ -341,106 +732,325 @@ export default function App() {
     setColumns([]);
     setTasks([]);
     setArchivedTasks([]);
+    setSelectedTask(null);
+    setMemberFilter(null);
     setLoading(true);
   };
 
-  if (!session) {
-    return <LoginPage />;
-  }
+  const handleProfileUpdated = (updated, meta = {}) => {
+    const next = { ...updated };
+
+    // Telegram: до миграции храним в браузере, после — в profiles.telegram
+    if (meta.telegram !== undefined) {
+      if (meta.localOnly) {
+        next.telegram = meta.telegram || null;
+        setLocalTelegram(userId, meta.telegram || '');
+      } else {
+        clearLocalTelegram(userId);
+      }
+    }
+
+    setProfile(next);
+    setAllProfiles((prev) =>
+      prev.some((item) => item.id === next.id)
+        ? prev.map((item) => (item.id === next.id ? { ...item, ...next } : item))
+        : [...prev, next],
+    );
+    setProfileSchema((prev) => mergeFields(prev, collectFields([next])));
+  };
+
+  /** Смена роли сотрудника — только администратор */
+  const handleRoleChange = async (memberId, role) => {
+    const previous = allProfiles.find((item) => item.id === memberId);
+    if (!previous || previous.role === role) return;
+
+    setRoleSaving(true);
+    setAllProfiles((prev) => prev.map((item) => (item.id === memberId ? { ...item, role } : item)));
+    setSelectedMember((prev) => (prev?.id === memberId ? { ...prev, role } : prev));
+    if (memberId === userId) setProfile((prev) => (prev ? { ...prev, role } : prev));
+
+    const { error } = await supabase.from('profiles').update({ role }).eq('id', memberId);
+
+    if (error) {
+      setAllProfiles((prev) => prev.map((item) => (item.id === memberId ? previous : item)));
+      setSelectedMember((prev) => (prev?.id === memberId ? previous : prev));
+      if (memberId === userId) setProfile((prev) => (prev ? { ...prev, role: previous.role } : prev));
+      const hint =
+        error.code === '42501'
+          ? ' Нужна RLS-политика profiles_update_admin из миграции.'
+          : '';
+      setBanner(`Не удалось изменить роль: ${error.message}.${hint}`);
+    }
+
+    setRoleSaving(false);
+  };
+
+  if (!session) return <LoginPage />;
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gray-200 dark:bg-gray-950 flex items-center justify-center">
-        <h1 className="text-xl font-bold text-gray-700 dark:text-gray-300">Загрузка данных из базы...</h1>
+      <div className="app-bg flex min-h-screen flex-col items-center justify-center gap-3">
+        <Loader2 size={28} className="animate-spin text-indigo-500" />
+        <p className="text-sm font-medium text-slate-600 dark:text-slate-300">Загрузка данных из базы…</p>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gray-200 dark:bg-gray-950 text-gray-900 dark:text-gray-100 flex flex-col">
-      <Header 
-        theme={theme} 
-        onToggleTheme={toggleTheme} 
-        currentView={currentView} 
-        onViewChange={setCurrentView}
+    <div className="app-bg flex min-h-screen flex-col">
+      <Header
+        theme={theme}
+        onToggleTheme={toggleTheme}
+        currentView={currentView}
+        onViewChange={changeView}
         onLogout={handleLogout}
         user={session.user}
         profile={profile}
         onProfileClick={() => setIsProfileOpen(true)}
         filterMode={filterMode}
-        onFilterChange={setFilterMode}
+        onFilterChange={changeFilter}
         onArchiveClick={() => setIsArchiveOpen(true)}
+        onTeamClick={() => setIsTeamOpen(true)}
+        onAccessClick={() => setIsAccessOpen(true)}
+        canAccess={canOpenAccess}
+        teamCount={allProfiles.length}
+        memberFilter={memberFilter}
+        onClearMemberFilter={() => setMemberFilter(null)}
       />
 
-      <main className="p-6 overflow-x-auto flex-1">
+      {banner && (
+        <div className="mx-auto mt-3 w-full max-w-[1800px] px-4 sm:px-6">
+          <div className="flex items-start gap-2 rounded-2xl border border-rose-400/40 bg-rose-500/10 px-3 py-2 text-xs text-rose-700 backdrop-blur dark:text-rose-300">
+            <AlertTriangle size={14} className="mt-0.5 shrink-0" />
+            <span className="flex-1">{banner}</span>
+            <button
+              type="button"
+              onClick={() => setBanner('')}
+              className="rounded p-0.5 transition hover:bg-rose-500/20"
+              title="Скрыть"
+            >
+              <X size={13} />
+            </button>
+          </div>
+        </div>
+      )}
+
+      <main className="flex-1 px-4 py-4 sm:px-6">
         {currentView === 'board' && (
-          <DndContext 
-            sensors={sensors} 
-            collisionDetection={closestCenter} 
+          <DndContext
+            sensors={sensors}
+            collisionDetection={collisionDetection}
             onDragStart={handleDragStart}
+            onDragOver={(event) => {
+              if (event.over) lastOverRef.current = String(event.over.id);
+            }}
             onDragEnd={handleDragEnd}
+            onDragCancel={() => setActiveTask(null)}
           >
-            <div className="flex gap-4 items-start justify-center">
-              <SortableContext items={filteredColumns.map((c) => c.id)} strategy={verticalListSortingStrategy}>
-                {filteredColumns.map((col) => (
-                  <Column
-                    key={col.id}
-                    column={col}
-                    tasks={visibleTasks.filter((t) => col.taskIds.includes(t.id))}
-                    onTaskClick={setSelectedTask}
-                    onAddNewTask={() => setSelectedTask({ 
-                      column_id: col.id, 
-                      is_private: filterMode === 'personal' 
-                    })}
-                    onDeleteTask={handleDeleteTask}
-                  />
-                ))}
-              </SortableContext>
+            <div className="mx-auto flex max-w-[1800px] flex-col gap-3">
+              <div className="flex flex-wrap items-center gap-2 text-[0.7rem] text-slate-500 dark:text-slate-400">
+                <span className="glass-chip">
+                  <ListChecks size={11} /> Задач: {stats.total}
+                </span>
+                <span className="glass-chip">
+                  <AlarmClock size={11} /> Просрочено: {stats.overdue}
+                </span>
+                <span className="glass-chip">
+                  <UserRound size={11} /> Личных: {stats.personal}
+                </span>
+
+                <button
+                  type="button"
+                  onClick={toggleSelectionMode}
+                  className={`glass-btn !px-2.5 !py-1 !text-[0.7rem] ${
+                    selectionMode ? 'glass-btn-primary' : ''
+                  }`}
+                  title="Режим массового выделения задач"
+                >
+                  <CheckSquare size={13} />
+                  {selectionMode ? 'Выделение включено' : 'Выделить'}
+                </button>
+
+                <span className="ml-auto hidden items-center gap-1.5 sm:flex">
+                  {selectionMode ? (
+                    <>
+                      <CheckSquare size={12} /> Кликните по карточке, чтобы выделить задачу
+                    </>
+                  ) : (
+                    <>
+                      <LayoutGrid size={12} /> Перетащите карточку, чтобы изменить колонку или рейтинг
+                    </>
+                  )}
+                </span>
+              </div>
+
+              {columns.length === 0 ? (
+                <div className="glass mx-auto mt-8 w-full max-w-md rounded-3xl p-8 text-center">
+                  <LayoutGrid size={28} className="mx-auto mb-2 text-indigo-500" />
+                  <p className="text-sm font-semibold text-slate-700 dark:text-slate-200">Колонок пока нет</p>
+                  <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                    Добавьте записи в таблицу <code>columns</code> — например: «Сделать», «В работе», «Готово».
+                  </p>
+                </div>
+              ) : (
+                <div className="scrollbar-slim overflow-x-auto pb-4">
+                  <div className="mx-auto flex w-max items-start gap-4">
+                    {boardColumns.map((column, index) => (
+                      <Column
+                        key={column.id}
+                        column={column}
+                        tasks={column.tasks}
+                        index={index}
+                        numberById={numberById}
+                        authorById={authorById}
+                        selectionMode={selectionMode}
+                        selectedIds={selectedIds}
+                        onTaskClick={setSelectedTask}
+                        onAddNewTask={() => handleNewTask(column.id)}
+                        onDeleteTask={handleDeleteTask}
+                        onToggleSelect={toggleTaskSelection}
+                        onSelectColumn={selectColumn}
+                      />
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
-            
-            <DragOverlay>
+
+            <DragOverlay dropAnimation={null}>
               {activeTask ? (
-                <TaskCard task={activeTask} onClick={() => {}} onDelete={() => {}} />
+                <div className="w-[19rem]">
+                  <TaskCardView
+                    task={activeTask}
+                    number={numberById.get(activeTask.id)}
+                    author={authorById.get(activeTask.created_by)}
+                    assignee={activeTask.assignee_id ? authorById.get(activeTask.assignee_id) : null}
+                    isOverlay
+                  />
+                </div>
               ) : null}
             </DragOverlay>
           </DndContext>
         )}
 
         {currentView === 'calendar' && (
-          <CalendarView 
-            tasks={visibleTasks} 
-            onTaskClick={setSelectedTask} 
-            onDateClick={handleDateClick} 
+          <CalendarView
+            tasks={visibleTasks}
+            numberById={numberById}
+            onTaskClick={setSelectedTask}
+            onDateClick={handleDateClick}
+          />
+        )}
+
+        {currentView === 'gantt' && (
+          <GanttView
+            tasks={visibleTasks}
+            columns={columns}
+            authorById={authorById}
+            numberById={numberById}
+            onTaskClick={setSelectedTask}
+            onScheduleChange={handleScheduleChange}
+            canEditSchedule={canEditGantt}
           />
         )}
       </main>
 
-      <TaskDetailModal 
-        key={selectedTask?.id || 'new'}
-        isOpen={!!selectedTask} 
-        onClose={() => setSelectedTask(null)} 
-        task={selectedTask} 
-        onSaveTask={handleSaveTask} 
-        onDeleteTask={handleDeleteTask} 
-        allProfiles={allProfiles}
-      />
+      {currentView === 'board' && selectionMode && (
+        <BulkActions
+          count={selectedIds.size}
+          total={visibleTasks.length}
+          columns={columns}
+          members={allProfiles}
+          canAssign={supports(taskSchema, 'assignee_id')}
+          canPriority={supports(taskSchema, 'priority')}
+          onSelectAll={selectAllVisible}
+          onClear={() => setSelectedIds(new Set())}
+          onExit={exitSelection}
+          onMove={handleBulkMove}
+          onAssign={handleBulkAssign}
+          onPriority={handleBulkPriority}
+          onArchive={handleBulkArchive}
+        />
+      )}
 
-      {/* Портал для модалки профиля. Рендерится всегда, но сама модалка решает, показываться или нет */}
-      {createPortal(
-        <ProfileModal 
-          isOpen={isProfileOpen}
+      {selectedTask && (
+        <TaskDetailModal
+          key={selectedTask.id || `new-${draftKey}`}
+          isOpen
+          onClose={() => setSelectedTask(null)}
+          task={selectedTask}
+          number={selectedTask.id ? numberById.get(selectedTask.id) : undefined}
+          onSaveTask={handleSaveTask}
+          onDeleteTask={handleDeleteTask}
+          allProfiles={allProfiles}
+          allowedFields={taskSchema}
+          currentUserId={userId}
+        />
+      )}
+
+      {isProfileOpen && (
+        <ProfileModal
+          isOpen
           onClose={() => setIsProfileOpen(false)}
           profile={profile}
-          onUpdateProfile={(updatedProfile) => setProfile(updatedProfile)}
-        />,
-        document.body
+          user={session.user}
+          allowedFields={profileSchema}
+          onUpdateProfile={handleProfileUpdated}
+        />
       )}
 
       <ArchiveModal
         isOpen={isArchiveOpen}
         onClose={() => setIsArchiveOpen(false)}
-        archivedTasks={archivedTasks}
+        archivedTasks={archivedVisible}
         onRestore={handleRestoreTask}
+        onDeleteForever={handleDeleteForever}
+        authorById={authorById}
+        numberById={numberById}
+        currentUserId={userId}
+      />
+
+      <TeamModal
+        isOpen={isTeamOpen}
+        onClose={() => setIsTeamOpen(false)}
+        members={allProfiles}
+        currentUserId={userId}
+        taskCountByUser={taskCountByUser}
+        onSelectMember={setSelectedMember}
+      />
+
+      {isAccessOpen && (
+        <AccessModal
+          isOpen
+          onClose={() => setIsAccessOpen(false)}
+          members={allProfiles}
+          currentUserId={userId}
+          currentRole={profile?.role || 'member'}
+          onRoleChange={handleRoleChange}
+          roleSaving={roleSaving}
+        />
+      )}
+
+      <MemberProfileModal
+        isOpen={Boolean(selectedMember)}
+        onClose={() => setSelectedMember(null)}
+        member={selectedMember}
+        isSelf={selectedMember?.id === userId}
+        taskCount={selectedMember ? taskCountByUser.get(selectedMember.id) ?? 0 : 0}
+        canManageRoles={canManageRoles}
+        onRoleChange={handleRoleChange}
+        roleSaving={roleSaving}
+        onShowTasks={(member) => {
+          setMemberFilter(member);
+          changeView('board');
+          setSelectedMember(null);
+          setIsTeamOpen(false);
+        }}
+        onEditSelf={() => {
+          setSelectedMember(null);
+          setIsTeamOpen(false);
+          setIsProfileOpen(true);
+        }}
       />
     </div>
   );
