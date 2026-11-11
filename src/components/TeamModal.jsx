@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { X, Users, Search, Send, ChevronRight, Mail, ShieldCheck, ListChecks } from 'lucide-react';
+import { X, Users, Search, Send, ChevronRight, Mail, ShieldCheck, ListChecks, MessageSquare } from 'lucide-react';
 import { roleLabel } from '../lib/priority';
 import { telegramUrl } from '../lib/telegram';
 
@@ -21,6 +21,7 @@ export default function TeamModal({
   currentUserId,
   taskCountByUser,
   onSelectMember,
+  onOpenChat,
 }) {
   const [query, setQuery] = useState('');
   const [roleFilter, setRoleFilter] = useState('all');
@@ -193,6 +194,21 @@ export default function TeamModal({
                           )}
                         </div>
                       </div>
+
+                      {!isSelf && (
+                        <button
+                          type="button"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            onOpenChat?.(member);
+                          }}
+                          className="shrink-0 rounded-xl p-1.5 text-slate-400 transition hover:bg-indigo-500/15 hover:text-indigo-600 dark:hover:text-indigo-300"
+                          title={`Написать в чат: ${member.full_name || 'сотрудник'}`}
+                          aria-label={`Написать в чат: ${member.full_name || 'сотрудник'}`}
+                        >
+                          <MessageSquare size={16} />
+                        </button>
+                      )}
 
                       <ChevronRight
                         size={16}

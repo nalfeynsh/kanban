@@ -1047,6 +1047,10 @@ export default function App() {
         currentUserId={userId}
         taskCountByUser={taskCountByUser}
         onSelectMember={setSelectedMember}
+        onOpenChat={(member) => {
+          setIsTeamOpen(false);
+          openChat(member.id);
+        }}
       />
 
       {isAccessOpen && (

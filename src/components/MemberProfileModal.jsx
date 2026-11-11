@@ -104,6 +104,18 @@ export default function MemberProfileModal({
             background: `linear-gradient(135deg, ${member.color || '#6366f1'}cc, #0ea5e988, ${member.color || '#6366f1'}55)`,
           }}
         >
+          {!isSelf && (
+            <button
+              type="button"
+              onClick={() => onOpenChat?.(member)}
+              className="absolute top-3 right-12 rounded-full bg-white/25 p-1.5 text-white backdrop-blur transition hover:bg-white/40"
+              title="Написать в чат"
+              aria-label={`Написать в чат: ${name}`}
+            >
+              <MessageSquare size={18} />
+            </button>
+          )}
+
           <button
             type="button"
             onClick={onClose}
@@ -244,10 +256,10 @@ export default function MemberProfileModal({
         </div>
 
         <div className="flex flex-wrap gap-2 border-t border-white/30 px-6 py-4 dark:border-white/10">
-          {!isSelf && onOpenChat && (
+          {!isSelf && (
             <button
               type="button"
-              onClick={() => onOpenChat(member)}
+              onClick={() => onOpenChat?.(member)}
               className="glass-btn"
               title={`Написать в чат: ${name}`}
             >
