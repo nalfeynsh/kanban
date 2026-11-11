@@ -1,0 +1,404 @@
+import { useEffect, useMemo, useRef, useState } from 'react';
+import {
+  X,
+  Send,
+  Search,
+  MessageSquare,
+  Loader2,
+  AlertTriangle,
+  UserRound,
+  ExternalLink,
+  Check,
+} from 'lucide-react';
+import { telegramUrl } from '../lib/telegram';
+
+function initials(name) {
+  if (!name) return '?';
+  return name
+    .trim()
+    .split(/\s+/)
+    .slice(0, 2)
+    .map((part) => part.charAt(0).toUpperCase())
+    .join('');
+}
+
+const pad = (n) => String(n).padStart(2, '0');
+
+function timeOf(value) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '';
+  return `${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
+
+function dayKey(value) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '';
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+}
+
+function dayLabel(value) {
+  const date = new Date(value);
+  const today = new Date();
+  const yesterday = new Date();
+  yesterday.setDate(yesterday.getDate() - 1);
+
+  if (dayKey(date) === dayKey(today)) return 'Сегодня';
+  if (dayKey(date) === dayKey(yesterday)) return 'Вчера';
+
+  return date.toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' });
+}
+
+function dialogTime(value) {
+  if (!value) return '';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '';
+  if (dayKey(date) === dayKey(new Date())) return timeOf(date);
+  return date.toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' });
+}
+
+/**
+ * Презентационная часть чата — без запросов, чтобы её можно было
+ * отрисовать в стенде и протестировать отдельно.
+ */
+export default function ChatView({
+  dialogs = [],
+  activeId = null,
+  messages = [],
+  profilesById,
+  currentUserId,
+  loadingDialogs = false,
+  loadingMessages = false,
+  sending = false,
+  error = '',
+  schemaMissing = false,
+  onSelect,
+  onSend,
+  onClose,
+  onOpenProfile,
+  onRetry,
+}) {
+  const [query, setQuery] = useState('');
+  const [draft, setDraft] = useState('');
+  const listRef = useRef(null);
+
+  const activeDialog = dialogs.find((dialog) => dialog.conversation_id === activeId) || null;
+  const peer = activeDialog
+    ? { id: activeDialog.peer_id, full_name: activeDialog.peer_name, color: activeDialog.peer_color, telegram: activeDialog.peer_telegram }
+    : null;
+  const peerTelegram = peer ? telegramUrl(peer.telegram) : null;
+
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return dialogs;
+    return dialogs.filter((dialog) => (dialog.peer_name || '').toLowerCase().includes(q));
+  }, [dialogs, query]);
+
+  // Прокрутка вниз при новых сообщениях
+  useEffect(() => {
+    const node = listRef.current;
+    if (!node) return;
+    node.scrollTop = node.scrollHeight;
+  }, [messages.length, activeId]);
+
+  const authorOf = (message) => {
+    if (message.author) return message.author;
+    return profilesById?.get?.(message.author_id) || null;
+  };
+
+  const handleSend = () => {
+    const text = draft.trim();
+    if (!text || !activeId || sending) return;
+    setDraft('');
+    onSend?.(text);
+  };
+
+  const handleKeyDown = (event) => {
+    if (event.key === 'Enter' && !event.shiftKey) {
+      event.preventDefault();
+      handleSend();
+    }
+  };
+
+  return (
+    <div
+      className="modal-overlay"
+      onMouseDown={(event) => {
+        if (event.target === event.currentTarget) onClose?.();
+      }}
+    >
+      <div className="modal-panel glass-panel flex h-[84vh] w-full max-w-5xl overflow-hidden rounded-3xl">
+        {/* Список диалогов */}
+        <aside
+          className={`flex w-full shrink-0 flex-col border-r border-white/30 dark:border-white/10 sm:w-[18.5rem] ${
+            activeId ? 'hidden sm:flex' : 'flex'
+          }`}
+        >
+          <div className="flex items-center justify-between gap-2 border-b border-white/30 px-4 py-3 dark:border-white/10">
+            <h2 className="flex items-center gap-2 text-sm font-bold text-slate-800 dark:text-slate-100">
+              <MessageSquare size={16} className="text-indigo-500 dark:text-indigo-300" />
+              Чат
+            </h2>
+            <span className="glass-chip !text-[0.62rem]">{dialogs.length}</span>
+          </div>
+
+          <div className="px-3 pt-3">
+            <div className="relative">
+              <Search size={14} className="absolute top-1/2 left-2.5 -translate-y-1/2 text-slate-400" />
+              <input
+                type="search"
+                value={query}
+                onChange={(event) => setQuery(event.target.value)}
+                placeholder="Поиск по имени…"
+                className="glass-input !py-1.5 !pl-8 !text-xs"
+              />
+            </div>
+          </div>
+
+          <div className="scrollbar-slim mt-2 flex-1 overflow-y-auto px-2 pb-2">
+            {loadingDialogs && (
+              <div className="flex items-center justify-center py-8 text-slate-400">
+                <Loader2 size={18} className="animate-spin" />
+              </div>
+            )}
+
+            {!loadingDialogs && filtered.length === 0 && (
+              <p className="px-3 py-6 text-center text-[0.7rem] text-slate-500 dark:text-slate-400">
+                Пока нет диалогов. Откройте профиль сотрудника → «Написать в чат».
+              </p>
+            )}
+
+            {filtered.map((dialog) => {
+              const isActive = dialog.conversation_id === activeId;
+              return (
+                <button
+                  key={dialog.conversation_id}
+                  type="button"
+                  onClick={() => onSelect?.(dialog)}
+                  className={`mb-1 flex w-full items-center gap-2.5 rounded-xl px-2 py-2 text-left transition ${
+                    isActive
+                      ? 'bg-indigo-500/15 ring-1 ring-indigo-400/40'
+                      : 'hover:bg-white/50 dark:hover:bg-white/5'
+                  }`}
+                >
+                  <span
+                    className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-[0.65rem] font-bold text-white"
+                    style={{ backgroundColor: dialog.peer_color || '#6366f1' }}
+                  >
+                    {initials(dialog.peer_name)}
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    <span className="flex items-center justify-between gap-2">
+                      <span className="truncate text-[0.8rem] font-semibold text-slate-800 dark:text-slate-100">
+                        {dialog.peer_name || 'Сотрудник'}
+                      </span>
+                      <span className="shrink-0 text-[0.6rem] text-slate-400">
+                        {dialogTime(dialog.last_message_at)}
+                      </span>
+                    </span>
+                    <span className="flex items-center justify-between gap-2">
+                      <span className="truncate text-[0.68rem] text-slate-500 dark:text-slate-400">
+                        {dialog.last_message || 'Нет сообщений'}
+                      </span>
+                      {dialog.unread > 0 && (
+                        <span className="shrink-0 rounded-full bg-indigo-500 px-1.5 py-0.5 text-[0.58rem] font-bold text-white">
+                          {dialog.unread}
+                        </span>
+                      )}
+                    </span>
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        </aside>
+
+        {/* Переписка */}
+        <section className="flex min-w-0 flex-1 flex-col">
+          <div className="flex items-center gap-2 border-b border-white/30 px-4 py-2.5 dark:border-white/10">
+            {peer ? (
+              <>
+                <button
+                  type="button"
+                  onClick={() => onOpenProfile?.(peer)}
+                  className="flex min-w-0 items-center gap-2 rounded-xl px-1 py-0.5 text-left transition hover:bg-white/50 dark:hover:bg-white/5"
+                  title="Открыть профиль"
+                >
+                  <span
+                    className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl text-[0.6rem] font-bold text-white"
+                    style={{ backgroundColor: peer.color || '#6366f1' }}
+                  >
+                    {initials(peer.full_name)}
+                  </span>
+                  <span className="min-w-0">
+                    <span className="block truncate text-xs font-semibold text-slate-800 dark:text-slate-100">
+                      {peer.full_name}
+                    </span>
+                    <span className="block text-[0.62rem] text-slate-500 dark:text-slate-400">личный диалог</span>
+                  </span>
+                </button>
+
+                {peerTelegram && (
+                  <a
+                    href={peerTelegram}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="glass-btn ml-auto !px-2 !py-1 !text-[0.65rem]"
+                    title="Открыть Telegram"
+                  >
+                    <ExternalLink size={12} /> Telegram
+                  </a>
+                )}
+
+                <button
+                  type="button"
+                  onClick={() => onOpenProfile?.(peer)}
+                  className={`glass-btn !px-2 !py-1 !text-[0.65rem] ${peerTelegram ? '' : 'ml-auto'}`}
+                  title="Профиль сотрудника"
+                >
+                  <UserRound size={12} />
+                </button>
+              </>
+            ) : (
+              <p className="text-xs text-slate-500 dark:text-slate-400">Выберите диалог</p>
+            )}
+
+            <button
+              type="button"
+              onClick={onClose}
+              className="rounded-xl p-1.5 text-slate-500 transition hover:bg-white/60 hover:text-slate-800 dark:text-slate-400 dark:hover:bg-white/10 dark:hover:text-white"
+              title="Закрыть"
+            >
+              <X size={18} />
+            </button>
+          </div>
+
+          {schemaMissing ? (
+            <div className="flex flex-1 flex-col items-center justify-center gap-2 p-8 text-center">
+              <AlertTriangle size={26} className="text-amber-500" />
+              <p className="text-sm font-semibold text-slate-700 dark:text-slate-200">Чат ещё не настроен в базе</p>
+              <p className="max-w-md text-xs text-slate-500 dark:text-slate-400">
+                Примените <code className="font-mono">supabase/migrations/004_chat.sql</code> в SQL Editor
+                (таблицы диалогов, сообщений и RLS), после чего обновите страницу.
+              </p>
+            </div>
+          ) : (
+            <>
+              <div ref={listRef} className="scrollbar-slim flex-1 overflow-y-auto px-4 py-4">
+                <div className="flex min-h-full flex-col justify-end">
+                  {loadingMessages && (
+                  <div className="flex items-center justify-center py-10 text-slate-400">
+                    <Loader2 size={18} className="animate-spin" />
+                  </div>
+                )}
+
+                {!loadingMessages && !activeId && (
+                  <div className="flex h-full flex-col items-center justify-center gap-2 text-center">
+                    <MessageSquare size={28} className="text-indigo-400/60" />
+                    <p className="text-sm font-semibold text-slate-700 dark:text-slate-200">Выберите, кому написать</p>
+                    <p className="max-w-xs text-xs text-slate-500 dark:text-slate-400">
+                      Слева — сотрудники, с которыми уже есть переписка. Новый диалог открывается из профиля.
+                    </p>
+                  </div>
+                )}
+
+                {!loadingMessages && activeId && messages.length === 0 && (
+                  <p className="py-10 text-center text-xs text-slate-500 dark:text-slate-400">
+                    Сообщений пока нет — напишите первым.
+                  </p>
+                )}
+
+                {messages.map((message, index) => {
+                  const own = message.author_id === currentUserId;
+                  const author = authorOf(message);
+                  const prev = messages[index - 1];
+                  const showDay = !prev || dayKey(prev.created_at) !== dayKey(message.created_at);
+
+                  return (
+                    <div key={message.id}>
+                      {showDay && (
+                        <div className="my-3 flex items-center gap-2">
+                          <span className="h-px flex-1 bg-white/40 dark:bg-white/10" />
+                          <span className="text-[0.6rem] font-medium tracking-wide text-slate-400 uppercase">
+                            {dayLabel(message.created_at)}
+                          </span>
+                          <span className="h-px flex-1 bg-white/40 dark:bg-white/10" />
+                        </div>
+                      )}
+
+                      <div className={`mb-1.5 flex ${own ? 'justify-end' : 'justify-start'}`}>
+                        <div className={`flex max-w-[80%] items-end gap-1.5 ${own ? 'flex-row-reverse' : ''}`}>
+                          {!own && (
+                            <span
+                              className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[0.55rem] font-bold text-white"
+                              style={{ backgroundColor: author?.color || '#6366f1' }}
+                              title={author?.full_name || 'Сотрудник'}
+                            >
+                              {initials(author?.full_name)}
+                            </span>
+                          )}
+
+                          <div
+                            className={`rounded-2xl px-3 py-2 text-[0.8rem] leading-snug break-words whitespace-pre-wrap ${
+                              own
+                                ? 'bg-gradient-to-br from-indigo-500 to-sky-500 text-white shadow-sm'
+                                : 'border border-white/50 bg-white/60 text-slate-800 dark:border-white/10 dark:bg-white/10 dark:text-slate-100'
+                            } ${message.pending ? 'opacity-60' : ''}`}
+                          >
+                            {message.body}
+                            <span
+                              className={`mt-1 flex items-center justify-end gap-1 text-[0.58rem] ${
+                                own ? 'text-white/75' : 'text-slate-400'
+                              }`}
+                            >
+                              {timeOf(message.created_at)}
+                              {own && <Check size={10} />}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+                </div>
+              </div>
+
+              <div className="border-t border-white/30 p-3 dark:border-white/10">
+                <div className="flex items-end gap-2">
+                  <textarea
+                    value={draft}
+                    onChange={(event) => setDraft(event.target.value)}
+                    onKeyDown={handleKeyDown}
+                    rows={1}
+                    disabled={!activeId || sending}
+                    placeholder={activeId ? 'Сообщение… (Enter — отправить, Shift+Enter — новая строка)' : 'Выберите диалог'}
+                    className="glass-input max-h-32 !min-h-[2.6rem] flex-1 resize-none !py-2 !text-xs"
+                  />
+                  <button
+                    type="button"
+                    onClick={handleSend}
+                    disabled={!draft.trim() || !activeId || sending}
+                    className="glass-btn glass-btn-primary !px-3 !py-2"
+                    title="Отправить"
+                  >
+                    {sending ? <Loader2 size={15} className="animate-spin" /> : <Send size={15} />}
+                  </button>
+                </div>
+
+                {error && (
+                  <p className="mt-2 flex items-start gap-1.5 text-[0.65rem] text-rose-600 dark:text-rose-300">
+                    <AlertTriangle size={11} className="mt-0.5 shrink-0" /> {error}
+                    {onRetry && (
+                      <button type="button" onClick={onRetry} className="underline">
+                        повторить
+                      </button>
+                    )}
+                  </p>
+                )}
+              </div>
+            </>
+          )}
+        </section>
+      </div>
+    </div>
+  );
+}

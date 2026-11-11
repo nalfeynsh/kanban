@@ -14,6 +14,7 @@ import {
   Copy,
   Check,
   KeyRound,
+  MessageSquare,
 } from 'lucide-react';
 import { roleLabel, ROLE_OPTIONS } from '../lib/priority';
 import { telegramUrl } from '../lib/telegram';
@@ -65,6 +66,7 @@ export default function MemberProfileModal({
   taskCount = 0,
   onShowTasks,
   onEditSelf,
+  onOpenChat,
   canManageRoles = false,
   onRoleChange,
   roleSaving = false,
@@ -241,7 +243,17 @@ export default function MemberProfileModal({
           )}
         </div>
 
-        <div className="flex gap-2 border-t border-white/30 px-6 py-4 dark:border-white/10">
+        <div className="flex flex-wrap gap-2 border-t border-white/30 px-6 py-4 dark:border-white/10">
+          {!isSelf && onOpenChat && (
+            <button
+              type="button"
+              onClick={() => onOpenChat(member)}
+              className="glass-btn"
+              title={`Написать в чат: ${name}`}
+            >
+              <MessageSquare size={15} /> Чат
+            </button>
+          )}
           {onShowTasks && (
             <button
               type="button"

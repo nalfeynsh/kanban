@@ -11,6 +11,7 @@ import {
   Layers,
   X,
   ShieldCheck,
+  MessageSquare,
 } from 'lucide-react';
 
 function initials(name) {
@@ -38,6 +39,8 @@ export default function Header({
   onTeamClick,
   onAccessClick,
   canAccess = false,
+  onChatClick,
+  chatUnread = 0,
   teamCount = 0,
   memberFilter,
   onClearMemberFilter,
@@ -163,6 +166,21 @@ export default function Header({
         )}
 
         <div className="ml-auto flex items-center gap-1.5 sm:gap-2">
+          <button
+            type="button"
+            onClick={onChatClick}
+            className="glass-btn relative !px-2.5 !py-1.5"
+            title="Внутренний чат"
+          >
+            <MessageSquare size={17} />
+            <span className="hidden lg:inline">Чат</span>
+            {chatUnread > 0 && (
+              <span className="absolute -top-1 -right-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-rose-500 px-1 text-[0.55rem] font-bold text-white shadow">
+                {chatUnread > 9 ? '9+' : chatUnread}
+              </span>
+            )}
+          </button>
+
           {canAccess && (
             <button
               type="button"

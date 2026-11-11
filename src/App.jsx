@@ -23,6 +23,7 @@ import TeamModal from './components/TeamModal';
 import MemberProfileModal from './components/MemberProfileModal';
 import BulkActions from './components/BulkActions';
 import AccessModal from './components/AccessModal';
+import ChatModal from './components/ChatModal';
 import { TaskCardView } from './components/TaskCard';
 import { supabase } from './supabaseClient';
 import { collectFields, mergeFields, pickFields, profileFields, supports, taskFields } from './lib/schema';
@@ -62,6 +63,9 @@ export default function App() {
   const [isArchiveOpen, setIsArchiveOpen] = useState(false);
   const [isTeamOpen, setIsTeamOpen] = useState(false);
   const [isAccessOpen, setIsAccessOpen] = useState(false);
+  const [isChatOpen, setIsChatOpen] = useState(false);
+  const [chatPeerId, setChatPeerId] = useState(null);
+  const [chatUnread, setChatUnread] = useState(0);
   const [roleSaving, setRoleSaving] = useState(false);
 
   const [currentView, setCurrentView] = useState('board');
@@ -627,6 +631,13 @@ export default function App() {
     setCurrentView(view);
   };
 
+  /** Открыть чат на главной или сразу на диалоге с сотрудником */
+  const openChat = (peerId = null) => {
+    exitSelection();
+    setChatPeerId(peerId);
+    setIsChatOpen(true);
+  };
+
   /** Клик по логотипу — всегда на главную (доска, без фильтров и модалок) */
   const goHome = () => {
     setSelectedTask(null);
@@ -635,6 +646,8 @@ export default function App() {
     setIsArchiveOpen(false);
     setIsTeamOpen(false);
     setIsAccessOpen(false);
+    setIsChatOpen(false);
+    setChatPeerId(null);
     setMemberFilter(null);
     setFilterMode('all');
     changeView('board');
@@ -827,6 +840,8 @@ export default function App() {
         onTeamClick={() => setIsTeamOpen(true)}
         onAccessClick={() => setIsAccessOpen(true)}
         canAccess={canOpenAccess}
+        onChatClick={() => openChat()}
+        chatUnread={chatUnread}
         onHome={goHome}
         teamCount={allProfiles.length}
         memberFilter={memberFilter}
@@ -1046,6 +1061,25 @@ export default function App() {
         />
       )}
 
+      {isChatOpen && (
+        <ChatModal
+          isOpen
+          onClose={() => {
+            setIsChatOpen(false);
+            setChatPeerId(null);
+          }}
+          currentUserId={userId}
+          members={allProfiles}
+          peerId={chatPeerId}
+          onUnreadChange={setChatUnread}
+          onOpenProfile={(peer) => {
+            setIsChatOpen(false);
+            setChatPeerId(null);
+            setSelectedMember(allProfiles.find((item) => item.id === peer.id) ?? peer);
+          }}
+        />
+      )}
+
       <MemberProfileModal
         isOpen={Boolean(selectedMember)}
         onClose={() => setSelectedMember(null)}
@@ -1055,6 +1089,10 @@ export default function App() {
         canManageRoles={canManageRoles}
         onRoleChange={handleRoleChange}
         roleSaving={roleSaving}
+        onOpenChat={(member) => {
+          setSelectedMember(null);
+          openChat(member.id);
+        }}
         onShowTasks={(member) => {
           setMemberFilter(member);
           changeView('board');
