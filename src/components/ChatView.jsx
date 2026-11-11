@@ -493,9 +493,15 @@ export default function ChatView({
                                   : 'border border-white/50 bg-white/60 text-slate-800 dark:border-white/10 dark:bg-white/10 dark:text-slate-100'
                               } ${message.pending ? 'opacity-60' : ''}`}
                             >
-                              {isTeam && !own && author?.full_name && (
-                                <span className="mb-0.5 block text-[0.62rem] font-semibold text-indigo-600/90 dark:text-indigo-300">
-                                  {author.full_name}
+                              {(!own || isTeam) && (
+                                <span
+                                  className={`mb-0.5 block text-[0.62rem] font-semibold ${
+                                    own
+                                      ? 'text-white/90'
+                                      : 'text-indigo-600/90 dark:text-indigo-300'
+                                  }`}
+                                >
+                                  {own ? 'Вы' : author?.full_name || 'Сотрудник'}
                                 </span>
                               )}
                               {message.body}
