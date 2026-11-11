@@ -57,6 +57,9 @@ export default function AccessModal({
   const mayManageRoles = can(currentRole, 'roles.manage');
   const mayViewInvites = can(currentRole, 'invites.view');
   const mayCreateInvites = can(currentRole, 'invites.create');
+  const adminSql = currentUserId
+    ? `update public.profiles set role = 'admin' where id = '${currentUserId}';`
+    : '';
   const mayRevokeInvites = can(currentRole, 'invites.revoke');
 
   const visibleTabs = TABS.filter((item) => can(currentRole, item.permission));
@@ -222,7 +225,37 @@ export default function AccessModal({
         <div className="scrollbar-slim flex-1 overflow-y-auto px-6 py-4">
           {/* --- Сотрудники --- */}
           {tab === 'members' && (
-            <ul className="space-y-2">
+            <>
+              {!mayManageRoles && adminSql && (
+                <div className="mb-3 rounded-2xl border border-amber-400/60 bg-amber-500/10 p-3 text-[0.72rem] text-amber-900 dark:border-amber-400/30 dark:text-amber-100">
+                  <p className="flex items-center gap-1.5 font-semibold">
+                    <ShieldCheck size={13} /> Роли меняет администратор
+                  </p>
+                  <p className="mt-1">
+                    Вы вошли как «{ROLE_META[roleOf({ role: currentRole })]?.label || 'Сотрудник'}».
+                    Чтобы выдавать роли и права, назначьте себя администратором — один раз, в SQL Editor:
+                  </p>
+                  <div className="mt-2 flex flex-wrap items-center gap-2">
+                    <code className="min-w-0 flex-1 overflow-x-auto rounded-lg bg-black/5 px-2 py-1 font-mono text-[0.65rem] whitespace-nowrap dark:bg-black/30">
+                      {adminSql}
+                    </code>
+                    <button
+                      type="button"
+                      onClick={() => copy('admin-sql', adminSql)}
+                      className="glass-btn !px-2 !py-1 !text-[0.62rem]"
+                    >
+                      {copied === 'admin-sql' ? <Check size={11} /> : <Copy size={11} />}
+                      {copied === 'admin-sql' ? 'Скопировано' : 'Копировать'}
+                    </button>
+                  </div>
+                  <p className="mt-1.5 text-[0.62rem] opacity-80">
+                    После выполнения обновите страницу. Свою роль через интерфейс изменить нельзя — только другим
+                    сотрудникам.
+                  </p>
+                </div>
+              )}
+
+              <ul className="space-y-2">
               {filteredMembers.map((member) => {
                 const role = roleOf(member);
                 const meta = ROLE_META[role] ?? ROLE_META.member;
@@ -262,7 +295,7 @@ export default function AccessModal({
                         value={role}
                         disabled={!mayManageRoles || isSelf || roleSaving}
                         onChange={(event) => onRoleChange?.(member.id, event.target.value)}
-                        className="glass-input !w-auto !py-1.5 !text-xs"
+                        className="glass-input !w-auto !py-1.5 !text-xs disabled:cursor-not-allowed disabled:opacity-60"
                         title={
                           isSelf
                             ? 'Свою роль изменить нельзя'
@@ -288,6 +321,7 @@ export default function AccessModal({
                 </li>
               )}
             </ul>
+            </>
           )}
 
           {/* --- Приглашения --- */}
