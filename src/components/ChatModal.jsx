@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import ChatView from './ChatView';
 import {
+  ensureTeamChat,
   fetchDialogs,
   fetchMessages,
   isChatSchemaMissing,
@@ -27,6 +28,7 @@ export default function ChatModal({
   const [sending, setSending] = useState(false);
   const [error, setError] = useState('');
   const [schemaMissing, setSchemaMissing] = useState(false);
+  const [teamUnavailable, setTeamUnavailable] = useState(false);
 
   const profilesById = useMemo(() => new Map(members.map((member) => [member.id, member])), [members]);
 
@@ -58,6 +60,10 @@ export default function ChatModal({
     let alive = true;
 
     (async () => {
+      const { error: teamError } = await ensureTeamChat();
+      if (!alive) return;
+      if (teamError) setTeamUnavailable(true);
+
       const { dialogs: list, error: loadError } = await fetchDialogs();
       if (!alive) return;
 
@@ -79,7 +85,12 @@ export default function ChatModal({
           return;
         }
         await selectDialog(conversationId);
+        return;
       }
+
+      // Без указанного сотрудника открываем общий чат команды
+      const team = list.find((dialog) => dialog.is_team);
+      if (team) await selectDialog(team.conversation_id);
     })();
 
     return () => {
@@ -142,11 +153,26 @@ export default function ChatModal({
     onOpenProfile?.(full || peer);
   };
 
+  const handleStartDialog = async (memberId) => {
+    setError('');
+    const { conversationId, error: openError } = await openDialog(memberId);
+    if (openError) {
+      setError(openError.message);
+      return;
+    }
+
+    const { dialogs: list } = await fetchDialogs();
+    if (list.length > 0) setDialogs(list);
+
+    await selectDialog(conversationId);
+  };
+
   return (
     <ChatView
       dialogs={dialogs}
       activeId={activeId}
       messages={messages}
+      members={members}
       profilesById={profilesById}
       currentUserId={currentUserId}
       loadingDialogs={loadingDialogs}
@@ -154,10 +180,12 @@ export default function ChatModal({
       sending={sending}
       error={error}
       schemaMissing={schemaMissing}
+      teamUnavailable={teamUnavailable}
       onSelect={(dialog) => selectDialog(dialog.conversation_id)}
       onSend={handleSend}
       onClose={onClose}
       onOpenProfile={handleOpenProfile}
+      onStartDialog={handleStartDialog}
     />
   );
 }

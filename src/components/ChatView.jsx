@@ -9,6 +9,9 @@ import {
   UserRound,
   ExternalLink,
   Check,
+  Plus,
+  ChevronLeft,
+  Users,
 } from 'lucide-react';
 import { telegramUrl } from '../lib/telegram';
 
@@ -56,6 +59,15 @@ function dialogTime(value) {
   return date.toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' });
 }
 
+function membersLabel(count) {
+  const n = Number(count) || 1;
+  const mod10 = n % 10;
+  const mod100 = n % 100;
+  if (mod10 === 1 && mod100 !== 11) return `${n} участник`;
+  if (mod10 >= 2 && mod10 <= 4 && (mod100 < 10 || mod100 >= 20)) return `${n} участника`;
+  return `${n} участников`;
+}
+
 /**
  * Презентационная часть чата — без запросов, чтобы её можно было
  * отрисовать в стенде и протестировать отдельно.
@@ -64,6 +76,7 @@ export default function ChatView({
   dialogs = [],
   activeId = null,
   messages = [],
+  members = [],
   profilesById,
   currentUserId,
   loadingDialogs = false,
@@ -71,27 +84,54 @@ export default function ChatView({
   sending = false,
   error = '',
   schemaMissing = false,
+  teamUnavailable = false,
   onSelect,
   onSend,
   onClose,
   onOpenProfile,
+  onStartDialog,
   onRetry,
 }) {
   const [query, setQuery] = useState('');
   const [draft, setDraft] = useState('');
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [memberQuery, setMemberQuery] = useState('');
   const listRef = useRef(null);
 
   const activeDialog = dialogs.find((dialog) => dialog.conversation_id === activeId) || null;
-  const peer = activeDialog
-    ? { id: activeDialog.peer_id, full_name: activeDialog.peer_name, color: activeDialog.peer_color, telegram: activeDialog.peer_telegram }
+  const isTeam = Boolean(activeDialog?.is_team);
+  const peer = activeDialog && !isTeam
+    ? {
+        id: activeDialog.peer_id,
+        full_name: activeDialog.peer_name,
+        color: activeDialog.peer_color,
+        telegram: activeDialog.peer_telegram,
+      }
     : null;
   const peerTelegram = peer ? telegramUrl(peer.telegram) : null;
 
-  const filtered = useMemo(() => {
+  const teamDialog = dialogs.find((dialog) => dialog.is_team) || null;
+  const privateDialogs = dialogs.filter((dialog) => !dialog.is_team);
+
+  const filteredPrivate = useMemo(() => {
     const q = query.trim().toLowerCase();
-    if (!q) return dialogs;
-    return dialogs.filter((dialog) => (dialog.peer_name || '').toLowerCase().includes(q));
-  }, [dialogs, query]);
+    if (!q) return privateDialogs;
+    return privateDialogs.filter((dialog) => (dialog.peer_name || '').toLowerCase().includes(q));
+  }, [privateDialogs, query]);
+
+  const pickerMembers = useMemo(() => {
+    const q = memberQuery.trim().toLowerCase();
+    return members
+      .filter((member) => member.id !== currentUserId)
+      .filter((member) =>
+        !q
+          ? true
+          : [member.full_name, member.position_title, member.telegram]
+              .filter(Boolean)
+              .some((value) => String(value).toLowerCase().includes(q)),
+      )
+      .sort((a, b) => (a.full_name || '').localeCompare(b.full_name || '', 'ru'));
+  }, [members, currentUserId, memberQuery]);
 
   // Прокрутка вниз при новых сообщениях
   useEffect(() => {
@@ -119,6 +159,12 @@ export default function ChatView({
     }
   };
 
+  const startDialog = (memberId) => {
+    setPickerOpen(false);
+    setMemberQuery('');
+    onStartDialog?.(memberId);
+  };
+
   return (
     <div
       className="modal-overlay"
@@ -138,84 +184,228 @@ export default function ChatView({
               <MessageSquare size={16} className="text-indigo-500 dark:text-indigo-300" />
               Чат
             </h2>
-            <span className="glass-chip !text-[0.62rem]">{dialogs.length}</span>
-          </div>
-
-          <div className="px-3 pt-3">
-            <div className="relative">
-              <Search size={14} className="absolute top-1/2 left-2.5 -translate-y-1/2 text-slate-400" />
-              <input
-                type="search"
-                value={query}
-                onChange={(event) => setQuery(event.target.value)}
-                placeholder="Поиск по имени…"
-                className="glass-input !py-1.5 !pl-8 !text-xs"
-              />
+            <div className="flex items-center gap-1">
+              <span className="glass-chip !text-[0.62rem]">{dialogs.length}</span>
+              <button
+                type="button"
+                onClick={() => setPickerOpen((prev) => !prev)}
+                className="rounded-lg p-1 text-slate-500 transition hover:bg-white/60 hover:text-indigo-600 dark:text-slate-400 dark:hover:bg-white/10 dark:hover:text-indigo-300"
+                title={pickerOpen ? 'К диалогам' : 'Новый диалог'}
+              >
+                {pickerOpen ? <ChevronLeft size={16} /> : <Plus size={16} />}
+              </button>
             </div>
           </div>
 
-          <div className="scrollbar-slim mt-2 flex-1 overflow-y-auto px-2 pb-2">
-            {loadingDialogs && (
-              <div className="flex items-center justify-center py-8 text-slate-400">
-                <Loader2 size={18} className="animate-spin" />
+          {pickerOpen ? (
+            <div className="flex min-h-0 flex-1 flex-col">
+              <div className="px-3 pt-3">
+                <p className="mb-1.5 text-[0.62rem] font-semibold tracking-[0.08em] text-slate-500 uppercase dark:text-slate-400">
+                  Новый диалог
+                </p>
+                <div className="relative">
+                  <Search size={14} className="absolute top-1/2 left-2.5 -translate-y-1/2 text-slate-400" />
+                  <input
+                    type="search"
+                    value={memberQuery}
+                    onChange={(event) => setMemberQuery(event.target.value)}
+                    placeholder="Найти сотрудника…"
+                    className="glass-input !py-1.5 !pl-8 !text-xs"
+                    autoFocus
+                  />
+                </div>
               </div>
-            )}
 
-            {!loadingDialogs && filtered.length === 0 && (
-              <p className="px-3 py-6 text-center text-[0.7rem] text-slate-500 dark:text-slate-400">
-                Пока нет диалогов. Откройте профиль сотрудника → «Написать в чат».
-              </p>
-            )}
-
-            {filtered.map((dialog) => {
-              const isActive = dialog.conversation_id === activeId;
-              return (
-                <button
-                  key={dialog.conversation_id}
-                  type="button"
-                  onClick={() => onSelect?.(dialog)}
-                  className={`mb-1 flex w-full items-center gap-2.5 rounded-xl px-2 py-2 text-left transition ${
-                    isActive
-                      ? 'bg-indigo-500/15 ring-1 ring-indigo-400/40'
-                      : 'hover:bg-white/50 dark:hover:bg-white/5'
-                  }`}
-                >
-                  <span
-                    className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-[0.65rem] font-bold text-white"
-                    style={{ backgroundColor: dialog.peer_color || '#6366f1' }}
+              <div className="scrollbar-slim mt-2 flex-1 overflow-y-auto px-2 pb-2">
+                {pickerMembers.length === 0 && (
+                  <p className="px-3 py-6 text-center text-[0.7rem] text-slate-500 dark:text-slate-400">
+                    Сотрудники не найдены
+                  </p>
+                )}
+                {pickerMembers.map((member) => (
+                  <button
+                    key={member.id}
+                    type="button"
+                    onClick={() => startDialog(member.id)}
+                    className="mb-1 flex w-full items-center gap-2.5 rounded-xl px-2 py-2 text-left transition hover:bg-white/50 dark:hover:bg-white/5"
                   >
-                    {initials(dialog.peer_name)}
-                  </span>
-                  <span className="min-w-0 flex-1">
-                    <span className="flex items-center justify-between gap-2">
-                      <span className="truncate text-[0.8rem] font-semibold text-slate-800 dark:text-slate-100">
-                        {dialog.peer_name || 'Сотрудник'}
+                    <span
+                      className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl text-[0.6rem] font-bold text-white"
+                      style={{ backgroundColor: member.color || '#6366f1' }}
+                    >
+                      {initials(member.full_name)}
+                    </span>
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-[0.78rem] font-semibold text-slate-800 dark:text-slate-100">
+                        {member.full_name || 'Сотрудник'}
                       </span>
-                      <span className="shrink-0 text-[0.6rem] text-slate-400">
-                        {dialogTime(dialog.last_message_at)}
+                      <span className="block truncate text-[0.65rem] text-slate-500 dark:text-slate-400">
+                        {member.telegram || member.position_title || 'начать переписку'}
                       </span>
                     </span>
-                    <span className="flex items-center justify-between gap-2">
-                      <span className="truncate text-[0.68rem] text-slate-500 dark:text-slate-400">
-                        {dialog.last_message || 'Нет сообщений'}
-                      </span>
-                      {dialog.unread > 0 && (
-                        <span className="shrink-0 rounded-full bg-indigo-500 px-1.5 py-0.5 text-[0.58rem] font-bold text-white">
-                          {dialog.unread}
+                    <MessageSquare size={13} className="shrink-0 text-indigo-400" />
+                  </button>
+                ))}
+              </div>
+            </div>
+          ) : (
+            <>
+              <div className="px-3 pt-3">
+                <div className="relative">
+                  <Search size={14} className="absolute top-1/2 left-2.5 -translate-y-1/2 text-slate-400" />
+                  <input
+                    type="search"
+                    value={query}
+                    onChange={(event) => setQuery(event.target.value)}
+                    placeholder="Поиск по имени…"
+                    className="glass-input !py-1.5 !pl-8 !text-xs"
+                  />
+                </div>
+              </div>
+
+              <div className="scrollbar-slim mt-2 flex-1 overflow-y-auto px-2 pb-2">
+                {loadingDialogs && (
+                  <div className="flex items-center justify-center py-8 text-slate-400">
+                    <Loader2 size={18} className="animate-spin" />
+                  </div>
+                )}
+
+                {!loadingDialogs && (
+                  <>
+                    {/* Общий чат */}
+                    <p className="px-2 pt-1 pb-1 text-[0.58rem] font-semibold tracking-[0.1em] text-slate-400 uppercase">
+                      Общий чат
+                    </p>
+
+                    {teamDialog ? (
+                      <button
+                        type="button"
+                        onClick={() => onSelect?.(teamDialog)}
+                        className={`mb-2 flex w-full items-center gap-2.5 rounded-xl px-2 py-2 text-left transition ${
+                          teamDialog.conversation_id === activeId
+                            ? 'bg-indigo-500/15 ring-1 ring-indigo-400/40'
+                            : 'hover:bg-white/50 dark:hover:bg-white/5'
+                        }`}
+                      >
+                        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-indigo-500 to-sky-400 text-white">
+                          <Users size={16} />
                         </span>
-                      )}
-                    </span>
-                  </span>
-                </button>
-              );
-            })}
-          </div>
+                        <span className="min-w-0 flex-1">
+                          <span className="flex items-center justify-between gap-2">
+                            <span className="truncate text-[0.8rem] font-semibold text-slate-800 dark:text-slate-100">
+                              Общий чат команды
+                            </span>
+                            <span className="shrink-0 text-[0.6rem] text-slate-400">
+                              {dialogTime(teamDialog.last_message_at)}
+                            </span>
+                          </span>
+                          <span className="flex items-center justify-between gap-2">
+                            <span className="truncate text-[0.68rem] text-slate-500 dark:text-slate-400">
+                              {teamDialog.last_message || membersLabel(teamDialog.member_count)}
+                            </span>
+                            {teamDialog.unread > 0 && (
+                              <span className="shrink-0 rounded-full bg-indigo-500 px-1.5 py-0.5 text-[0.58rem] font-bold text-white">
+                                {teamDialog.unread}
+                              </span>
+                            )}
+                          </span>
+                        </span>
+                      </button>
+                    ) : (
+                      <p className="mb-2 rounded-xl border border-dashed border-slate-400/30 px-2 py-2 text-[0.65rem] text-slate-500 dark:border-white/10 dark:text-slate-400">
+                        {teamUnavailable
+                          ? 'Общий чат включится после миграции 005.'
+                          : 'Общий чат создаётся при первом открытии.'}
+                      </p>
+                    )}
+
+                    {/* Личные диалоги */}
+                    <p className="px-2 pt-1 pb-1 text-[0.58rem] font-semibold tracking-[0.1em] text-slate-400 uppercase">
+                      Личные
+                    </p>
+
+                    {filteredPrivate.length === 0 && (
+                      <div className="px-2 py-3 text-center">
+                        <p className="mb-2 text-[0.68rem] text-slate-500 dark:text-slate-400">
+                          {privateDialogs.length === 0 ? 'Пока нет личных диалогов' : 'Ничего не найдено'}
+                        </p>
+                        <button
+                          type="button"
+                          onClick={() => setPickerOpen(true)}
+                          className="glass-btn !px-2.5 !py-1.5 !text-[0.68rem]"
+                        >
+                          <Plus size={13} /> Начать диалог
+                        </button>
+                      </div>
+                    )}
+
+                    {filteredPrivate.map((dialog) => {
+                      const isActive = dialog.conversation_id === activeId;
+                      return (
+                        <button
+                          key={dialog.conversation_id}
+                          type="button"
+                          onClick={() => onSelect?.(dialog)}
+                          className={`mb-1 flex w-full items-center gap-2.5 rounded-xl px-2 py-2 text-left transition ${
+                            isActive
+                              ? 'bg-indigo-500/15 ring-1 ring-indigo-400/40'
+                              : 'hover:bg-white/50 dark:hover:bg-white/5'
+                          }`}
+                        >
+                          <span
+                            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-[0.65rem] font-bold text-white"
+                            style={{ backgroundColor: dialog.peer_color || '#6366f1' }}
+                          >
+                            {initials(dialog.peer_name)}
+                          </span>
+                          <span className="min-w-0 flex-1">
+                            <span className="flex items-center justify-between gap-2">
+                              <span className="truncate text-[0.8rem] font-semibold text-slate-800 dark:text-slate-100">
+                                {dialog.peer_name || 'Сотрудник'}
+                              </span>
+                              <span className="shrink-0 text-[0.6rem] text-slate-400">
+                                {dialogTime(dialog.last_message_at)}
+                              </span>
+                            </span>
+                            <span className="flex items-center justify-between gap-2">
+                              <span className="truncate text-[0.68rem] text-slate-500 dark:text-slate-400">
+                                {dialog.last_message || 'Нет сообщений'}
+                              </span>
+                              {dialog.unread > 0 && (
+                                <span className="shrink-0 rounded-full bg-indigo-500 px-1.5 py-0.5 text-[0.58rem] font-bold text-white">
+                                  {dialog.unread}
+                                </span>
+                              )}
+                            </span>
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </>
+                )}
+              </div>
+            </>
+          )}
         </aside>
 
         {/* Переписка */}
         <section className="flex min-w-0 flex-1 flex-col">
           <div className="flex items-center gap-2 border-b border-white/30 px-4 py-2.5 dark:border-white/10">
-            {peer ? (
+            {isTeam ? (
+              <>
+                <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-indigo-500 to-sky-400 text-white">
+                  <Users size={15} />
+                </span>
+                <span className="min-w-0">
+                  <span className="block truncate text-xs font-semibold text-slate-800 dark:text-slate-100">
+                    Общий чат команды
+                  </span>
+                  <span className="block text-[0.62rem] text-slate-500 dark:text-slate-400">
+                    {membersLabel(activeDialog?.member_count)} · видят все
+                  </span>
+                </span>
+              </>
+            ) : peer ? (
               <>
                 <button
                   type="button"
@@ -286,79 +476,93 @@ export default function ChatView({
               <div ref={listRef} className="scrollbar-slim flex-1 overflow-y-auto px-4 py-4">
                 <div className="flex min-h-full flex-col justify-end">
                   {loadingMessages && (
-                  <div className="flex items-center justify-center py-10 text-slate-400">
-                    <Loader2 size={18} className="animate-spin" />
-                  </div>
-                )}
+                    <div className="flex items-center justify-center py-10 text-slate-400">
+                      <Loader2 size={18} className="animate-spin" />
+                    </div>
+                  )}
 
-                {!loadingMessages && !activeId && (
-                  <div className="flex h-full flex-col items-center justify-center gap-2 text-center">
-                    <MessageSquare size={28} className="text-indigo-400/60" />
-                    <p className="text-sm font-semibold text-slate-700 dark:text-slate-200">Выберите, кому написать</p>
-                    <p className="max-w-xs text-xs text-slate-500 dark:text-slate-400">
-                      Слева — сотрудники, с которыми уже есть переписка. Новый диалог открывается из профиля.
+                  {!loadingMessages && !activeId && (
+                    <div className="flex h-full flex-col items-center justify-center gap-2 text-center">
+                      <MessageSquare size={28} className="text-indigo-400/60" />
+                      <p className="text-sm font-semibold text-slate-700 dark:text-slate-200">
+                        Выберите диалог
+                      </p>
+                      <p className="max-w-xs text-xs text-slate-500 dark:text-slate-400">
+                        Общий чат команды всегда сверху, личные диалоги — ниже. Новый диалог — по кнопке «+».
+                      </p>
+                      <button
+                        type="button"
+                        onClick={() => setPickerOpen(true)}
+                        className="glass-btn mt-1 !px-3 !py-1.5 !text-xs"
+                      >
+                        <Plus size={13} /> Начать диалог
+                      </button>
+                    </div>
+                  )}
+
+                  {!loadingMessages && activeId && messages.length === 0 && (
+                    <p className="py-10 text-center text-xs text-slate-500 dark:text-slate-400">
+                      Сообщений пока нет — напишите первым.
                     </p>
-                  </div>
-                )}
+                  )}
 
-                {!loadingMessages && activeId && messages.length === 0 && (
-                  <p className="py-10 text-center text-xs text-slate-500 dark:text-slate-400">
-                    Сообщений пока нет — напишите первым.
-                  </p>
-                )}
+                  {messages.map((message, index) => {
+                    const own = message.author_id === currentUserId;
+                    const author = authorOf(message);
+                    const prev = messages[index - 1];
+                    const showDay = !prev || dayKey(prev.created_at) !== dayKey(message.created_at);
 
-                {messages.map((message, index) => {
-                  const own = message.author_id === currentUserId;
-                  const author = authorOf(message);
-                  const prev = messages[index - 1];
-                  const showDay = !prev || dayKey(prev.created_at) !== dayKey(message.created_at);
-
-                  return (
-                    <div key={message.id}>
-                      {showDay && (
-                        <div className="my-3 flex items-center gap-2">
-                          <span className="h-px flex-1 bg-white/40 dark:bg-white/10" />
-                          <span className="text-[0.6rem] font-medium tracking-wide text-slate-400 uppercase">
-                            {dayLabel(message.created_at)}
-                          </span>
-                          <span className="h-px flex-1 bg-white/40 dark:bg-white/10" />
-                        </div>
-                      )}
-
-                      <div className={`mb-1.5 flex ${own ? 'justify-end' : 'justify-start'}`}>
-                        <div className={`flex max-w-[80%] items-end gap-1.5 ${own ? 'flex-row-reverse' : ''}`}>
-                          {!own && (
-                            <span
-                              className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[0.55rem] font-bold text-white"
-                              style={{ backgroundColor: author?.color || '#6366f1' }}
-                              title={author?.full_name || 'Сотрудник'}
-                            >
-                              {initials(author?.full_name)}
+                    return (
+                      <div key={message.id}>
+                        {showDay && (
+                          <div className="my-3 flex items-center gap-2">
+                            <span className="h-px flex-1 bg-white/40 dark:bg-white/10" />
+                            <span className="text-[0.6rem] font-medium tracking-wide text-slate-400 uppercase">
+                              {dayLabel(message.created_at)}
                             </span>
-                          )}
+                            <span className="h-px flex-1 bg-white/40 dark:bg-white/10" />
+                          </div>
+                        )}
 
-                          <div
-                            className={`rounded-2xl px-3 py-2 text-[0.8rem] leading-snug break-words whitespace-pre-wrap ${
-                              own
-                                ? 'bg-gradient-to-br from-indigo-500 to-sky-500 text-white shadow-sm'
-                                : 'border border-white/50 bg-white/60 text-slate-800 dark:border-white/10 dark:bg-white/10 dark:text-slate-100'
-                            } ${message.pending ? 'opacity-60' : ''}`}
-                          >
-                            {message.body}
-                            <span
-                              className={`mt-1 flex items-center justify-end gap-1 text-[0.58rem] ${
-                                own ? 'text-white/75' : 'text-slate-400'
-                              }`}
+                        <div className={`mb-1.5 flex ${own ? 'justify-end' : 'justify-start'}`}>
+                          <div className={`flex max-w-[80%] items-end gap-1.5 ${own ? 'flex-row-reverse' : ''}`}>
+                            {!own && (
+                              <span
+                                className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[0.55rem] font-bold text-white"
+                                style={{ backgroundColor: author?.color || '#6366f1' }}
+                                title={author?.full_name || 'Сотрудник'}
+                              >
+                                {initials(author?.full_name)}
+                              </span>
+                            )}
+
+                            <div
+                              className={`rounded-2xl px-3 py-2 text-[0.8rem] leading-snug break-words whitespace-pre-wrap ${
+                                own
+                                  ? 'bg-gradient-to-br from-indigo-500 to-sky-500 text-white shadow-sm'
+                                  : 'border border-white/50 bg-white/60 text-slate-800 dark:border-white/10 dark:bg-white/10 dark:text-slate-100'
+                              } ${message.pending ? 'opacity-60' : ''}`}
                             >
-                              {timeOf(message.created_at)}
-                              {own && <Check size={10} />}
-                            </span>
+                              {isTeam && !own && author?.full_name && (
+                                <span className="mb-0.5 block text-[0.62rem] font-semibold text-indigo-600/90 dark:text-indigo-300">
+                                  {author.full_name}
+                                </span>
+                              )}
+                              {message.body}
+                              <span
+                                className={`mt-1 flex items-center justify-end gap-1 text-[0.58rem] ${
+                                  own ? 'text-white/75' : 'text-slate-400'
+                                }`}
+                              >
+                                {timeOf(message.created_at)}
+                                {own && <Check size={10} />}
+                              </span>
+                            </div>
                           </div>
                         </div>
                       </div>
-                    </div>
-                  );
-                })}
+                    );
+                  })}
                 </div>
               </div>
 
@@ -370,7 +574,13 @@ export default function ChatView({
                     onKeyDown={handleKeyDown}
                     rows={1}
                     disabled={!activeId || sending}
-                    placeholder={activeId ? 'Сообщение… (Enter — отправить, Shift+Enter — новая строка)' : 'Выберите диалог'}
+                    placeholder={
+                      activeId
+                        ? isTeam
+                          ? 'Сообщение в общий чат… (Enter — отправить)'
+                          : 'Сообщение… (Enter — отправить, Shift+Enter — новая строка)'
+                        : 'Выберите диалог'
+                    }
                     className="glass-input max-h-32 !min-h-[2.6rem] flex-1 resize-none !py-2 !text-xs"
                   />
                   <button

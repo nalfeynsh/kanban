@@ -13,6 +13,7 @@
 | `migrations/002_telegram.sql` | Только если нужен лишь Telegram (колонка `profiles.telegram`) |
 | `migrations/003_invites_policies.sql` | Права на приглашения: менеджеры создают, админ отзывает |
 | `migrations/004_chat.sql` | Внутренний чат: диалоги, сообщения, RLS, Realtime |
+| `migrations/005_team_chat.sql` | Общий чат команды: `is_team`, `get_or_create_team_chat`, расширенный `my_dialogs` |
 
 Если делаете полный апгрейд — **002 запускать не нужно**, колонка уже входит в 001.
 

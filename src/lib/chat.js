@@ -18,6 +18,11 @@ export async function fetchDialogs() {
   return { dialogs: Array.isArray(data) ? data : [], error };
 }
 
+export async function ensureTeamChat() {
+  const { data, error } = await supabase.rpc('get_or_create_team_chat');
+  return { conversationId: data, error };
+}
+
 export async function openDialog(peerId) {
   const { data, error } = await supabase.rpc('get_or_create_dialog', { p_other: peerId });
   return { conversationId: data, error };

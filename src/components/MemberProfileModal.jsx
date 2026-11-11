@@ -251,7 +251,7 @@ export default function MemberProfileModal({
               className="glass-btn"
               title={`Написать в чат: ${name}`}
             >
-              <MessageSquare size={15} /> Чат
+              <MessageSquare size={15} /> Написать в чат
             </button>
           )}
           {onShowTasks && (
