@@ -6,10 +6,9 @@ param(
 )
 
 $candidates = @(
+  'C:\Windows\Media\chimes.wav',
   'C:\Windows\Media\Windows Notify System Generic.wav',
   'C:\Windows\Media\Windows Notify Calendar.wav',
-  'C:\Windows\Media\Windows Notify Email.wav',
-  'C:\Windows\Media\chimes.wav',
   'C:\Windows\Media\ding.wav'
 )
 
