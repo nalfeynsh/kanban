@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import ChatView from './ChatView';
 import {
   ensureTeamChat,
+  fetchChatCandidates,
   fetchDialogs,
   fetchMessages,
   isChatSchemaMissing,
@@ -29,6 +30,8 @@ export default function ChatModal({
   const [error, setError] = useState('');
   const [schemaMissing, setSchemaMissing] = useState(false);
   const [teamUnavailable, setTeamUnavailable] = useState(false);
+  const [candidates, setCandidates] = useState([]);
+  const [loadingCandidates, setLoadingCandidates] = useState(true);
 
   const profilesById = useMemo(() => new Map(members.map((member) => [member.id, member])), [members]);
 
@@ -97,6 +100,28 @@ export default function ChatModal({
       alive = false;
     };
   }, [peerId, selectDialog]);
+
+  // Список собеседников: только зарегистрированные пользователи (RPC 006)
+  useEffect(() => {
+    let alive = true;
+
+    (async () => {
+      const { candidates: list, error: loadError } = await fetchChatCandidates();
+      if (!alive) return;
+
+      if (loadError) {
+        // Миграция 006 не применена — показываем профили из команды
+        setCandidates(members.filter((member) => member.is_active !== false));
+      } else {
+        setCandidates(list);
+      }
+      setLoadingCandidates(false);
+    })();
+
+    return () => {
+      alive = false;
+    };
+  }, [members]);
 
   // Realtime-подписка на активный диалог
   useEffect(() => {
@@ -172,11 +197,12 @@ export default function ChatModal({
       dialogs={dialogs}
       activeId={activeId}
       messages={messages}
-      members={members}
+      candidates={candidates}
       profilesById={profilesById}
       currentUserId={currentUserId}
       loadingDialogs={loadingDialogs}
       loadingMessages={loadingMessages}
+      loadingCandidates={loadingCandidates}
       sending={sending}
       error={error}
       schemaMissing={schemaMissing}

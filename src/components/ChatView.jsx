@@ -10,7 +10,6 @@ import {
   ExternalLink,
   Check,
   Plus,
-  ChevronLeft,
   Users,
 } from 'lucide-react';
 import { telegramUrl } from '../lib/telegram';
@@ -76,11 +75,12 @@ export default function ChatView({
   dialogs = [],
   activeId = null,
   messages = [],
-  members = [],
+  candidates = [],
   profilesById,
   currentUserId,
   loadingDialogs = false,
   loadingMessages = false,
+  loadingCandidates = false,
   sending = false,
   error = '',
   schemaMissing = false,
@@ -121,7 +121,7 @@ export default function ChatView({
 
   const pickerMembers = useMemo(() => {
     const q = memberQuery.trim().toLowerCase();
-    return members
+    return candidates
       .filter((member) => member.id !== currentUserId)
       .filter((member) =>
         !q
@@ -131,7 +131,7 @@ export default function ChatView({
               .some((value) => String(value).toLowerCase().includes(q)),
       )
       .sort((a, b) => (a.full_name || '').localeCompare(b.full_name || '', 'ru'));
-  }, [members, currentUserId, memberQuery]);
+  }, [candidates, currentUserId, memberQuery]);
 
   // Прокрутка вниз при новых сообщениях
   useEffect(() => {
@@ -157,6 +157,11 @@ export default function ChatView({
       event.preventDefault();
       handleSend();
     }
+  };
+
+  const openPicker = () => {
+    setMemberQuery('');
+    setPickerOpen(true);
   };
 
   const startDialog = (memberId) => {
@@ -188,204 +193,149 @@ export default function ChatView({
               <span className="glass-chip !text-[0.62rem]">{dialogs.length}</span>
               <button
                 type="button"
-                onClick={() => setPickerOpen((prev) => !prev)}
+                onClick={openPicker}
                 className="rounded-lg p-1 text-slate-500 transition hover:bg-white/60 hover:text-indigo-600 dark:text-slate-400 dark:hover:bg-white/10 dark:hover:text-indigo-300"
-                title={pickerOpen ? 'К диалогам' : 'Новый диалог'}
+                title="Новый диалог"
               >
-                {pickerOpen ? <ChevronLeft size={16} /> : <Plus size={16} />}
+                <Plus size={16} />
               </button>
             </div>
           </div>
 
-          {pickerOpen ? (
-            <div className="flex min-h-0 flex-1 flex-col">
-              <div className="px-3 pt-3">
-                <p className="mb-1.5 text-[0.62rem] font-semibold tracking-[0.08em] text-slate-500 uppercase dark:text-slate-400">
-                  Новый диалог
-                </p>
-                <div className="relative">
-                  <Search size={14} className="absolute top-1/2 left-2.5 -translate-y-1/2 text-slate-400" />
-                  <input
-                    type="search"
-                    value={memberQuery}
-                    onChange={(event) => setMemberQuery(event.target.value)}
-                    placeholder="Найти сотрудника…"
-                    className="glass-input !py-1.5 !pl-8 !text-xs"
-                    autoFocus
-                  />
-                </div>
-              </div>
+          <div className="px-3 pt-3">
+            <div className="relative">
+              <Search size={14} className="absolute top-1/2 left-2.5 -translate-y-1/2 text-slate-400" />
+              <input
+                type="search"
+                value={query}
+                onChange={(event) => setQuery(event.target.value)}
+                placeholder="Поиск по имени…"
+                className="glass-input !py-1.5 !pl-8 !text-xs"
+              />
+            </div>
+          </div>
 
-              <div className="scrollbar-slim mt-2 flex-1 overflow-y-auto px-2 pb-2">
-                {pickerMembers.length === 0 && (
-                  <p className="px-3 py-6 text-center text-[0.7rem] text-slate-500 dark:text-slate-400">
-                    Сотрудники не найдены
-                  </p>
-                )}
-                {pickerMembers.map((member) => (
+          <div className="scrollbar-slim mt-2 flex-1 overflow-y-auto px-2 pb-2">
+            {loadingDialogs && (
+              <div className="flex items-center justify-center py-8 text-slate-400">
+                <Loader2 size={18} className="animate-spin" />
+              </div>
+            )}
+
+            {!loadingDialogs && (
+              <>
+                {/* Общий чат */}
+                <p className="px-2 pt-1 pb-1 text-[0.58rem] font-semibold tracking-[0.1em] text-slate-400 uppercase">
+                  Общий чат
+                </p>
+
+                {teamDialog ? (
                   <button
-                    key={member.id}
                     type="button"
-                    onClick={() => startDialog(member.id)}
-                    className="mb-1 flex w-full items-center gap-2.5 rounded-xl px-2 py-2 text-left transition hover:bg-white/50 dark:hover:bg-white/5"
+                    onClick={() => onSelect?.(teamDialog)}
+                    className={`mb-2 flex w-full items-center gap-2.5 rounded-xl px-2 py-2 text-left transition ${
+                      teamDialog.conversation_id === activeId
+                        ? 'bg-indigo-500/15 ring-1 ring-indigo-400/40'
+                        : 'hover:bg-white/50 dark:hover:bg-white/5'
+                    }`}
                   >
-                    <span
-                      className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl text-[0.6rem] font-bold text-white"
-                      style={{ backgroundColor: member.color || '#6366f1' }}
-                    >
-                      {initials(member.full_name)}
+                    <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-indigo-500 to-sky-400 text-white">
+                      <Users size={16} />
                     </span>
                     <span className="min-w-0 flex-1">
-                      <span className="block truncate text-[0.78rem] font-semibold text-slate-800 dark:text-slate-100">
-                        {member.full_name || 'Сотрудник'}
+                      <span className="flex items-center justify-between gap-2">
+                        <span className="truncate text-[0.8rem] font-semibold text-slate-800 dark:text-slate-100">
+                          Общий чат команды
+                        </span>
+                        <span className="shrink-0 text-[0.6rem] text-slate-400">
+                          {dialogTime(teamDialog.last_message_at)}
+                        </span>
                       </span>
-                      <span className="block truncate text-[0.65rem] text-slate-500 dark:text-slate-400">
-                        {member.telegram || member.position_title || 'начать переписку'}
+                      <span className="flex items-center justify-between gap-2">
+                        <span className="truncate text-[0.68rem] text-slate-500 dark:text-slate-400">
+                          {teamDialog.last_message || membersLabel(teamDialog.member_count)}
+                        </span>
+                        {teamDialog.unread > 0 && (
+                          <span className="shrink-0 rounded-full bg-indigo-500 px-1.5 py-0.5 text-[0.58rem] font-bold text-white">
+                            {teamDialog.unread}
+                          </span>
+                        )}
                       </span>
                     </span>
-                    <MessageSquare size={13} className="shrink-0 text-indigo-400" />
                   </button>
-                ))}
-              </div>
-            </div>
-          ) : (
-            <>
-              <div className="px-3 pt-3">
-                <div className="relative">
-                  <Search size={14} className="absolute top-1/2 left-2.5 -translate-y-1/2 text-slate-400" />
-                  <input
-                    type="search"
-                    value={query}
-                    onChange={(event) => setQuery(event.target.value)}
-                    placeholder="Поиск по имени…"
-                    className="glass-input !py-1.5 !pl-8 !text-xs"
-                  />
-                </div>
-              </div>
+                ) : (
+                  <p className="mb-2 rounded-xl border border-dashed border-slate-400/30 px-2 py-2 text-[0.65rem] text-slate-500 dark:border-white/10 dark:text-slate-400">
+                    {teamUnavailable
+                      ? 'Общий чат включится после миграции 005.'
+                      : 'Общий чат создаётся при первом открытии.'}
+                  </p>
+                )}
 
-              <div className="scrollbar-slim mt-2 flex-1 overflow-y-auto px-2 pb-2">
-                {loadingDialogs && (
-                  <div className="flex items-center justify-center py-8 text-slate-400">
-                    <Loader2 size={18} className="animate-spin" />
+                {/* Личные диалоги */}
+                <p className="px-2 pt-1 pb-1 text-[0.58rem] font-semibold tracking-[0.1em] text-slate-400 uppercase">
+                  Личные
+                </p>
+
+                {filteredPrivate.length === 0 && (
+                  <div className="px-2 py-3 text-center">
+                    <p className="mb-2 text-[0.68rem] text-slate-500 dark:text-slate-400">
+                      {privateDialogs.length === 0 ? 'Пока нет личных диалогов' : 'Ничего не найдено'}
+                    </p>
+                    <button
+                      type="button"
+                      onClick={openPicker}
+                      className="glass-btn !px-2.5 !py-1.5 !text-[0.68rem]"
+                    >
+                      <Plus size={13} /> Начать диалог
+                    </button>
                   </div>
                 )}
 
-                {!loadingDialogs && (
-                  <>
-                    {/* Общий чат */}
-                    <p className="px-2 pt-1 pb-1 text-[0.58rem] font-semibold tracking-[0.1em] text-slate-400 uppercase">
-                      Общий чат
-                    </p>
-
-                    {teamDialog ? (
-                      <button
-                        type="button"
-                        onClick={() => onSelect?.(teamDialog)}
-                        className={`mb-2 flex w-full items-center gap-2.5 rounded-xl px-2 py-2 text-left transition ${
-                          teamDialog.conversation_id === activeId
-                            ? 'bg-indigo-500/15 ring-1 ring-indigo-400/40'
-                            : 'hover:bg-white/50 dark:hover:bg-white/5'
-                        }`}
+                {filteredPrivate.map((dialog) => {
+                  const isActive = dialog.conversation_id === activeId;
+                  return (
+                    <button
+                      key={dialog.conversation_id}
+                      type="button"
+                      onClick={() => onSelect?.(dialog)}
+                      className={`mb-1 flex w-full items-center gap-2.5 rounded-xl px-2 py-2 text-left transition ${
+                        isActive
+                          ? 'bg-indigo-500/15 ring-1 ring-indigo-400/40'
+                          : 'hover:bg-white/50 dark:hover:bg-white/5'
+                      }`}
+                    >
+                      <span
+                        className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-[0.65rem] font-bold text-white"
+                        style={{ backgroundColor: dialog.peer_color || '#6366f1' }}
                       >
-                        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-indigo-500 to-sky-400 text-white">
-                          <Users size={16} />
-                        </span>
-                        <span className="min-w-0 flex-1">
-                          <span className="flex items-center justify-between gap-2">
-                            <span className="truncate text-[0.8rem] font-semibold text-slate-800 dark:text-slate-100">
-                              Общий чат команды
-                            </span>
-                            <span className="shrink-0 text-[0.6rem] text-slate-400">
-                              {dialogTime(teamDialog.last_message_at)}
-                            </span>
+                        {initials(dialog.peer_name)}
+                      </span>
+                      <span className="min-w-0 flex-1">
+                        <span className="flex items-center justify-between gap-2">
+                          <span className="truncate text-[0.8rem] font-semibold text-slate-800 dark:text-slate-100">
+                            {dialog.peer_name || 'Сотрудник'}
                           </span>
-                          <span className="flex items-center justify-between gap-2">
-                            <span className="truncate text-[0.68rem] text-slate-500 dark:text-slate-400">
-                              {teamDialog.last_message || membersLabel(teamDialog.member_count)}
-                            </span>
-                            {teamDialog.unread > 0 && (
-                              <span className="shrink-0 rounded-full bg-indigo-500 px-1.5 py-0.5 text-[0.58rem] font-bold text-white">
-                                {teamDialog.unread}
-                              </span>
-                            )}
+                          <span className="shrink-0 text-[0.6rem] text-slate-400">
+                            {dialogTime(dialog.last_message_at)}
                           </span>
                         </span>
-                      </button>
-                    ) : (
-                      <p className="mb-2 rounded-xl border border-dashed border-slate-400/30 px-2 py-2 text-[0.65rem] text-slate-500 dark:border-white/10 dark:text-slate-400">
-                        {teamUnavailable
-                          ? 'Общий чат включится после миграции 005.'
-                          : 'Общий чат создаётся при первом открытии.'}
-                      </p>
-                    )}
-
-                    {/* Личные диалоги */}
-                    <p className="px-2 pt-1 pb-1 text-[0.58rem] font-semibold tracking-[0.1em] text-slate-400 uppercase">
-                      Личные
-                    </p>
-
-                    {filteredPrivate.length === 0 && (
-                      <div className="px-2 py-3 text-center">
-                        <p className="mb-2 text-[0.68rem] text-slate-500 dark:text-slate-400">
-                          {privateDialogs.length === 0 ? 'Пока нет личных диалогов' : 'Ничего не найдено'}
-                        </p>
-                        <button
-                          type="button"
-                          onClick={() => setPickerOpen(true)}
-                          className="glass-btn !px-2.5 !py-1.5 !text-[0.68rem]"
-                        >
-                          <Plus size={13} /> Начать диалог
-                        </button>
-                      </div>
-                    )}
-
-                    {filteredPrivate.map((dialog) => {
-                      const isActive = dialog.conversation_id === activeId;
-                      return (
-                        <button
-                          key={dialog.conversation_id}
-                          type="button"
-                          onClick={() => onSelect?.(dialog)}
-                          className={`mb-1 flex w-full items-center gap-2.5 rounded-xl px-2 py-2 text-left transition ${
-                            isActive
-                              ? 'bg-indigo-500/15 ring-1 ring-indigo-400/40'
-                              : 'hover:bg-white/50 dark:hover:bg-white/5'
-                          }`}
-                        >
-                          <span
-                            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-[0.65rem] font-bold text-white"
-                            style={{ backgroundColor: dialog.peer_color || '#6366f1' }}
-                          >
-                            {initials(dialog.peer_name)}
+                        <span className="flex items-center justify-between gap-2">
+                          <span className="truncate text-[0.68rem] text-slate-500 dark:text-slate-400">
+                            {dialog.last_message || 'Нет сообщений'}
                           </span>
-                          <span className="min-w-0 flex-1">
-                            <span className="flex items-center justify-between gap-2">
-                              <span className="truncate text-[0.8rem] font-semibold text-slate-800 dark:text-slate-100">
-                                {dialog.peer_name || 'Сотрудник'}
-                              </span>
-                              <span className="shrink-0 text-[0.6rem] text-slate-400">
-                                {dialogTime(dialog.last_message_at)}
-                              </span>
+                          {dialog.unread > 0 && (
+                            <span className="shrink-0 rounded-full bg-indigo-500 px-1.5 py-0.5 text-[0.58rem] font-bold text-white">
+                              {dialog.unread}
                             </span>
-                            <span className="flex items-center justify-between gap-2">
-                              <span className="truncate text-[0.68rem] text-slate-500 dark:text-slate-400">
-                                {dialog.last_message || 'Нет сообщений'}
-                              </span>
-                              {dialog.unread > 0 && (
-                                <span className="shrink-0 rounded-full bg-indigo-500 px-1.5 py-0.5 text-[0.58rem] font-bold text-white">
-                                  {dialog.unread}
-                                </span>
-                              )}
-                            </span>
-                          </span>
-                        </button>
-                      );
-                    })}
-                  </>
-                )}
-              </div>
-            </>
-          )}
+                          )}
+                        </span>
+                      </span>
+                    </button>
+                  );
+                })}
+              </>
+            )}
+          </div>
         </aside>
 
         {/* Переписка */}
@@ -492,7 +442,7 @@ export default function ChatView({
                       </p>
                       <button
                         type="button"
-                        onClick={() => setPickerOpen(true)}
+                        onClick={openPicker}
                         className="glass-btn mt-1 !px-3 !py-1.5 !text-xs"
                       >
                         <Plus size={13} /> Начать диалог
@@ -609,6 +559,89 @@ export default function ChatView({
           )}
         </section>
       </div>
+
+      {/* Окно выбора собеседника */}
+      {pickerOpen && (
+        <div
+          className="fixed inset-0 z-[70] flex items-center justify-center bg-slate-950/45 p-4 backdrop-blur-sm"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) setPickerOpen(false);
+          }}
+        >
+          <div className="glass-panel flex max-h-[80vh] w-full max-w-md flex-col overflow-hidden rounded-3xl shadow-2xl">
+            <div className="flex items-center justify-between border-b border-white/30 px-5 py-3 dark:border-white/10">
+              <div>
+                <h3 className="text-sm font-bold text-slate-800 dark:text-slate-100">Кому написать</h3>
+                <p className="text-[0.65rem] text-slate-500 dark:text-slate-400">
+                  Только зарегистрированные сотрудники
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setPickerOpen(false)}
+                className="rounded-xl p-1.5 text-slate-500 transition hover:bg-white/60 hover:text-slate-800 dark:text-slate-400 dark:hover:bg-white/10 dark:hover:text-white"
+                title="Закрыть"
+              >
+                <X size={17} />
+              </button>
+            </div>
+
+            <div className="px-4 pt-3">
+              <div className="relative">
+                <Search size={14} className="absolute top-1/2 left-2.5 -translate-y-1/2 text-slate-400" />
+                <input
+                  type="search"
+                  value={memberQuery}
+                  onChange={(event) => setMemberQuery(event.target.value)}
+                  placeholder="Найти сотрудника…"
+                  className="glass-input !py-1.5 !pl-8 !text-xs"
+                  autoFocus
+                />
+              </div>
+            </div>
+
+            <div className="scrollbar-slim flex-1 overflow-y-auto px-2 py-2">
+              {loadingCandidates && (
+                <div className="flex items-center justify-center py-8 text-slate-400">
+                  <Loader2 size={18} className="animate-spin" />
+                </div>
+              )}
+
+              {!loadingCandidates && pickerMembers.length === 0 && (
+                <p className="px-3 py-8 text-center text-[0.72rem] text-slate-500 dark:text-slate-400">
+                  Никого не найдено. Список берётся из зарегистрированных и активных пользователей.
+                </p>
+              )}
+
+              {!loadingCandidates &&
+                pickerMembers.map((member) => (
+                  <button
+                    key={member.id}
+                    type="button"
+                    onClick={() => startDialog(member.id)}
+                    className="mb-1 flex w-full items-center gap-2.5 rounded-xl px-2.5 py-2 text-left transition hover:bg-white/60 dark:hover:bg-white/5"
+                  >
+                    <span
+                      className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-[0.62rem] font-bold text-white"
+                      style={{ backgroundColor: member.color || '#6366f1' }}
+                    >
+                      {initials(member.full_name)}
+                    </span>
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-[0.8rem] font-semibold text-slate-800 dark:text-slate-100">
+                        {member.full_name || 'Сотрудник'}
+                      </span>
+                      <span className="block truncate text-[0.65rem] text-slate-500 dark:text-slate-400">
+                        {member.telegram || member.position_title || 'начать переписку'}
+                      </span>
+                    </span>
+                    <MessageSquare size={14} className="shrink-0 text-indigo-400" />
+                  </button>
+                ))}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

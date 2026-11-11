@@ -23,6 +23,12 @@ export async function ensureTeamChat() {
   return { conversationId: data, error };
 }
 
+/** Кому можно написать: только зарегистрированные пользователи */
+export async function fetchChatCandidates() {
+  const { data, error } = await supabase.rpc('chat_candidates');
+  return { candidates: Array.isArray(data) ? data : [], error };
+}
+
 export async function openDialog(peerId) {
   const { data, error } = await supabase.rpc('get_or_create_dialog', { p_other: peerId });
   return { conversationId: data, error };
