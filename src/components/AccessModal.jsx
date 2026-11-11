@@ -53,6 +53,7 @@ export default function AccessModal({
   const [notice, setNotice] = useState('');
   const [formError, setFormError] = useState('');
   const [copied, setCopied] = useState('');
+  const [ownerHintOpen, setOwnerHintOpen] = useState(false);
 
   const mayManageRoles = can(currentRole, 'roles.manage');
   const mayViewInvites = can(currentRole, 'invites.view');
@@ -233,25 +234,39 @@ export default function AccessModal({
                   </p>
                   <p className="mt-1">
                     Вы вошли как «{ROLE_META[roleOf({ role: currentRole })]?.label || 'Сотрудник'}».
-                    Чтобы выдавать роли и права, назначьте себя администратором — один раз, в SQL Editor:
+                    Попросите администратора команды выдать вам нужную роль.
                   </p>
-                  <div className="mt-2 flex flex-wrap items-center gap-2">
-                    <code className="min-w-0 flex-1 overflow-x-auto rounded-lg bg-black/5 px-2 py-1 font-mono text-[0.65rem] whitespace-nowrap dark:bg-black/30">
-                      {adminSql}
-                    </code>
-                    <button
-                      type="button"
-                      onClick={() => copy('admin-sql', adminSql)}
-                      className="glass-btn !px-2 !py-1 !text-[0.62rem]"
-                    >
-                      {copied === 'admin-sql' ? <Check size={11} /> : <Copy size={11} />}
-                      {copied === 'admin-sql' ? 'Скопировано' : 'Копировать'}
-                    </button>
-                  </div>
-                  <p className="mt-1.5 text-[0.62rem] opacity-80">
-                    После выполнения обновите страницу. Свою роль через интерфейс изменить нельзя — только другим
-                    сотрудникам.
-                  </p>
+
+                  <button
+                    type="button"
+                    onClick={() => setOwnerHintOpen((value) => !value)}
+                    className="mt-1.5 text-[0.62rem] underline underline-offset-2 opacity-80 transition hover:opacity-100"
+                  >
+                    {ownerHintOpen
+                      ? 'Скрыть инструкцию для владельца'
+                      : 'Я владелец проекта — как назначить администратора?'}
+                  </button>
+
+                  {ownerHintOpen && (
+                    <div className="mt-2 rounded-xl bg-black/5 p-2 dark:bg-black/25">
+                      <p className="mb-1.5 text-[0.65rem] opacity-90">
+                        Один раз выполните в Supabase → SQL Editor, затем обновите страницу:
+                      </p>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <code className="min-w-0 flex-1 overflow-x-auto rounded-lg bg-white/60 px-2 py-1 font-mono text-[0.62rem] whitespace-nowrap dark:bg-black/40">
+                          {adminSql}
+                        </code>
+                        <button
+                          type="button"
+                          onClick={() => copy('admin-sql', adminSql)}
+                          className="glass-btn !px-2 !py-1 !text-[0.62rem]"
+                        >
+                          {copied === 'admin-sql' ? <Check size={11} /> : <Copy size={11} />}
+                          {copied === 'admin-sql' ? 'Скопировано' : 'Копировать'}
+                        </button>
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
 
