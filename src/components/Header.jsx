@@ -41,29 +41,39 @@ export default function Header({
   teamCount = 0,
   memberFilter,
   onClearMemberFilter,
+  onHome,
 }) {
   const displayName = profile?.full_name || user?.email || 'Профиль';
 
   return (
     <header className="sticky top-0 z-40 border-b border-white/40 bg-white/55 backdrop-blur-2xl backdrop-saturate-150 dark:border-white/10 dark:bg-slate-950/55">
       <div className="mx-auto flex max-w-[1800px] flex-wrap items-center gap-3 px-4 py-2.5 sm:px-6">
-        {/* Логотип */}
-        <div className="flex items-center gap-2.5">
-          <div className="relative">
-            <span className="flex h-10 w-10 items-center justify-center overflow-hidden rounded-2xl bg-white/80 shadow-sm ring-1 ring-white/70 dark:bg-white/10 dark:ring-white/15">
-              <img src="/logo.png" alt="Логотип" className="h-9 w-9 object-contain" />
-            </span>
-            <span className="absolute -inset-1 -z-10 rounded-3xl bg-gradient-to-br from-indigo-500/30 to-sky-400/30 blur-md" />
-          </div>
-          <div className="leading-tight">
-            <h1 className="text-base font-bold tracking-tight">
+        {/* Логотип — всегда ведёт на главную */}
+        <button
+          type="button"
+          onClick={onHome}
+          className="group -mx-1 flex items-center gap-2.5 rounded-2xl px-1 py-0.5 text-left transition hover:bg-white/40 focus-visible:ring-2 focus-visible:ring-indigo-400 focus-visible:outline-none dark:hover:bg-white/10"
+          title="На главную"
+          aria-label="Мой Канбан — на главную"
+        >
+          <span className="relative flex h-10 w-10 items-center justify-center">
+            <span className="absolute -inset-1 -z-10 rounded-2xl bg-gradient-to-br from-indigo-500/25 to-sky-400/25 opacity-70 blur-md transition group-hover:opacity-100" />
+            <img
+              src="/logo-mark.png"
+              alt=""
+              className="h-10 w-10 object-contain transition-transform group-hover:scale-105"
+              style={theme === 'dark' ? { filter: 'brightness(1.35) saturate(1.15)' } : undefined}
+            />
+          </span>
+          <span className="leading-tight">
+            <span className="block text-base font-bold tracking-tight">
               <span className="text-gradient">Мой Канбан</span>
-            </h1>
-            <p className="hidden text-[0.65rem] text-slate-500 sm:block dark:text-slate-400">
+            </span>
+            <span className="hidden text-[0.65rem] text-slate-500 sm:block dark:text-slate-400">
               задачи · сроки · команда
-            </p>
-          </div>
-        </div>
+            </span>
+          </span>
+        </button>
 
         {/* Вид */}
         <div className="glass-segment ml-1 sm:ml-3">

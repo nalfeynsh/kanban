@@ -172,7 +172,7 @@ export default function LoginPage() {
         <div className="hidden flex-col justify-between rounded-3xl p-2 lg:flex">
           <div>
             <div className="mb-6 flex items-center gap-3">
-              <img src="/logo.png" alt="Логотип" className="h-11 w-11 rounded-2xl object-contain" />
+              <img src="/logo-mark.png" alt="Логотип" className="h-11 w-11 object-contain" />
               <div>
                 <h1 className="text-2xl font-bold tracking-tight">
                   <span className="text-gradient">Мой Канбан</span>

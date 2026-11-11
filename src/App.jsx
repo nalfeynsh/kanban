@@ -627,6 +627,20 @@ export default function App() {
     setCurrentView(view);
   };
 
+  /** Клик по логотипу — всегда на главную (доска, без фильтров и модалок) */
+  const goHome = () => {
+    setSelectedTask(null);
+    setSelectedMember(null);
+    setIsProfileOpen(false);
+    setIsArchiveOpen(false);
+    setIsTeamOpen(false);
+    setIsAccessOpen(false);
+    setMemberFilter(null);
+    setFilterMode('all');
+    changeView('board');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
   const changeFilter = (mode) => {
     exitSelection();
     setFilterMode(mode);
@@ -813,6 +827,7 @@ export default function App() {
         onTeamClick={() => setIsTeamOpen(true)}
         onAccessClick={() => setIsAccessOpen(true)}
         canAccess={canOpenAccess}
+        onHome={goHome}
         teamCount={allProfiles.length}
         memberFilter={memberFilter}
         onClearMemberFilter={() => setMemberFilter(null)}
