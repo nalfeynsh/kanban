@@ -24,6 +24,7 @@
 	--accent-2: #0ea5e9;
 	--accent-3: #d946ef;
 	--ring: rgba(99, 102, 241, 0.45);
+	color-scheme: light;
 }
 
 .dark {
@@ -42,6 +43,7 @@
 	--accent-2: #38bdf8;
 	--accent-3: #e879f9;
 	--ring: rgba(129, 140, 248, 0.5);
+	color-scheme: dark;
 }
 
 /* ============================================================
@@ -224,6 +226,29 @@ body {
 
 .dark .glass-input {
 	background: rgba(255, 255, 255, 0.06);
+}
+
+/* Выпадающие списки: нативные option не наследуют тему — задаём явно */
+select.glass-input option {
+	background-color: #ffffff;
+	color: #0f172a;
+}
+
+select.glass-input option:checked,
+select.glass-input option:hover {
+	background-color: #eef2ff;
+	color: #312e81;
+}
+
+.dark select.glass-input option {
+	background-color: #111a33;
+	color: #e8edf9;
+}
+
+.dark select.glass-input option:checked,
+.dark select.glass-input option:hover {
+	background-color: #26325a;
+	color: #ffffff;
 }
 
 .glass-input::placeholder {
