@@ -128,7 +128,7 @@ export default function TeamModal({
                 const tasksCount = taskCountByUser?.get(member.id) ?? 0;
 
                 return (
-                  <li key={member.id}>
+                  <li key={member.id} className="relative">
                     <div
                       role="button"
                       tabIndex={0}
@@ -139,7 +139,7 @@ export default function TeamModal({
                           onSelectMember(member);
                         }
                       }}
-                      className="glass-card group flex h-full cursor-pointer items-center gap-3 rounded-2xl p-3"
+                      className="glass-card group flex h-full cursor-pointer items-center gap-3 rounded-2xl p-3 pr-20"
                     >
                       <span
                         className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl text-xs font-bold text-white avatar-ring"
@@ -195,14 +195,14 @@ export default function TeamModal({
                         </div>
                       </div>
 
+                    </div>
+
+                    <div className="absolute top-1/2 right-2 flex -translate-y-1/2 items-center gap-1">
                       {!isSelf && (
                         <button
                           type="button"
-                          onClick={(event) => {
-                            event.stopPropagation();
-                            onOpenChat?.(member);
-                          }}
-                          className="shrink-0 rounded-xl p-1.5 text-slate-400 transition hover:bg-indigo-500/15 hover:text-indigo-600 dark:hover:text-indigo-300"
+                          onClick={() => onOpenChat?.(member)}
+                          className="rounded-xl p-2 text-slate-400 transition hover:bg-indigo-500/15 hover:text-indigo-600 dark:hover:text-indigo-300"
                           title={`Написать в чат: ${member.full_name || 'сотрудник'}`}
                           aria-label={`Написать в чат: ${member.full_name || 'сотрудник'}`}
                         >
@@ -210,10 +210,15 @@ export default function TeamModal({
                         </button>
                       )}
 
-                      <ChevronRight
-                        size={16}
-                        className="shrink-0 text-slate-400 transition-transform group-hover:translate-x-0.5 group-hover:text-indigo-500"
-                      />
+                      <button
+                        type="button"
+                        onClick={() => onSelectMember(member)}
+                        className="rounded-xl p-2 text-slate-400 transition hover:bg-white/50 hover:text-indigo-500 dark:hover:bg-white/5"
+                        title={`Открыть профиль: ${member.full_name || 'сотрудник'}`}
+                        aria-label={`Открыть профиль: ${member.full_name || 'сотрудник'}`}
+                      >
+                        <ChevronRight size={16} />
+                      </button>
                     </div>
                   </li>
                 );
