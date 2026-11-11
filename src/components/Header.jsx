@@ -49,10 +49,13 @@ export default function Header({
     <header className="sticky top-0 z-40 border-b border-white/40 bg-white/55 backdrop-blur-2xl backdrop-saturate-150 dark:border-white/10 dark:bg-slate-950/55">
       <div className="mx-auto flex max-w-[1800px] flex-wrap items-center gap-3 px-4 py-2.5 sm:px-6">
         {/* Логотип — всегда ведёт на главную */}
-        <button
-          type="button"
-          onClick={onHome}
-          className="group -mx-1 flex items-center gap-2.5 rounded-2xl px-1 py-0.5 text-left transition hover:bg-white/40 focus-visible:ring-2 focus-visible:ring-indigo-400 focus-visible:outline-none dark:hover:bg-white/10"
+        <a
+          href="/"
+          onClick={(event) => {
+            event.preventDefault();
+            onHome?.();
+          }}
+          className="group -mx-1 flex items-center gap-2.5 rounded-2xl px-1 py-0.5 text-left no-underline transition hover:bg-white/40 focus-visible:ring-2 focus-visible:ring-indigo-400 focus-visible:outline-none dark:hover:bg-white/10"
           title="На главную"
           aria-label="Мой Канбан — на главную"
         >
@@ -73,7 +76,7 @@ export default function Header({
               задачи · сроки · команда
             </span>
           </span>
-        </button>
+        </a>
 
         {/* Вид */}
         <div className="glass-segment ml-1 sm:ml-3">
