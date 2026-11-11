@@ -18,8 +18,10 @@ export default function ChatModal({
   currentUserId,
   members = [],
   peerId = null,
+  initialConversationId = null,
   onOpenProfile,
   onUnreadChange,
+  onActiveChange,
 }) {
   const [dialogs, setDialogs] = useState([]);
   const [activeId, setActiveId] = useState(null);
@@ -37,6 +39,7 @@ export default function ChatModal({
 
   const selectDialog = useCallback(async (conversationId) => {
     setActiveId(conversationId);
+    onActiveChange?.(conversationId);
     setLoadingMessages(true);
     setError('');
 
@@ -56,7 +59,7 @@ export default function ChatModal({
         dialog.conversation_id === conversationId ? { ...dialog, unread: 0 } : dialog,
       ),
     );
-  }, []);
+  }, [onActiveChange]);
 
   // Загрузка списка диалогов + опционально открытие диалога с сотрудником
   useEffect(() => {
@@ -91,6 +94,11 @@ export default function ChatModal({
         return;
       }
 
+      if (initialConversationId) {
+        await selectDialog(initialConversationId);
+        return;
+      }
+
       // Без указанного сотрудника открываем общий чат команды
       const team = list.find((dialog) => dialog.is_team);
       if (team) await selectDialog(team.conversation_id);
@@ -99,7 +107,7 @@ export default function ChatModal({
     return () => {
       alive = false;
     };
-  }, [peerId, selectDialog]);
+  }, [peerId, initialConversationId, selectDialog]);
 
   // Список собеседников: только зарегистрированные пользователи (RPC 006)
   useEffect(() => {

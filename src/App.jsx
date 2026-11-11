@@ -24,6 +24,14 @@ import MemberProfileModal from './components/MemberProfileModal';
 import BulkActions from './components/BulkActions';
 import AccessModal from './components/AccessModal';
 import ChatModal from './components/ChatModal';
+import Toasts from './components/Toasts';
+import {
+  notificationPermission,
+  playChime,
+  requestNotifications,
+  showSystemNotification,
+  unlockAudio,
+} from './lib/notifications';
 import { TaskCardView } from './components/TaskCard';
 import { supabase } from './supabaseClient';
 import { collectFields, mergeFields, pickFields, profileFields, supports, taskFields } from './lib/schema';
@@ -46,6 +54,16 @@ function sanitizeTask(task) {
   };
 }
 
+function initialsOf(name) {
+  if (!name) return '?';
+  return name
+    .trim()
+    .split(/\s+/)
+    .slice(0, 2)
+    .map((part) => part.charAt(0).toUpperCase())
+    .join('');
+}
+
 export default function App() {
   const [session, setSession] = useState(null);
   const [profile, setProfile] = useState(null);
@@ -65,7 +83,18 @@ export default function App() {
   const [isAccessOpen, setIsAccessOpen] = useState(false);
   const [isChatOpen, setIsChatOpen] = useState(false);
   const [chatPeerId, setChatPeerId] = useState(null);
+  const [chatConversationId, setChatConversationId] = useState(null);
+  const [activeChatId, setActiveChatId] = useState(null);
   const [chatUnread, setChatUnread] = useState(0);
+  const [toasts, setToasts] = useState([]);
+  const [notificationsEnabled, setNotificationsEnabled] = useState(() => {
+    try {
+      return localStorage.getItem('kanban.notifications') !== 'off';
+    } catch {
+      return true;
+    }
+  });
+  const [notificationsPermission, setNotificationsPermission] = useState(() => notificationPermission());
   const [roleSaving, setRoleSaving] = useState(false);
 
   const [currentView, setCurrentView] = useState('board');
@@ -631,10 +660,12 @@ export default function App() {
     setCurrentView(view);
   };
 
-  /** Открыть чат на главной или сразу на диалоге с сотрудником */
-  const openChat = (peerId = null) => {
+  /** Открыть чат на главной, на диалоге с сотрудником или на конкретном диалоге */
+  const openChat = (peerId = null, conversationId = null) => {
     exitSelection();
+    unlockAudio();
     setChatPeerId(peerId);
+    setChatConversationId(conversationId);
     setIsChatOpen(true);
   };
 
@@ -648,6 +679,8 @@ export default function App() {
     setIsAccessOpen(false);
     setIsChatOpen(false);
     setChatPeerId(null);
+    setChatConversationId(null);
+    setActiveChatId(null);
     setMemberFilter(null);
     setFilterMode('all');
     changeView('board');
@@ -657,6 +690,111 @@ export default function App() {
   const changeFilter = (mode) => {
     exitSelection();
     setFilterMode(mode);
+  };
+
+  // --- Уведомления (чат): всплывашки, звук, браузерные оповещения ---
+  const chatViewRef = useRef({ open: false, conversationId: null });
+  const profilesRef = useRef(allProfiles);
+  const notificationsRef = useRef(notificationsEnabled);
+  const openChatRef = useRef(null);
+
+  useEffect(() => {
+    chatViewRef.current = { open: isChatOpen, conversationId: activeChatId };
+  }, [isChatOpen, activeChatId]);
+
+  useEffect(() => {
+    profilesRef.current = allProfiles;
+  }, [allProfiles]);
+
+  useEffect(() => {
+    notificationsRef.current = notificationsEnabled;
+  }, [notificationsEnabled]);
+
+  useEffect(() => {
+    openChatRef.current = openChat;
+  });
+
+  useEffect(() => {
+    const handler = () => unlockAudio();
+    window.addEventListener('pointerdown', handler, { once: true });
+    return () => window.removeEventListener('pointerdown', handler);
+  }, []);
+
+  useEffect(() => {
+    if (!userId) return undefined;
+
+    const channel = supabase
+      .channel('kanban-chat-notifications')
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'messages' },
+        (payload) => {
+          const row = payload.new;
+          if (!row || row.author_id === userId) return;
+
+          const viewed =
+            chatViewRef.current.open &&
+            chatViewRef.current.conversationId === row.conversation_id &&
+            document.hasFocus();
+          if (viewed) return;
+
+          const author = profilesRef.current.find((item) => item.id === row.author_id);
+          const toast = {
+            id: `toast-${row.id}`,
+            title: author?.full_name || 'Сотрудник',
+            body: row.body,
+            color: author?.color,
+            initials: initialsOf(author?.full_name),
+            conversationId: row.conversation_id,
+          };
+
+          setToasts((prev) => [...prev.filter((item) => item.id !== toast.id), toast].slice(-3));
+          window.setTimeout(() => {
+            setToasts((prev) => prev.filter((item) => item.id !== toast.id));
+          }, 8000);
+
+          if (!notificationsRef.current) return;
+
+          playChime();
+          if (!chatViewRef.current.open) setChatUnread((value) => value + 1);
+          if (document.hidden) {
+            showSystemNotification({
+              title: toast.title,
+              body: row.body,
+              tag: row.conversation_id,
+              onClick: () => openChatRef.current?.(null, row.conversation_id),
+            });
+          }
+        },
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [userId]);
+
+  const handleToggleNotifications = async () => {
+    if (notificationsEnabled) {
+      setNotificationsEnabled(false);
+      try {
+        localStorage.setItem('kanban.notifications', 'off');
+      } catch {
+        // приватный режим — не критично
+      }
+      return;
+    }
+
+    unlockAudio();
+    playChime();
+    const permission = await requestNotifications();
+    setNotificationsPermission(permission);
+    setNotificationsEnabled(true);
+    try {
+      localStorage.setItem('kanban.notifications', 'on');
+    } catch {
+      // приватный режим — не критично
+    }
   };
 
   /** Применяет патчи к выбранным задачам и сохраняет их в базе */
@@ -842,6 +980,9 @@ export default function App() {
         canAccess={canOpenAccess}
         onChatClick={() => openChat()}
         chatUnread={chatUnread}
+        notificationsEnabled={notificationsEnabled}
+        notificationsPermission={notificationsPermission}
+        onToggleNotifications={handleToggleNotifications}
         onHome={goHome}
         teamCount={allProfiles.length}
         memberFilter={memberFilter}
@@ -1067,22 +1208,38 @@ export default function App() {
 
       {isChatOpen && (
         <ChatModal
+          key={chatConversationId || 'chat-root'}
           isOpen
           onClose={() => {
             setIsChatOpen(false);
             setChatPeerId(null);
+            setChatConversationId(null);
+            setActiveChatId(null);
           }}
           currentUserId={userId}
           members={allProfiles}
           peerId={chatPeerId}
+          initialConversationId={chatConversationId}
+          onActiveChange={setActiveChatId}
           onUnreadChange={setChatUnread}
           onOpenProfile={(peer) => {
             setIsChatOpen(false);
             setChatPeerId(null);
+            setChatConversationId(null);
+            setActiveChatId(null);
             setSelectedMember(allProfiles.find((item) => item.id === peer.id) ?? peer);
           }}
         />
       )}
+
+      <Toasts
+        toasts={toasts}
+        onDismiss={(id) => setToasts((prev) => prev.filter((item) => item.id !== id))}
+        onOpen={(toast) => {
+          setToasts((prev) => prev.filter((item) => item.id !== toast.id));
+          openChat(null, toast.conversationId);
+        }}
+      />
 
       <MemberProfileModal
         isOpen={Boolean(selectedMember)}

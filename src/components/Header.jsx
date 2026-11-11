@@ -12,6 +12,8 @@ import {
   X,
   ShieldCheck,
   MessageSquare,
+  Bell,
+  BellOff,
 } from 'lucide-react';
 
 function initials(name) {
@@ -41,6 +43,9 @@ export default function Header({
   canAccess = false,
   onChatClick,
   chatUnread = 0,
+  notificationsEnabled = true,
+  notificationsPermission = 'default',
+  onToggleNotifications,
   teamCount = 0,
   memberFilter,
   onClearMemberFilter,
@@ -166,6 +171,25 @@ export default function Header({
         )}
 
         <div className="ml-auto flex items-center gap-1.5 sm:gap-2">
+          <button
+            type="button"
+            onClick={onToggleNotifications}
+            className={`glass-btn relative !px-2.5 !py-1.5 ${
+              notificationsEnabled ? '' : 'opacity-60'
+            }`}
+            title={
+              notificationsEnabled
+                ? notificationsPermission === 'granted'
+                  ? 'Уведомления включены: звук и браузерные оповещения'
+                  : 'Уведомления включены (только внутри Канбана — разрешите браузерные)'
+                : 'Включить уведомления'
+            }
+            aria-pressed={notificationsEnabled}
+          >
+            {notificationsEnabled ? <Bell size={17} /> : <BellOff size={17} />}
+            <span className="hidden xl:inline">Уведомления</span>
+          </button>
+
           <button
             type="button"
             onClick={onChatClick}
