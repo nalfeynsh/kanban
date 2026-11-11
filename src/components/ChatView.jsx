@@ -119,6 +119,16 @@ export default function ChatView({
     return privateDialogs.filter((dialog) => (dialog.peer_name || '').toLowerCase().includes(q));
   }, [privateDialogs, query]);
 
+  // Сотрудники, с которыми ещё нет переписки — можно начать диалог сразу из списка
+  const startable = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    const existing = new Set(privateDialogs.map((dialog) => dialog.peer_id));
+    return candidates
+      .filter((member) => member.id !== currentUserId && !existing.has(member.id))
+      .filter((member) => !q || (member.full_name || '').toLowerCase().includes(q))
+      .sort((a, b) => (a.full_name || '').localeCompare(b.full_name || '', 'ru'));
+  }, [candidates, privateDialogs, currentUserId, query]);
+
   const pickerMembers = useMemo(() => {
     const q = memberQuery.trim().toLowerCase();
     return candidates
@@ -276,7 +286,7 @@ export default function ChatView({
                   Личные
                 </p>
 
-                {filteredPrivate.length === 0 && (
+                {filteredPrivate.length === 0 && startable.length === 0 && (
                   <div className="px-2 py-3 text-center">
                     <p className="mb-2 text-[0.68rem] text-slate-500 dark:text-slate-400">
                       {privateDialogs.length === 0 ? 'Пока нет личных диалогов' : 'Ничего не найдено'}
@@ -333,6 +343,39 @@ export default function ChatView({
                     </button>
                   );
                 })}
+
+                {startable.length > 0 && (
+                  <>
+                    <p className="px-2 pt-2 pb-1 text-[0.58rem] font-semibold tracking-[0.1em] text-slate-400 uppercase">
+                      Сотрудники
+                    </p>
+                    {startable.map((member) => (
+                      <button
+                        key={member.id}
+                        type="button"
+                        onClick={() => onStartDialog?.(member.id)}
+                        className="mb-1 flex w-full items-center gap-2.5 rounded-xl px-2 py-2 text-left opacity-80 transition hover:bg-white/50 hover:opacity-100 dark:hover:bg-white/5"
+                        title={`Написать: ${member.full_name || 'сотрудник'}`}
+                      >
+                        <span
+                          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-[0.65rem] font-bold text-white"
+                          style={{ backgroundColor: member.color || '#6366f1' }}
+                        >
+                          {initials(member.full_name)}
+                        </span>
+                        <span className="min-w-0 flex-1">
+                          <span className="block truncate text-[0.8rem] font-semibold text-slate-800 dark:text-slate-100">
+                            {member.full_name || 'Сотрудник'}
+                          </span>
+                          <span className="block truncate text-[0.65rem] text-slate-500 dark:text-slate-400">
+                            нажмите, чтобы написать
+                          </span>
+                        </span>
+                        <MessageSquare size={13} className="shrink-0 text-indigo-400" />
+                      </button>
+                    ))}
+                  </>
+                )}
               </>
             )}
           </div>
