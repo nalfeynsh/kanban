@@ -29,7 +29,7 @@ function initials(name) {
 }
 
 const TABS = [
-  { key: 'members', label: 'Сотрудники', icon: Users, permission: 'team.view' },
+  { key: 'members', label: 'Роли', icon: Users, permission: 'team.view' },
   { key: 'invites', label: 'Приглашения', icon: KeyRound, permission: 'invites.view' },
   { key: 'matrix', label: 'Права ролей', icon: Table2, permission: 'team.view' },
 ];
@@ -43,6 +43,7 @@ export default function AccessModal({
   onRoleChange,
   roleSaving = false,
   defaultTab = 'members',
+  embedded = false,
 }) {
   const [tab, setTab] = useState(defaultTab);
   const [query, setQuery] = useState('');
@@ -167,36 +168,9 @@ export default function AccessModal({
     setInvites((prev) => prev.filter((item) => item.id !== invite.id));
   };
 
-  return createPortal(
-    <div
-      className="modal-overlay"
-      onMouseDown={(event) => {
-        if (event.target === event.currentTarget) onClose();
-      }}
-    >
-      <div className="modal-panel glass-panel flex max-h-[90vh] w-full max-w-4xl flex-col overflow-hidden rounded-3xl">
-        <div className="flex items-start justify-between gap-4 border-b border-white/30 px-6 py-4 dark:border-white/10">
-          <div>
-            <h2 className="flex items-center gap-2 text-lg font-bold text-slate-900 dark:text-white">
-              <ShieldCheck size={20} className="text-indigo-500 dark:text-indigo-300" />
-              Доступ и права
-            </h2>
-            <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
-              Ваша роль: <b className="font-semibold">{ROLE_META[roleOf(currentRole)]?.label}</b>
-              {!mayManageRoles && ' · роли меняет администратор'}
-            </p>
-          </div>
-          <button
-            type="button"
-            onClick={onClose}
-            className="rounded-xl p-1.5 text-slate-500 transition hover:bg-white/60 hover:text-slate-800 dark:text-slate-400 dark:hover:bg-white/10 dark:hover:text-white"
-            title="Закрыть"
-          >
-            <X size={20} />
-          </button>
-        </div>
-
-        <div className="flex flex-wrap items-center gap-2 px-6 pt-4">
+  const panelBody = (
+    <>
+      <div className="flex flex-wrap items-center gap-2 px-6 pt-4">
           <div className="glass-segment">
             {visibleTabs.map((item) => (
               <button
@@ -558,10 +532,47 @@ export default function AccessModal({
               ? 'Вы можете менять роли — изменения сохраняются сразу.'
               : 'Роли и приглашения меняет администратор команды.'}
           </p>
-          <button type="button" onClick={onClose} className="glass-btn">
-            Закрыть
+          {!embedded && (
+            <button type="button" onClick={onClose} className="glass-btn">
+              Закрыть
+            </button>
+          )}
+        </div>
+    </>
+  );
+
+  if (embedded) return panelBody;
+
+  return createPortal(
+    <div
+      className="modal-overlay"
+      onMouseDown={(event) => {
+        if (event.target === event.currentTarget) onClose();
+      }}
+    >
+      <div className="modal-panel glass-panel flex max-h-[90vh] w-full max-w-4xl flex-col overflow-hidden rounded-3xl">
+        <div className="flex items-start justify-between gap-4 border-b border-white/30 px-6 py-4 dark:border-white/10">
+          <div>
+            <h2 className="flex items-center gap-2 text-lg font-bold text-slate-900 dark:text-white">
+              <ShieldCheck size={20} className="text-indigo-500 dark:text-indigo-300" />
+              Доступ и права
+            </h2>
+            <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
+              Ваша роль: <b className="font-semibold">{ROLE_META[roleOf(currentRole)]?.label}</b>
+              {!mayManageRoles && ' · роли меняет администратор'}
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-xl p-1.5 text-slate-500 transition hover:bg-white/60 hover:text-slate-800 dark:text-slate-400 dark:hover:bg-white/10 dark:hover:text-white"
+            title="Закрыть"
+          >
+            <X size={20} />
           </button>
         </div>
+
+        {panelBody}
       </div>
     </div>,
     document.body,

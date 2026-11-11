@@ -10,7 +10,7 @@ import {
   Archive,
   Layers,
   X,
-  ShieldCheck,
+
   MessageSquare,
   Bell,
   BellOff,
@@ -39,8 +39,6 @@ export default function Header({
   onFilterChange,
   onArchiveClick,
   onTeamClick,
-  onAccessClick,
-  canAccess = false,
   onChatClick,
   chatUnread = 0,
   notificationsEnabled = true,
@@ -204,18 +202,6 @@ export default function Header({
               </span>
             )}
           </button>
-
-          {canAccess && (
-            <button
-              type="button"
-              onClick={onAccessClick}
-              className="glass-btn !px-2.5 !py-1.5"
-              title="Доступ: роли и приглашения"
-            >
-              <ShieldCheck size={17} />
-              <span className="hidden lg:inline">Доступ</span>
-            </button>
-          )}
 
           <button
             type="button"

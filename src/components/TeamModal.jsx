@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import { X, Users, Search, Send, ChevronRight, Mail, ShieldCheck, ListChecks, MessageSquare } from 'lucide-react';
 import { roleLabel } from '../lib/priority';
 import { telegramUrl } from '../lib/telegram';
+import AccessModal from './AccessModal';
 
 function initials(name) {
   if (!name) return '?';
@@ -22,9 +23,13 @@ export default function TeamModal({
   taskCountByUser,
   onSelectMember,
   onOpenChat,
+  currentRole = 'member',
+  onRoleChange,
+  roleSaving = false,
 }) {
   const [query, setQuery] = useState('');
   const [roleFilter, setRoleFilter] = useState('all');
+  const [tab, setTab] = useState('members');
 
   const matchesRole = (member) => {
     if (roleFilter === 'admin') return member.role === 'admin';
@@ -69,7 +74,9 @@ export default function TeamModal({
               Команда
             </h2>
             <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
-              {activeCount} из {members.length} активны · нажмите на сотрудника, чтобы открыть профиль
+              {tab === 'access'
+                ? 'Роли, приглашения и матрица прав'
+                : `${activeCount} из ${members.length} активны · нажмите на сотрудника, чтобы открыть профиль`}
             </p>
           </div>
           <button
@@ -82,6 +89,31 @@ export default function TeamModal({
           </button>
         </div>
 
+        <div className="flex flex-wrap items-center gap-2 px-6 pt-4">
+          <div className="glass-segment">
+            <button
+              type="button"
+              className="glass-segment-btn"
+              data-active={tab === 'members'}
+              onClick={() => setTab('members')}
+            >
+              <Users size={14} />
+              Сотрудники
+            </button>
+            <button
+              type="button"
+              className="glass-segment-btn"
+              data-active={tab === 'access'}
+              onClick={() => setTab('access')}
+            >
+              <ShieldCheck size={14} />
+              Доступ и права
+            </button>
+          </div>
+        </div>
+
+        {tab === 'members' && (
+          <>
         <div className="flex flex-wrap items-center gap-2 px-6 pt-4">
           <div className="relative min-w-[180px] flex-1">
             <Search size={15} className="absolute top-1/2 left-3 -translate-y-1/2 text-slate-400" />
@@ -226,6 +258,23 @@ export default function TeamModal({
             </ul>
           )}
         </div>
+          </>
+        )}
+
+        {tab === 'access' && (
+          <div className="flex min-h-0 flex-1 flex-col">
+            <AccessModal
+              embedded
+              isOpen
+              onClose={onClose}
+              members={members}
+              currentUserId={currentUserId}
+              currentRole={currentRole}
+              onRoleChange={onRoleChange}
+              roleSaving={roleSaving}
+            />
+          </div>
+        )}
       </div>
     </div>,
     document.body,

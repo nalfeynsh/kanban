@@ -22,7 +22,6 @@ import ArchiveModal from './components/ArchiveModal';
 import TeamModal from './components/TeamModal';
 import MemberProfileModal from './components/MemberProfileModal';
 import BulkActions from './components/BulkActions';
-import AccessModal from './components/AccessModal';
 import ChatModal from './components/ChatModal';
 import Toasts from './components/Toasts';
 import {
@@ -40,7 +39,6 @@ import { byPosition, getDueValue, isOverdue } from './lib/format';
 import { normalizePriority } from './lib/priority';
 import { clearLocalTelegram, getLocalTelegram, setLocalTelegram } from './lib/localProfile';
 import { applyTaskUpdates, planTaskMove } from './lib/dnd';
-import { can } from './lib/permissions';
 
 /** Приводим задачу к безопасному виду (старые записи могут иметь null) */
 function sanitizeTask(task) {
@@ -80,7 +78,6 @@ export default function App() {
   const [isProfileOpen, setIsProfileOpen] = useState(false);
   const [isArchiveOpen, setIsArchiveOpen] = useState(false);
   const [isTeamOpen, setIsTeamOpen] = useState(false);
-  const [isAccessOpen, setIsAccessOpen] = useState(false);
   const [isChatOpen, setIsChatOpen] = useState(false);
   const [chatPeerId, setChatPeerId] = useState(null);
   const [chatConversationId, setChatConversationId] = useState(null);
@@ -343,7 +340,6 @@ export default function App() {
   );
 
   const canManageRoles = profile?.role === 'admin';
-  const canOpenAccess = can(profile, 'team.view');
 
   // --- Drag & Drop ---
   const visibleTaskIds = useMemo(() => new Set(visibleTasks.map((task) => task.id)), [visibleTasks]);
@@ -676,7 +672,6 @@ export default function App() {
     setIsProfileOpen(false);
     setIsArchiveOpen(false);
     setIsTeamOpen(false);
-    setIsAccessOpen(false);
     setIsChatOpen(false);
     setChatPeerId(null);
     setChatConversationId(null);
@@ -976,8 +971,6 @@ export default function App() {
         onFilterChange={changeFilter}
         onArchiveClick={() => setIsArchiveOpen(true)}
         onTeamClick={() => setIsTeamOpen(true)}
-        onAccessClick={() => setIsAccessOpen(true)}
-        canAccess={canOpenAccess}
         onChatClick={() => openChat()}
         chatUnread={chatUnread}
         notificationsEnabled={notificationsEnabled}
@@ -1188,23 +1181,14 @@ export default function App() {
         currentUserId={userId}
         taskCountByUser={taskCountByUser}
         onSelectMember={setSelectedMember}
+        currentRole={profile?.role || 'member'}
+        onRoleChange={handleRoleChange}
+        roleSaving={roleSaving}
         onOpenChat={(member) => {
           setIsTeamOpen(false);
           openChat(member.id);
         }}
       />
-
-      {isAccessOpen && (
-        <AccessModal
-          isOpen
-          onClose={() => setIsAccessOpen(false)}
-          members={allProfiles}
-          currentUserId={userId}
-          currentRole={profile?.role || 'member'}
-          onRoleChange={handleRoleChange}
-          roleSaving={roleSaving}
-        />
-      )}
 
       {isChatOpen && (
         <ChatModal
