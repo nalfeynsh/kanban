@@ -590,8 +590,9 @@ textarea.glass-input {
 	--fc-border-color: rgba(148, 163, 184, 0.28);
 	--fc-page-bg-color: transparent;
 	--fc-neutral-bg-color: transparent;
-	--fc-event-bg-color: transparent;
-	--fc-event-border-color: transparent;
+	--fc-event-bg-color: #6366f1;
+	--fc-event-border-color: #4f46e5;
+	--fc-event-text-color: #ffffff;
 	--fc-today-bg-color: rgba(99, 102, 241, 0.08);
 	color: var(--ink);
 	font-family: inherit;
@@ -657,6 +658,10 @@ textarea.glass-input {
 	border-radius: 0.55rem !important;
 	border-width: 1px;
 	border-style: solid;
+	background-color: var(--fc-event-bg-color);
+	border-color: var(--fc-event-border-color);
+	color: #ffffff;
+	overflow: hidden;
 	box-shadow: 0 4px 12px -6px rgba(49, 46, 129, 0.6);
 	cursor: pointer;
 }
@@ -670,6 +675,16 @@ textarea.glass-input {
 	font-size: 0.69rem;
 	font-weight: 500;
 	color: #ffffff !important;
+}
+
+.fc .fc-event-main {
+	color: #ffffff;
+}
+
+.fc .fc-event-title {
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
 }
 
 .fc .fc-daygrid-event.fc-event-past {

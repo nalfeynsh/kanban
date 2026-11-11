@@ -114,9 +114,17 @@ export default function CalendarView({ tasks = [], numberById, onTaskClick, onDa
           headerToolbar={false}
           height="100%"
           dayMaxEvents={4}
+          eventDisplay="block"
           datesSet={(arg) => setCurrentDate(arg.view.currentStart)}
           eventDidMount={(info) => {
             info.el.title = info.event.title;
+            if (info.event.backgroundColor) {
+              info.el.style.backgroundColor = info.event.backgroundColor;
+            }
+            if (info.event.borderColor) {
+              info.el.style.borderColor = info.event.borderColor;
+            }
+            info.el.style.color = '#ffffff';
           }}
         />
       </div>
