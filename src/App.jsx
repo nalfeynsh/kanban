@@ -23,6 +23,7 @@ import TeamModal from './components/TeamModal';
 import MemberProfileModal from './components/MemberProfileModal';
 import BulkActions from './components/BulkActions';
 import ChatModal from './components/ChatModal';
+import HelpModal from './components/HelpModal';
 import Toasts from './components/Toasts';
 import {
   notificationPermission,
@@ -79,6 +80,7 @@ export default function App() {
   const [isProfileOpen, setIsProfileOpen] = useState(false);
   const [isArchiveOpen, setIsArchiveOpen] = useState(false);
   const [isTeamOpen, setIsTeamOpen] = useState(false);
+  const [isHelpOpen, setIsHelpOpen] = useState(false);
   const [isChatOpen, setIsChatOpen] = useState(false);
   const [chatPeerId, setChatPeerId] = useState(null);
   const [chatConversationId, setChatConversationId] = useState(null);
@@ -683,6 +685,7 @@ export default function App() {
     setIsProfileOpen(false);
     setIsArchiveOpen(false);
     setIsTeamOpen(false);
+    setIsHelpOpen(false);
     setIsChatOpen(false);
     setChatPeerId(null);
     setChatConversationId(null);
@@ -985,6 +988,7 @@ export default function App() {
         onArchiveClick={() => setIsArchiveOpen(true)}
         onTeamClick={() => setIsTeamOpen(true)}
         onChatClick={() => openChat()}
+        onHelpClick={() => setIsHelpOpen(true)}
         chatUnread={chatUnread}
         notificationsEnabled={notificationsEnabled}
         notificationsPermission={notificationsPermission}
@@ -1201,6 +1205,18 @@ export default function App() {
         onOpenChat={(member) => {
           setIsTeamOpen(false);
           openChat(member.id);
+        }}
+      />
+
+      <HelpModal
+        isOpen={isHelpOpen}
+        onClose={() => setIsHelpOpen(false)}
+        currentUserId={userId}
+        isAdmin={profile?.role === 'admin'}
+        profiles={allProfiles}
+        onOpenProfile={(member) => {
+          setIsHelpOpen(false);
+          setSelectedMember(allProfiles.find((item) => item.id === member.id) ?? member);
         }}
       />
 

@@ -15,6 +15,7 @@ import {
   MessageSquare,
   Bell,
   BellOff,
+  LifeBuoy,
 } from 'lucide-react';
 
 export default function Header({
@@ -31,6 +32,7 @@ export default function Header({
   onArchiveClick,
   onTeamClick,
   onChatClick,
+  onHelpClick,
   chatUnread = 0,
   notificationsEnabled = true,
   notificationsPermission = 'default',
@@ -217,6 +219,16 @@ export default function Header({
           >
             <Archive size={17} />
             <span className="hidden lg:inline">Архив</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={onHelpClick}
+            className="glass-btn !px-2.5 !py-1.5"
+            title="Помощь: инструкция, новинки, идеи, поддержка"
+            aria-label="Помощь"
+          >
+            <LifeBuoy size={17} />
           </button>
 
           <button
