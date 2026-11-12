@@ -64,7 +64,9 @@ lib/
   chat.js                   — RPC чата, сообщения, Realtime-подписка
   notifications.js          — звук (Web Audio), разрешения и браузерные уведомления
   telegram.js               — нормализация Telegram-ника и ссылка
-supabaseClient.js           — клиент Supabase (env + fallback)
+supabaseClient.js           — клиент Supabase (env + fallback, в prod — same-origin)
+server.js                   — production-сервер Layero Runtime: статика + прокси Supabase
+layero.json                 — runtime node_web, startCommand, порт
 tools/notify-done.cmd       — короткий звуковой сигнал «готово» (агент вызывает в конце ответа)
 ```
 
@@ -182,8 +184,17 @@ tools/notify-done.cmd       — короткий звуковой сигнал �
 - `localhost` в базе допустим только как dev-redirect; при смене домена обновлять оба поля.
 
 ### Layero
-- Переменные: `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`.
-- Сборка `npm run build` → `dist`, после изменения env — Redeploy.
+- Проект `kanban` (`3c61d15c-0ab6-4125-99a3-4c1582c005ed`), репозиторий `nalfeynsh/kanban`, auto-promote из `main`.
+- Тип проекта — **runtime `node_web`** (`layero.json`), запуск `node server.js`, порт 3000, Free-тариф.
+- `server.js` отдаёт `dist/` и проксирует `/auth`, `/rest`, `/storage`, `/realtime` в
+  `https://theybeeteusxwxboczhe.supabase.co`. Это обходит недоступность `*.supabase.co` из РФ.
+- Переменные Layero (`VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`) остаются как есть: в production
+  клиент всё равно ходит на `window.location.origin` (см. `supabaseClient.js`).
+- Проверка живости: `GET /health` → `{"ok":true,"upstream":"…","root":"/app/dist"}`.
+- Preview ветки: `https://kanban-<branch>.layero.app` (слэши в имени заменяются на `-`).
+- Откат: `npx layero deploys list` → `npx layero promote <commit_sha>`.
+- Cold start runtime: первый запрос после простоя 4–12 с (Node), дальше ~0,2 с.
+- Free-лимиты: 6 000 минут работы приложений, 300 тыс. запросов, 15 ГБ трафика, 100 сборок/мес.
 
 ### Миграции
 - `001_kanban_upgrade.sql` — полный апгрейд: задачи, профили, invites, RLS, роли, auth-триггер.
@@ -247,6 +258,7 @@ values ('you@example.com', 'admin', 'bootstrap');
 | 2026-11-12 | Календарь: вкладки «Месяц / Неделя / День», ось времени и создание задачи/встречи выделением слота (`@fullcalendar/timegrid`). |
 | 2026-11-12 | Телефоны в профиле: маска `+7 (999) 123-45-67` при вводе и показе (`lib/phone.js`). |
 | 2026-11-12 | Пароль на мобильном: глаз вынесен из `label`, зона нажатия 36×36, `pointerdown`+`preventDefault`. |
+| 2026-11-13 | Supabase проксируется через `kanban.layero.app` (Layero runtime `node_web`, `server.js`): браузер не обращается к `*.supabase.co`. |
 
 ---
 
@@ -380,6 +392,13 @@ personal_email, telegram, role, position_title, is_active`
   иконку на «перечёркнутый глаз»; скриншот `login-mobile-password-visible.png`. Реальный тап
   на iOS/Android остаётся проверить заказчику. **Задеплоено**: `main` → `97416bc`,
   Layero собрал `index-CoI6BgYu.js`.
+- **Прокси Supabase (13.11.2026):** проект переведён с `spa` на runtime `node_web` (`server.js`,
+  `layero.json`). Проверено на preview и на production `https://kanban.layero.app`:
+  `GET /health` → 200 JSON; вход реальным аккаунтом через `/auth/v1/token` — токен получен;
+  `GET /rest/v1/tasks` с токеном — задачи; `POST /storage/v1/object/...` — 200, публичная
+  ссылка — 200, удаление — 200; WebSocket `/realtime/v1/websocket` — `101 Switching Protocols`.
+  Бандл `index-CtTtxSB8.js` использует `window.location.origin` (same-origin).
+  RU-узлы check-host: 200 OK, ~95 мс. Скриншот `prod-runtime-login.png`.
 - **Телефон (12.11.2026):** `formatPhone` проверен на вариантах `8…`, `+7…`, `999…`, с пробелами и на пустом
   значении; в профиле на стенде поля показывают `+7 (999) 123-45-67` и `+7 (900) 000-00-00`,
   карточка сотрудника и «Поддержка» берут тот же формат. Скриншот `profile-phone-format.png`.
@@ -421,6 +440,9 @@ personal_email, telegram, role, position_title, is_active`
 10. **Файлы чата лежат в публичном bucket `chat-files`** с неугадываемым UUID в пути: сообщение видят
     только участники диалога, но сама ссылка на файл не проверяет доступ. Для строгой приватности —
     signed URL и политика чтения по `is_conversation_member`.
+11. **Runtime-прокси на Layero Free:** холодный старт 4–12 с после простоя (первый вход может
+    подтормозить), лимиты 6 000 минут/мес и 300 тыс. запросов. Если станет тесно — тот же `server.js`
+    переезжает на VPS за 300–600 ₽/мес без изменений кода.
 
 ---
 
