@@ -26,6 +26,48 @@ const PROXY_PATH = /^\/(auth|rest|storage|realtime)(\/|$)/;
 
 /** Последний ответ Яндекса на запрос userinfo — только статус и текст ошибки */
 let lastYandex = { status: null, at: null, error: null };
+/** Последний обмен кода на токен — без самих токенов */
+let lastYandexToken = { status: null, at: null, error: null };
+
+/** Прокси обмена кода Яндекс-токена: нужен, чтобы видеть ошибку обмена */
+async function proxyYandexToken(req, res) {
+  if (req.method !== 'POST') {
+    res.writeHead(405, { Allow: 'POST' });
+    res.end();
+    return;
+  }
+
+  const chunks = [];
+  for await (const chunk of req) chunks.push(chunk);
+  const body = Buffer.concat(chunks);
+
+  const headers = {
+    'Content-Type': req.headers['content-type'] || 'application/x-www-form-urlencoded',
+    Accept: 'application/json',
+  };
+  if (req.headers.authorization) headers.Authorization = req.headers.authorization;
+
+  try {
+    const upstream = await fetch('https://oauth.yandex.ru/token', { method: 'POST', headers, body });
+    const text = await upstream.text();
+
+    lastYandexToken = {
+      status: upstream.status,
+      at: new Date().toISOString(),
+      error: upstream.ok ? null : text.slice(0, 300),
+    };
+
+    res.writeHead(upstream.status, {
+      'Content-Type': upstream.headers.get('content-type') || 'application/json; charset=utf-8',
+      'Cache-Control': 'no-store',
+      'Content-Length': Buffer.byteLength(text),
+    });
+    res.end(text);
+  } catch (error) {
+    console.error(`[yandex-token] ${error?.message || error}`);
+    sendJson(res, 502, { error: 'yandex_unreachable' });
+  }
+}
 
 /**
  * Яндекс принимает токен только как `Authorization: OAuth <token>`,
@@ -221,6 +263,16 @@ const server = http.createServer((req, res) => {
 
   if (urlPath === '/yandex-last') {
     sendJson(res, 200, lastYandex);
+    return;
+  }
+
+  if (urlPath === '/yandex-token') {
+    proxyYandexToken(req, res);
+    return;
+  }
+
+  if (urlPath === '/yandex-token-last') {
+    sendJson(res, 200, lastYandexToken);
     return;
   }
 
