@@ -454,6 +454,9 @@ personal_email, telegram, role, position_title, is_active`
     `/client-oauth-last` и `auth.identities`; если 500 остаётся — смотреть Auth Logs в Supabase
     (Management API `analytics/endpoints/logs` у проекта отвечает `Backend error`).
     Вход по почте и паролю при этом работает штатно.
+    **UI временно скрыт** флагом `YANDEX_LOGIN_ENABLED = false` в `src/lib/features.js`
+    (кнопка на входе и блок привязки в профиле). Вернуть — поставить `true`.
+    Скриншот входа без Яндекса: `login-no-yandex.png`.
 
 ---
 
