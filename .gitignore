@@ -17,4 +17,4 @@ pnpm-debug.log*
 
 # Редакторы
 .vscode/*
-!.vscode/extensions.json
+!.vscode/extensions.json.layero/
