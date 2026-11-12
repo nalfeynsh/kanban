@@ -28,6 +28,32 @@ const PROXY_PATH = /^\/(auth|rest|storage|realtime)(\/|$)/;
 let lastYandex = { status: null, at: null, error: null };
 /** Последний обмен кода на токен — без самих токенов */
 let lastYandexToken = { status: null, at: null, error: null };
+/** Последняя ошибка OAuth, которую прислал браузер после возврата */
+let lastClientOauth = { at: null, code: null, description: null, href: null };
+
+function readJsonBody(req, limit = 4096) {
+  return new Promise((resolve) => {
+    const chunks = [];
+    let size = 0;
+    req.on('data', (chunk) => {
+      size += chunk.length;
+      if (size > limit) {
+        req.destroy();
+        resolve(null);
+        return;
+      }
+      chunks.push(chunk);
+    });
+    req.on('end', () => {
+      try {
+        resolve(JSON.parse(Buffer.concat(chunks).toString('utf8') || '{}'));
+      } catch {
+        resolve(null);
+      }
+    });
+    req.on('error', () => resolve(null));
+  });
+}
 
 /** Прокси обмена кода Яндекс-токена: нужен, чтобы видеть ошибку обмена */
 async function proxyYandexToken(req, res) {
@@ -273,6 +299,26 @@ const server = http.createServer((req, res) => {
 
   if (urlPath === '/yandex-token-last') {
     sendJson(res, 200, lastYandexToken);
+    return;
+  }
+
+  if (urlPath === '/client-oauth-error' && req.method === 'POST') {
+    readJsonBody(req).then((payload) => {
+      if (payload) {
+        lastClientOauth = {
+          at: new Date().toISOString(),
+          code: String(payload.code || '').slice(0, 200),
+          description: String(payload.description || '').slice(0, 1000),
+          href: String(payload.href || '').slice(0, 1000),
+        };
+      }
+      sendJson(res, 200, { ok: true });
+    });
+    return;
+  }
+
+  if (urlPath === '/client-oauth-last') {
+    sendJson(res, 200, lastClientOauth);
     return;
   }
 

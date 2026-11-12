@@ -161,9 +161,22 @@ export default function App() {
     };
   }, []);
 
-  // Ошибку OAuth из URL показываем один раз и убираем из адреса
+  // Ошибку OAuth из URL показываем один раз и убираем из адреса.
+  // Параллельно отправляем её на сервер — так видно точный текст ошибки
+  // даже если пользователь не открывает DevTools.
   useEffect(() => {
-    if (readOAuthError()) cleanOAuthUrl();
+    const error = readOAuthError();
+    if (!error) return;
+    fetch('/client-oauth-error', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        code: error.code,
+        description: error.description,
+        href: window.location.href,
+      }),
+    }).catch(() => {});
+    cleanOAuthUrl();
   }, []);
 
   // --- Профиль ---
