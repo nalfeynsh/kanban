@@ -28,6 +28,7 @@ import {
   daysBetween,
 } from '../lib/gantt';
 import { getPriority } from '../lib/priority';
+import Avatar from './Avatar';
 import { formatDueLong } from '../lib/format';
 import {
   buildCsv,
@@ -56,16 +57,6 @@ const BAR_STYLES = {
   1: 'from-emerald-400 via-emerald-400 to-teal-300',
   0: 'from-indigo-500 via-violet-500 to-sky-400',
 };
-
-function initials(name) {
-  if (!name) return '';
-  return name
-    .trim()
-    .split(/\s+/)
-    .slice(0, 2)
-    .map((part) => part.charAt(0).toUpperCase())
-    .join('');
-}
 
 export default function GanttView({
   tasks = [],
@@ -407,12 +398,12 @@ export default function GanttView({
                   <div className="min-w-0 px-1.5" style={{ width: 132 }}>
                     {assignee || author ? (
                       <span className="flex items-center gap-1.5">
-                        <span
-                          className="flex h-4 w-4 shrink-0 items-center justify-center rounded-full text-[0.45rem] font-bold text-white"
-                          style={{ backgroundColor: (assignee || author)?.color || '#6366f1' }}
-                        >
-                          {initials((assignee || author)?.full_name)}
-                        </span>
+                        <Avatar
+                          name={(assignee || author)?.full_name}
+                          color={(assignee || author)?.color}
+                          src={(assignee || author)?.avatar_url}
+                          className="h-4 w-4 text-[0.45rem]"
+                        />
                         <span className="truncate text-[0.66rem] text-slate-600 dark:text-slate-300">
                           {(assignee || author)?.full_name || '—'}
                         </span>

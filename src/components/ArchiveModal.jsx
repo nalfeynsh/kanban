@@ -12,16 +12,7 @@ import {
 } from 'lucide-react';
 import { formatCreated } from '../lib/format';
 import { isPersonal, isOwner } from '../lib/access';
-
-function initials(name) {
-  if (!name) return '?';
-  return name
-    .trim()
-    .split(/\s+/)
-    .slice(0, 2)
-    .map((part) => part.charAt(0).toUpperCase())
-    .join('');
-}
+import Avatar from './Avatar';
 
 export default function ArchiveModal({
   isOpen,
@@ -165,12 +156,12 @@ export default function ArchiveModal({
                         <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-[0.68rem] text-slate-500 dark:text-slate-400">
                           <span className="flex items-center gap-1.5">
                             {author && (
-                              <span
-                                className="flex h-4 w-4 items-center justify-center rounded-full text-[0.5rem] font-bold text-white"
-                                style={{ backgroundColor: author.color || '#6366f1' }}
-                              >
-                                {initials(author.full_name)}
-                              </span>
+                              <Avatar
+                                name={author.full_name}
+                                color={author.color}
+                                src={author.avatar_url}
+                                className="h-4 w-4 text-[0.5rem]"
+                              />
                             )}
                             Постановщик: <b className="font-semibold text-slate-700 dark:text-slate-200">
                               {author?.full_name || 'неизвестен'}

@@ -34,6 +34,7 @@ import {
 import { TaskCardView } from './components/TaskCard';
 import { supabase } from './supabaseClient';
 import { collectFields, mergeFields, pickFields, profileFields, supports, taskFields } from './lib/schema';
+import { buildTaskQuote } from './lib/quote';
 import { canSeeTask, matchesMode } from './lib/access';
 import { byPosition, getDueValue, isOverdue } from './lib/format';
 import { normalizePriority } from './lib/priority';
@@ -81,6 +82,7 @@ export default function App() {
   const [isChatOpen, setIsChatOpen] = useState(false);
   const [chatPeerId, setChatPeerId] = useState(null);
   const [chatConversationId, setChatConversationId] = useState(null);
+  const [chatDraft, setChatDraft] = useState('');
   const [activeChatId, setActiveChatId] = useState(null);
   const [chatUnread, setChatUnread] = useState(0);
   const [toasts, setToasts] = useState([]);
@@ -665,6 +667,15 @@ export default function App() {
     setIsChatOpen(true);
   };
 
+  /** Цитата из задачи → черновик сообщения в чате (получателя выбирает пользователь) */
+  const handleQuoteToChat = ({ title, number, text }) => {
+    setSelectedTask(null);
+    setChatDraft(buildTaskQuote({ title, number, text }));
+    setChatPeerId(null);
+    setChatConversationId(null);
+    setIsChatOpen(true);
+  };
+
   /** Клик по логотипу — всегда на главную (доска, без фильтров и модалок) */
   const goHome = () => {
     setSelectedTask(null);
@@ -676,6 +687,7 @@ export default function App() {
     setChatPeerId(null);
     setChatConversationId(null);
     setActiveChatId(null);
+    setChatDraft('');
     setMemberFilter(null);
     setFilterMode('all');
     changeView('board');
@@ -739,6 +751,7 @@ export default function App() {
             title: author?.full_name || 'Сотрудник',
             body: row.body,
             color: author?.color,
+            avatar: author?.avatar_url,
             initials: initialsOf(author?.full_name),
             conversationId: row.conversation_id,
           };
@@ -1149,6 +1162,7 @@ export default function App() {
           allProfiles={allProfiles}
           allowedFields={taskSchema}
           currentUserId={userId}
+          onQuoteToChat={handleQuoteToChat}
         />
       )}
 
@@ -1199,11 +1213,13 @@ export default function App() {
             setChatPeerId(null);
             setChatConversationId(null);
             setActiveChatId(null);
+            setChatDraft('');
           }}
           currentUserId={userId}
           members={allProfiles}
           peerId={chatPeerId}
           initialConversationId={chatConversationId}
+          initialDraft={chatDraft}
           onActiveChange={setActiveChatId}
           onUnreadChange={setChatUnread}
           onOpenProfile={(peer) => {

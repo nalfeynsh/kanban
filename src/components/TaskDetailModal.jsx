@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   X,
   CalendarClock,
@@ -19,9 +19,11 @@ import {
   Loader,
   AlertTriangle,
   Send,
+  Quote,
 } from 'lucide-react';
 import TipTapEditor from './TipTapEditor';
 import FilePreviewModal from './FilePreviewModal';
+import Avatar from './Avatar';
 import { supabase } from '../supabaseClient';
 import {
   formatCreated,
@@ -33,16 +35,7 @@ import {
 } from '../lib/format';
 import { PRIORITIES, getPriority, normalizePriority } from '../lib/priority';
 import { supports } from '../lib/schema';
-
-function initials(name) {
-  if (!name) return '?';
-  return name
-    .trim()
-    .split(/\s+/)
-    .slice(0, 2)
-    .map((part) => part.charAt(0).toUpperCase())
-    .join('');
-}
+import { htmlToText } from '../lib/quote';
 
 /** props.task → редактируемая копия (модалка монтируется заново на каждую задачу) */
 function toEditableTask(task) {
@@ -74,6 +67,7 @@ export default function TaskDetailModal({
   allProfiles = [],
   allowedFields,
   currentUserId,
+  onQuoteToChat,
 }) {
   const [editedTask, setEditedTask] = useState(() => toEditableTask(task));
   const [isCopied, setIsCopied] = useState(false);
@@ -84,6 +78,7 @@ export default function TaskDetailModal({
   const [previewFile, setPreviewFile] = useState(null);
   const [isPreviewOpen, setIsPreviewOpen] = useState(false);
   const [formError, setFormError] = useState('');
+  const panelRef = useRef(null);
 
   const dueSupported = supports(allowedFields, 'due_at');
   const startSupported = supports(allowedFields, 'start_at');
@@ -194,12 +189,29 @@ export default function TaskDetailModal({
   const priorityInfo = getPriority(editedTask.priority);
   const assignee = allProfiles.find((profile) => profile.id === editedTask.assignee_id);
 
+  /** Цитата: выделенный в описании текст, иначе описание целиком, иначе название */
+  const handleQuoteToChat = () => {
+    const selection = typeof window !== 'undefined' ? window.getSelection() : null;
+    let selected = '';
+    if (selection && !selection.isCollapsed) {
+      const node = selection.anchorNode;
+      if (node && panelRef.current?.contains(node)) selected = selection.toString();
+    }
+
+    const text = selected.trim() || htmlToText(editedTask.description) || editedTask.title;
+    if (!text) return;
+    onQuoteToChat?.({ title: editedTask.title, number, text });
+  };
+
   return (
     <>
       <div className="modal-overlay" onMouseDown={(event) => {
         if (event.target === event.currentTarget) onClose();
       }}>
-        <div className="modal-panel glass-panel scrollbar-slim max-h-[94vh] w-full max-w-4xl overflow-y-auto rounded-3xl">
+        <div
+          ref={panelRef}
+          className="modal-panel glass-panel scrollbar-slim max-h-[94vh] w-full max-w-4xl overflow-y-auto rounded-3xl"
+        >
           {/* Шапка */}
           <div className="sticky top-0 z-10 flex items-start justify-between gap-4 border-b border-white/30 bg-white/40 px-6 py-4 backdrop-blur-xl dark:border-white/10 dark:bg-slate-950/40">
             <div className="min-w-0 flex-1">
@@ -233,12 +245,12 @@ export default function TaskDetailModal({
               <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-[0.7rem] text-slate-500 dark:text-slate-400">
                 {authorProfile ? (
                   <span className="flex items-center gap-1.5">
-                    <span
-                      className="flex h-5 w-5 items-center justify-center rounded-full text-[0.55rem] font-bold text-white"
-                      style={{ backgroundColor: authorProfile.color || '#6366f1' }}
-                    >
-                      {initials(authorProfile.full_name)}
-                    </span>
+                    <Avatar
+                      name={authorProfile.full_name}
+                      color={authorProfile.color}
+                      src={authorProfile.avatar_url}
+                      className="h-5 w-5 text-[0.55rem]"
+                    />
                     Постановщик: {authorProfile.full_name}
                   </span>
                 ) : (
@@ -259,12 +271,12 @@ export default function TaskDetailModal({
 
                 {assignee && (
                   <span className="flex items-center gap-1.5">
-                    <span
-                      className="flex h-5 w-5 items-center justify-center rounded-full text-[0.55rem] font-bold text-white"
-                      style={{ backgroundColor: assignee.color || '#6366f1' }}
-                    >
-                      {initials(assignee.full_name)}
-                    </span>
+                    <Avatar
+                      name={assignee.full_name}
+                      color={assignee.color}
+                      src={assignee.avatar_url}
+                      className="h-5 w-5 text-[0.55rem]"
+                    />
                     Исполнитель: {assignee.full_name}
                   </span>
                 )}
@@ -288,16 +300,26 @@ export default function TaskDetailModal({
                 <div className="flex items-center gap-2 text-sm font-semibold text-slate-700 dark:text-slate-200">
                   <AlignLeft size={16} /> Описание
                 </div>
-                {(editedTask.description || editedTask.links.length > 0 || editedTask.files.length > 0) && (
+                <div className="flex flex-wrap items-center justify-end gap-1.5">
                   <button
                     type="button"
-                    onClick={handleCopyAll}
+                    onClick={handleQuoteToChat}
                     className="glass-btn !px-2 !py-1 !text-[0.7rem]"
+                    title="Процитировать в чат: выделенный текст или всё описание"
                   >
-                    {isCopied ? <Check size={12} className="text-emerald-500" /> : <Copy size={12} />}
-                    {isCopied ? 'Скопировано' : 'Копировать всё'}
+                    <Quote size={12} /> В чат
                   </button>
-                )}
+                  {(editedTask.description || editedTask.links.length > 0 || editedTask.files.length > 0) && (
+                    <button
+                      type="button"
+                      onClick={handleCopyAll}
+                      className="glass-btn !px-2 !py-1 !text-[0.7rem]"
+                    >
+                      {isCopied ? <Check size={12} className="text-emerald-500" /> : <Copy size={12} />}
+                      {isCopied ? 'Скопировано' : 'Копировать всё'}
+                    </button>
+                  )}
+                </div>
               </div>
 
               <div className="overflow-hidden rounded-2xl border border-white/40 bg-white/30 backdrop-blur-md dark:border-white/10 dark:bg-white/5">

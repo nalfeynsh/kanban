@@ -19,6 +19,7 @@ export default function ChatModal({
   members = [],
   peerId = null,
   initialConversationId = null,
+  initialDraft = '',
   onOpenProfile,
   onUnreadChange,
   onActiveChange,
@@ -215,6 +216,8 @@ export default function ChatModal({
       error={error}
       schemaMissing={schemaMissing}
       teamUnavailable={teamUnavailable}
+      initialConversationId={initialConversationId}
+      initialDraft={initialDraft}
       onSelect={(dialog) => selectDialog(dialog.conversation_id)}
       onSend={handleSend}
       onClose={onClose}

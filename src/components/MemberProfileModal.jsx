@@ -18,16 +18,7 @@ import {
 } from 'lucide-react';
 import { roleLabel, ROLE_OPTIONS } from '../lib/priority';
 import { telegramUrl } from '../lib/telegram';
-
-function initials(name) {
-  if (!name) return '?';
-  return name
-    .trim()
-    .split(/\s+/)
-    .slice(0, 2)
-    .map((part) => part.charAt(0).toUpperCase())
-    .join('');
-}
+import Avatar from './Avatar';
 
 function ContactRow({ icon: Icon, label, value, href, muted }) {
   return (
@@ -128,12 +119,13 @@ export default function MemberProfileModal({
 
         <div className="-mt-10 px-6 pt-1 pb-5">
           <div className="flex items-end gap-3">
-            <span
-              className="flex h-20 w-20 items-center justify-center rounded-3xl text-xl font-bold text-white avatar-ring"
-              style={{ backgroundColor: member.color || '#6366f1' }}
-            >
-              {initials(name)}
-            </span>
+            <Avatar
+              name={name}
+              color={member.color}
+              src={member.avatar_url}
+              shape="rounded-3xl"
+              className="h-20 w-20 text-xl avatar-ring"
+            />
             <div className="min-w-0 flex-1 pb-1">
               <h2 className="truncate text-lg leading-tight font-bold text-slate-900 dark:text-white">
                 {name}

@@ -38,6 +38,9 @@ $$;
 
 grant execute on function public.chat_candidates() to authenticated;
 
+-- Снимаем дефолтный PUBLIC-грант: аноним не должен вызывать RPC даже впустую
+revoke execute on function public.chat_candidates() from public, anon;
+
 -- ============================================================
 -- Проверка:
 --   select * from public.chat_candidates();

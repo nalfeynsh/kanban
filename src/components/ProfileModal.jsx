@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import {
   X,
@@ -14,10 +14,14 @@ import {
   Copy,
   Check,
   ExternalLink,
+  Camera,
+  Trash2,
 } from 'lucide-react';
 import { supabase } from '../supabaseClient';
 import { pickFields, supports } from '../lib/schema';
 import { normalizeTelegram, telegramUrl } from '../lib/telegram';
+import { resizeAvatarFile } from '../lib/image';
+import Avatar from './Avatar';
 
 const EMPTY_FORM = {
   full_name: '',
@@ -29,7 +33,11 @@ const EMPTY_FORM = {
   telegram: '',
   color: '#6366f1',
   show_personal_data: false,
+  avatar_url: '',
 };
+
+/** Кэш-бастер для публичной ссылки: один и тот же путь, но новое фото */
+const avatarVersion = () => Date.now();
 
 function toForm(profile) {
   if (!profile) return { ...EMPTY_FORM };
@@ -43,6 +51,7 @@ function toForm(profile) {
     telegram: profile.telegram || '',
     color: profile.color || '#6366f1',
     show_personal_data: Boolean(profile.show_personal_data),
+    avatar_url: profile.avatar_url || '',
   };
 }
 
@@ -59,11 +68,17 @@ export default function ProfileModal({
   const [errorMsg, setErrorMsg] = useState('');
   const [savedMsg, setSavedMsg] = useState('');
   const [sqlCopied, setSqlCopied] = useState(false);
+  const [uploadingAvatar, setUploadingAvatar] = useState(false);
+  const [avatarError, setAvatarError] = useState('');
+  const avatarInputRef = useRef(null);
 
   const profileId = profile?.id || user?.id || null;
   const telegramSupported = supports(allowedFields, 'telegram');
+  const avatarSupported = supports(allowedFields, 'avatar_url');
   const telegramPreview = telegramUrl(formData.telegram);
   const telegramSql = 'alter table public.profiles add column if not exists telegram text;';
+  const avatarSql =
+    'alter table public.profiles add column if not exists avatar_url text; -- + bucket avatars, см. migration 008';
 
   const copyTelegramSql = async () => {
     try {
@@ -72,6 +87,55 @@ export default function ProfileModal({
       setTimeout(() => setSqlCopied(false), 2000);
     } catch {
       setSqlCopied(false);
+    }
+  };
+
+  const handleAvatarFile = async (event) => {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file || !profileId) return;
+
+    if (!file.type.startsWith('image/')) {
+      setAvatarError('Нужен файл изображения: JPG, PNG или WebP.');
+      return;
+    }
+    if (file.size > 8 * 1024 * 1024) {
+      setAvatarError('Файл больше 8 МБ — выберите картинку поменьше.');
+      return;
+    }
+
+    setUploadingAvatar(true);
+    setAvatarError('');
+    try {
+      const blob = await resizeAvatarFile(file, 256);
+      const path = `${profileId}/avatar.jpg`;
+      const { error: uploadError } = await supabase.storage
+        .from('avatars')
+        .upload(path, blob, { upsert: true, contentType: 'image/jpeg', cacheControl: '3600' });
+      if (uploadError) throw uploadError;
+
+      const { data } = supabase.storage.from('avatars').getPublicUrl(path);
+      setField('avatar_url', `${data.publicUrl}?v=${avatarVersion()}`);
+    } catch (error) {
+      const message = error?.message || 'неизвестная ошибка';
+      setAvatarError(
+        /bucket|not found|does not exist/i.test(message)
+          ? 'Хранилище для аватарок ещё не создано — примените миграцию 008.'
+          : `Не удалось загрузить фото: ${message}`,
+      );
+    } finally {
+      setUploadingAvatar(false);
+    }
+  };
+
+  const removeAvatar = async () => {
+    setAvatarError('');
+    setField('avatar_url', '');
+    if (!profileId) return;
+    try {
+      await supabase.storage.from('avatars').remove([`${profileId}/avatar.jpg`]);
+    } catch {
+      // файла может уже не быть — ссылку всё равно убираем
     }
   };
 
@@ -115,6 +179,7 @@ export default function ProfileModal({
       telegram: telegramValue,
       color: formData.color,
       show_personal_data: formData.show_personal_data,
+      avatar_url: formData.avatar_url || null,
     };
 
     const migrationHint = telegramSupported
@@ -178,12 +243,13 @@ export default function ProfileModal({
       <div className="modal-panel glass-panel w-full max-w-xl overflow-hidden rounded-3xl">
         <div className="flex items-start justify-between gap-4 border-b border-white/30 px-6 py-4 dark:border-white/10">
           <div className="flex items-center gap-3">
-            <span
-              className="flex h-11 w-11 items-center justify-center rounded-2xl text-sm font-bold text-white shadow-lg"
-              style={{ backgroundColor: formData.color || '#6366f1' }}
-            >
-              {(formData.full_name || user?.email || '?').trim().slice(0, 1).toUpperCase()}
-            </span>
+            <Avatar
+              name={formData.full_name || user?.email}
+              color={formData.color}
+              src={formData.avatar_url}
+              shape="rounded-2xl"
+              className="h-11 w-11 text-sm shadow-lg"
+            />
             <div>
               <h2 className="text-lg font-bold text-slate-900 dark:text-white">Мой профиль</h2>
               <p className="flex items-center gap-1 text-xs text-slate-500 dark:text-slate-400">
@@ -206,6 +272,63 @@ export default function ProfileModal({
             <h3 className="flex items-center gap-1.5 text-[0.68rem] font-semibold tracking-[0.12em] text-slate-500 uppercase dark:text-slate-400">
               <BadgeCheck size={13} /> Основное
             </h3>
+
+            <div className="flex flex-wrap items-center gap-3 rounded-2xl border border-white/40 bg-white/30 p-3 dark:border-white/10 dark:bg-white/5">
+              <Avatar
+                name={formData.full_name || user?.email}
+                color={formData.color}
+                src={formData.avatar_url}
+                shape="rounded-2xl"
+                className="h-16 w-16 text-lg shadow-md"
+              />
+              <div className="min-w-0 flex-1 space-y-1.5">
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={() => avatarInputRef.current?.click()}
+                    disabled={uploadingAvatar || !avatarSupported}
+                    className="glass-btn !px-2.5 !py-1.5 !text-[0.7rem]"
+                  >
+                    {uploadingAvatar ? (
+                      <Loader2 size={13} className="animate-spin" />
+                    ) : (
+                      <Camera size={13} />
+                    )}
+                    {formData.avatar_url ? 'Заменить фото' : 'Загрузить фото'}
+                  </button>
+                  {formData.avatar_url && (
+                    <button
+                      type="button"
+                      onClick={removeAvatar}
+                      className="glass-btn !px-2.5 !py-1.5 !text-[0.7rem]"
+                      title="Удалить фото"
+                    >
+                      <Trash2 size={13} /> Удалить
+                    </button>
+                  )}
+                </div>
+                <input
+                  ref={avatarInputRef}
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp"
+                  onChange={handleAvatarFile}
+                  className="hidden"
+                />
+                <p className="text-[0.65rem] text-slate-500 dark:text-slate-400">
+                  JPG, PNG или WebP. Обрежем в квадрат и сожмём до 256×256 — как иконка в шапке.
+                </p>
+                {!avatarSupported && (
+                  <p className="text-[0.65rem] text-amber-700 dark:text-amber-300">
+                    В базе ещё нет колонки <code className="font-mono">profiles.avatar_url</code> — примените
+                    миграцию <code className="font-mono">008_avatars.sql</code>. {avatarSql}
+                  </p>
+                )}
+                {avatarError && (
+                  <p className="text-[0.65rem] text-rose-600 dark:text-rose-300">{avatarError}</p>
+                )}
+              </div>
+            </div>
+
             <div className="grid gap-3 sm:grid-cols-2">
               <label className="block">
                 <span className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-300">ФИО</span>

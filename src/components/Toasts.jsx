@@ -1,4 +1,5 @@
 import { MessageSquare, Users, X } from 'lucide-react';
+import Avatar from './Avatar';
 
 /** Всплывающие уведомления в правом нижнем углу */
 export default function Toasts({ toasts = [], onDismiss, onOpen }) {
@@ -17,12 +18,22 @@ export default function Toasts({ toasts = [], onDismiss, onOpen }) {
             className="flex min-w-0 flex-1 items-start gap-2.5 text-left"
             title="Открыть чат"
           >
-            <span
-              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-[0.6rem] font-bold text-white"
-              style={{ backgroundColor: toast.color || '#6366f1' }}
-            >
-              {toast.isTeam ? <Users size={15} /> : toast.initials}
-            </span>
+            {toast.isTeam ? (
+              <span
+                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-white"
+                style={{ backgroundColor: toast.color || '#6366f1' }}
+              >
+                <Users size={15} />
+              </span>
+            ) : (
+              <Avatar
+                name={toast.title}
+                color={toast.color}
+                src={toast.avatar}
+                shape="rounded-xl"
+                className="h-9 w-9 text-[0.6rem]"
+              />
+            )}
             <span className="min-w-0 flex-1">
               <span className="flex items-center gap-1.5">
                 <span className="truncate text-[0.78rem] font-semibold text-slate-800 dark:text-slate-100">

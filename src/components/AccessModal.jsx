@@ -17,16 +17,7 @@ import {
 import { supabase } from '../supabaseClient';
 import { PERMISSIONS, ROLE_META, ROLE_ORDER, can, roleOf } from '../lib/permissions';
 import { ROLE_OPTIONS } from '../lib/priority';
-
-function initials(name) {
-  if (!name) return '?';
-  return name
-    .trim()
-    .split(/\s+/)
-    .slice(0, 2)
-    .map((part) => part.charAt(0).toUpperCase())
-    .join('');
-}
+import Avatar from './Avatar';
 
 const TABS = [
   { key: 'members', label: 'Роли', icon: Users, permission: 'team.view' },
@@ -255,12 +246,13 @@ export default function AccessModal({
                     key={member.id}
                     className="flex flex-wrap items-center gap-3 rounded-2xl border border-white/45 bg-white/35 p-3 dark:border-white/10 dark:bg-white/5"
                   >
-                    <span
-                      className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl text-[0.7rem] font-bold text-white"
-                      style={{ backgroundColor: member.color || '#6366f1' }}
-                    >
-                      {initials(member.full_name)}
-                    </span>
+                    <Avatar
+                      name={member.full_name}
+                      color={member.color}
+                      src={member.avatar_url}
+                      shape="rounded-2xl"
+                      className="h-10 w-10 text-[0.7rem]"
+                    />
 
                     <div className="min-w-0 flex-1">
                       <p className="flex items-center gap-1.5 truncate text-sm font-semibold text-slate-800 dark:text-slate-100">

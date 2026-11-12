@@ -12,16 +12,7 @@ import {
 } from 'lucide-react';
 import { formatDueBadge, getDueValue, isOverdue } from '../lib/format';
 import { getPriority } from '../lib/priority';
-
-function initials(name) {
-  if (!name) return '?';
-  return name
-    .trim()
-    .split(/\s+/)
-    .slice(0, 2)
-    .map((part) => part.charAt(0).toUpperCase())
-    .join('');
-}
+import Avatar from './Avatar';
 
 /** Чистая презентационная карточка — используется и в доске, и в DragOverlay */
 export function TaskCardView({
@@ -173,13 +164,13 @@ export function TaskCardView({
 
         <div className="flex shrink-0 items-center gap-1">
           {person && (
-            <span
-              className="flex h-6 w-6 items-center justify-center rounded-full text-[0.6rem] font-bold text-white avatar-ring"
-              style={{ backgroundColor: person.color || '#6366f1' }}
+            <Avatar
+              name={person.full_name}
+              color={person.color}
+              src={person.avatar_url}
+              className="h-6 w-6 text-[0.6rem] avatar-ring"
               title={personLabel}
-            >
-              {initials(person.full_name)}
-            </span>
+            />
           )}
 
           {onDelete && !selectionMode && (

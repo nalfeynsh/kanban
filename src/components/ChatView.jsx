@@ -13,16 +13,7 @@ import {
   Users,
 } from 'lucide-react';
 import { telegramUrl } from '../lib/telegram';
-
-function initials(name) {
-  if (!name) return '?';
-  return name
-    .trim()
-    .split(/\s+/)
-    .slice(0, 2)
-    .map((part) => part.charAt(0).toUpperCase())
-    .join('');
-}
+import Avatar from './Avatar';
 
 const pad = (n) => String(n).padStart(2, '0');
 
@@ -68,6 +59,63 @@ function membersLabel(count) {
 }
 
 /**
+ * Текст сообщения: строки «> …» рисуем как цитату,
+ * остальное — обычным текстом с сохранением переносов.
+ */
+function MessageBody({ text, own }) {
+  const lines = String(text ?? '').split('\n');
+  const blocks = [];
+  let plain = [];
+  let quote = [];
+
+  const flushPlain = () => {
+    if (plain.length) {
+      blocks.push({ type: 'plain', text: plain.join('\n') });
+      plain = [];
+    }
+  };
+  const flushQuote = () => {
+    if (quote.length) {
+      blocks.push({ type: 'quote', text: quote.join('\n') });
+      quote = [];
+    }
+  };
+
+  for (const line of lines) {
+    if (/^>\s?/.test(line)) {
+      flushPlain();
+      quote.push(line.replace(/^>\s?/, ''));
+    } else {
+      flushQuote();
+      plain.push(line);
+    }
+  }
+  flushPlain();
+  flushQuote();
+
+  return (
+    <>
+      {blocks.map((block, index) =>
+        block.type === 'quote' ? (
+          <blockquote
+            key={`quote-${index}`}
+            className={`my-1 border-l-2 py-0.5 pl-2 text-[0.78rem] italic ${
+              own ? 'border-white/70 text-white/95' : 'border-indigo-400/70 text-slate-700 dark:text-slate-200'
+            }`}
+          >
+            {block.text}
+          </blockquote>
+        ) : (
+          <span key={`text-${index}`} className="block whitespace-pre-wrap">
+            {block.text}
+          </span>
+        ),
+      )}
+    </>
+  );
+}
+
+/**
  * Презентационная часть чата — без запросов, чтобы её можно было
  * отрисовать в стенде и протестировать отдельно.
  */
@@ -91,9 +139,10 @@ export default function ChatView({
   onOpenProfile,
   onStartDialog,
   onRetry,
+  initialDraft = '',
 }) {
   const [query, setQuery] = useState('');
-  const [draft, setDraft] = useState('');
+  const [draft, setDraft] = useState(initialDraft || '');
   const [pickerOpen, setPickerOpen] = useState(false);
   const [memberQuery, setMemberQuery] = useState('');
   const listRef = useRef(null);
@@ -106,6 +155,7 @@ export default function ChatView({
         full_name: activeDialog.peer_name,
         color: activeDialog.peer_color,
         telegram: activeDialog.peer_telegram,
+        avatar_url: profilesById?.get?.(activeDialog.peer_id)?.avatar_url || '',
       }
     : null;
   const peerTelegram = peer ? telegramUrl(peer.telegram) : null;
@@ -314,12 +364,13 @@ export default function ChatView({
                           : 'hover:bg-white/50 dark:hover:bg-white/5'
                       }`}
                     >
-                      <span
-                        className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-[0.65rem] font-bold text-white"
-                        style={{ backgroundColor: dialog.peer_color || '#6366f1' }}
-                      >
-                        {initials(dialog.peer_name)}
-                      </span>
+                      <Avatar
+                        name={dialog.peer_name}
+                        color={dialog.peer_color}
+                        src={profilesById?.get?.(dialog.peer_id)?.avatar_url}
+                        shape="rounded-xl"
+                        className="h-9 w-9 text-[0.65rem]"
+                      />
                       <span className="min-w-0 flex-1">
                         <span className="flex items-center justify-between gap-2">
                           <span className="truncate text-[0.8rem] font-semibold text-slate-800 dark:text-slate-100">
@@ -357,12 +408,13 @@ export default function ChatView({
                         className="mb-1 flex w-full items-center gap-2.5 rounded-xl px-2 py-2 text-left opacity-80 transition hover:bg-white/50 hover:opacity-100 dark:hover:bg-white/5"
                         title={`Написать: ${member.full_name || 'сотрудник'}`}
                       >
-                        <span
-                          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-[0.65rem] font-bold text-white"
-                          style={{ backgroundColor: member.color || '#6366f1' }}
-                        >
-                          {initials(member.full_name)}
-                        </span>
+                        <Avatar
+                          name={member.full_name}
+                          color={member.color}
+                          src={profilesById?.get?.(member.id)?.avatar_url || member.avatar_url}
+                          shape="rounded-xl"
+                          className="h-9 w-9 text-[0.65rem]"
+                        />
                         <span className="min-w-0 flex-1">
                           <span className="block truncate text-[0.8rem] font-semibold text-slate-800 dark:text-slate-100">
                             {member.full_name || 'Сотрудник'}
@@ -406,12 +458,13 @@ export default function ChatView({
                   className="flex min-w-0 items-center gap-2 rounded-xl px-1 py-0.5 text-left transition hover:bg-white/50 dark:hover:bg-white/5"
                   title="Открыть профиль"
                 >
-                  <span
-                    className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl text-[0.6rem] font-bold text-white"
-                    style={{ backgroundColor: peer.color || '#6366f1' }}
-                  >
-                    {initials(peer.full_name)}
-                  </span>
+                  <Avatar
+                    name={peer.full_name}
+                    color={peer.color}
+                    src={peer.avatar_url}
+                    shape="rounded-xl"
+                    className="h-8 w-8 text-[0.6rem]"
+                  />
                   <span className="min-w-0">
                     <span className="block truncate text-xs font-semibold text-slate-800 dark:text-slate-100">
                       {peer.full_name}
@@ -520,13 +573,13 @@ export default function ChatView({
                         <div className={`mb-1.5 flex ${own ? 'justify-end' : 'justify-start'}`}>
                           <div className={`flex max-w-[80%] items-end gap-1.5 ${own ? 'flex-row-reverse' : ''}`}>
                             {!own && (
-                              <span
-                                className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[0.55rem] font-bold text-white"
-                                style={{ backgroundColor: author?.color || '#6366f1' }}
+                              <Avatar
+                                name={author?.full_name}
+                                color={author?.color}
+                                src={profilesById?.get?.(message.author_id)?.avatar_url || author?.avatar_url}
+                                className="h-6 w-6 text-[0.55rem]"
                                 title={author?.full_name || 'Сотрудник'}
-                              >
-                                {initials(author?.full_name)}
-                              </span>
+                              />
                             )}
 
                             <div
@@ -547,7 +600,7 @@ export default function ChatView({
                                   {own ? 'Вы' : author?.full_name || 'Сотрудник'}
                                 </span>
                               )}
-                              {message.body}
+                              <MessageBody text={message.body} own={own} />
                               <span
                                 className={`mt-1 flex items-center justify-end gap-1 text-[0.58rem] ${
                                   own ? 'text-white/75' : 'text-slate-400'
@@ -670,12 +723,13 @@ export default function ChatView({
                     onClick={() => startDialog(member.id)}
                     className="mb-1 flex w-full items-center gap-2.5 rounded-xl px-2.5 py-2 text-left transition hover:bg-white/60 dark:hover:bg-white/5"
                   >
-                    <span
-                      className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-[0.62rem] font-bold text-white"
-                      style={{ backgroundColor: member.color || '#6366f1' }}
-                    >
-                      {initials(member.full_name)}
-                    </span>
+                    <Avatar
+                      name={member.full_name}
+                      color={member.color}
+                      src={profilesById?.get?.(member.id)?.avatar_url || member.avatar_url}
+                      shape="rounded-xl"
+                      className="h-9 w-9 text-[0.62rem]"
+                    />
                     <span className="min-w-0 flex-1">
                       <span className="block truncate text-[0.8rem] font-semibold text-slate-800 dark:text-slate-100">
                         {member.full_name || 'Сотрудник'}

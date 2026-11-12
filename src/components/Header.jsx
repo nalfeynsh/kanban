@@ -1,4 +1,5 @@
 import ThemeToggle from './ThemeToggle';
+import Avatar from './Avatar';
 import {
   LayoutDashboard,
   CalendarDays,
@@ -15,16 +16,6 @@ import {
   Bell,
   BellOff,
 } from 'lucide-react';
-
-function initials(name) {
-  if (!name) return '?';
-  return name
-    .trim()
-    .split(/\s+/)
-    .slice(0, 2)
-    .map((part) => part.charAt(0).toUpperCase())
-    .join('');
-}
 
 export default function Header({
   theme,
@@ -157,12 +148,12 @@ export default function Header({
             className="glass-chip !py-1 !text-[0.7rem] hover:border-indigo-400/60"
             title="Сбросить фильтр по сотруднику"
           >
-            <span
-              className="flex h-4 w-4 items-center justify-center rounded-full text-[0.5rem] font-bold text-white"
-              style={{ backgroundColor: memberFilter.color || '#6366f1' }}
-            >
-              {initials(memberFilter.full_name)}
-            </span>
+            <Avatar
+              name={memberFilter.full_name}
+              color={memberFilter.color}
+              src={memberFilter.avatar_url}
+              className="h-4 w-4 text-[0.5rem]"
+            />
             {memberFilter.full_name || 'Сотрудник'}
             <X size={11} />
           </button>
@@ -234,12 +225,21 @@ export default function Header({
             className="glass-btn !rounded-full !py-1 !pr-3 !pl-1"
             title="Мой профиль"
           >
-            <span
-              className="flex h-7 w-7 items-center justify-center rounded-full text-[0.65rem] font-bold text-white"
-              style={{ backgroundColor: profile?.color || '#6366f1' }}
-            >
-              {profile?.full_name ? initials(profile.full_name) : <User size={14} />}
-            </span>
+            {profile?.full_name ? (
+              <Avatar
+                name={profile.full_name}
+                color={profile.color}
+                src={profile.avatar_url}
+                className="h-7 w-7 text-[0.65rem]"
+              />
+            ) : (
+              <span
+                className="flex h-7 w-7 items-center justify-center rounded-full text-[0.65rem] font-bold text-white"
+                style={{ backgroundColor: profile?.color || '#6366f1' }}
+              >
+                <User size={14} />
+              </span>
+            )}
             <span className="hidden max-w-[140px] truncate text-xs sm:block">{displayName}</span>
           </button>
 

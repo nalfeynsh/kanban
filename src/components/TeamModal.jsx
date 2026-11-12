@@ -4,16 +4,7 @@ import { X, Users, Search, Send, ChevronRight, Mail, ShieldCheck, ListChecks, Me
 import { roleLabel } from '../lib/priority';
 import { telegramUrl } from '../lib/telegram';
 import AccessModal from './AccessModal';
-
-function initials(name) {
-  if (!name) return '?';
-  return name
-    .trim()
-    .split(/\s+/)
-    .slice(0, 2)
-    .map((part) => part.charAt(0).toUpperCase())
-    .join('');
-}
+import Avatar from './Avatar';
 
 export default function TeamModal({
   isOpen,
@@ -173,12 +164,13 @@ export default function TeamModal({
                       }}
                       className="glass-card group flex h-full cursor-pointer items-center gap-3 rounded-2xl p-3 pr-20"
                     >
-                      <span
-                        className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl text-xs font-bold text-white avatar-ring"
-                        style={{ backgroundColor: member.color || '#6366f1' }}
-                      >
-                        {initials(member.full_name)}
-                      </span>
+                      <Avatar
+                        name={member.full_name}
+                        color={member.color}
+                        src={member.avatar_url}
+                        shape="rounded-2xl"
+                        className="h-11 w-11 text-xs avatar-ring"
+                      />
 
                       <div className="min-w-0 flex-1">
                         <p className="flex items-center gap-1.5 truncate text-sm font-semibold text-slate-800 dark:text-slate-100">
