@@ -100,7 +100,8 @@ async function proxyYandexToken(req, res) {
  * а Supabase (oauth2-клиент) шлёт `Bearer`. Этот эндпоинт принимает
  * Bearer от Supabase, меняет схему на OAuth и проксирует ответ Яндекса.
  */
-async function proxyYandexUserinfo(req, res) {  if (req.method !== 'GET') {
+async function proxyYandexUserinfo(req, res) {
+  if (req.method !== 'GET') {
     res.writeHead(405, { Allow: 'GET' });
     res.end();
     return;
@@ -119,15 +120,33 @@ async function proxyYandexUserinfo(req, res) {  if (req.method !== 'GET') {
     const upstream = await fetch('https://login.yandex.ru/info?format=json', {
       headers: { Authorization: `OAuth ${token}`, Accept: 'application/json' },
     });
-    const body = await upstream.text();
+    const raw = await upstream.text();
+
+    let body = raw;
+    let idType = null;
+
+    if (upstream.ok) {
+      try {
+        const data = JSON.parse(raw);
+        idType = typeof data.id;
+        // GoTrue ждёт provider_id строкой; Яндекс может вернуть число.
+        if (data.id !== undefined) data.id = String(data.id);
+        if (data.default_email !== undefined) data.default_email = String(data.default_email);
+        body = JSON.stringify(data);
+      } catch {
+        // не JSON — отдадим как есть
+      }
+    }
 
     lastYandex = {
       status: upstream.status,
       at: new Date().toISOString(),
-      error: upstream.ok ? null : body.slice(0, 300),
+      idType,
+      error: upstream.ok ? null : raw.slice(0, 300),
     };
+
     res.writeHead(upstream.status, {
-      'Content-Type': upstream.headers.get('content-type') || 'application/json; charset=utf-8',
+      'Content-Type': 'application/json; charset=utf-8',
       'Cache-Control': 'no-store',
       'Content-Length': Buffer.byteLength(body),
     });
