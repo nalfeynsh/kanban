@@ -338,6 +338,7 @@ export default function HelpModal({
               <ul className="space-y-2">
                 {admins.map((admin) => {
                   const telegram = telegramUrl(admin.telegram);
+                  const hasContacts = Boolean(telegram || admin.work_email || admin.work_phone);
                   return (
                     <li
                       key={admin.id}
@@ -397,6 +398,12 @@ export default function HelpModal({
                           </a>
                         )}
                       </div>
+
+                      {!hasContacts && (
+                        <p className="mt-1.5 text-[0.65rem] text-slate-500 dark:text-slate-400">
+                          Контакты не заполнены — напишите в общий чат или откройте профиль.
+                        </p>
+                      )}
                     </li>
                   );
                 })}
