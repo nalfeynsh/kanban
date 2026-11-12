@@ -243,39 +243,50 @@ export default function LoginPage() {
               />
             </label>
 
-            <label className="block">
-              <span className="mb-1 flex items-center gap-1.5 text-xs font-medium text-slate-600 dark:text-slate-300">
+            <div className="block">
+              <label
+                htmlFor="login-password"
+                className="mb-1 flex items-center gap-1.5 text-xs font-medium text-slate-600 dark:text-slate-300"
+              >
                 <Lock size={12} /> Пароль
-              </span>
+              </label>
               <div className="relative">
                 <input
+                  id="login-password"
                   type={showPassword ? 'text' : 'password'}
                   required
                   minLength={isLogin ? 6 : 8}
                   autoComplete={isLogin ? 'current-password' : 'new-password'}
                   value={password}
                   onChange={(event) => setPassword(event.target.value)}
-                  className="glass-input !pr-10"
+                  className="glass-input !pr-12"
                   placeholder="••••••••"
                 />
                 <button
                   type="button"
+                  onPointerDown={(event) => event.preventDefault()}
                   onClick={() => setShowPassword((prev) => !prev)}
-                  className="absolute top-1/2 right-2 -translate-y-1/2 rounded-md p-1 text-slate-400 transition hover:text-slate-600 dark:hover:text-slate-200"
+                  className="absolute top-1/2 right-1 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-lg text-slate-400 transition hover:bg-white/50 hover:text-slate-600 dark:hover:bg-white/10 dark:hover:text-slate-200"
                   title={showPassword ? 'Скрыть пароль' : 'Показать пароль'}
+                  aria-label={showPassword ? 'Скрыть пароль' : 'Показать пароль'}
+                  aria-pressed={showPassword}
                 >
-                  {showPassword ? <EyeOff size={15} /> : <Eye size={15} />}
+                  {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
                 </button>
               </div>
-            </label>
+            </div>
 
             {!isLogin && (
               <>
-                <label className="block">
-                  <span className="mb-1 flex items-center gap-1.5 text-xs font-medium text-slate-600 dark:text-slate-300">
+                <div className="block">
+                  <label
+                    htmlFor="login-password-repeat"
+                    className="mb-1 flex items-center gap-1.5 text-xs font-medium text-slate-600 dark:text-slate-300"
+                  >
                     <Lock size={12} /> Повторите пароль
-                  </span>
+                  </label>
                   <input
+                    id="login-password-repeat"
                     type={showPassword ? 'text' : 'password'}
                     required
                     minLength={8}
@@ -285,7 +296,7 @@ export default function LoginPage() {
                     className="glass-input"
                     placeholder="••••••••"
                   />
-                </label>
+                </div>
 
                 <label className="block">
                   <span className="mb-1 flex items-center gap-1.5 text-xs font-medium text-slate-600 dark:text-slate-300">
