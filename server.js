@@ -24,6 +24,44 @@ const PORT = Number(process.env.PORT) || 3000;
 
 const PROXY_PATH = /^\/(auth|rest|storage|realtime)(\/|$)/;
 
+/**
+ * Яндекс принимает токен только как `Authorization: OAuth <token>`,
+ * а Supabase (oauth2-клиент) шлёт `Bearer`. Этот эндпоинт принимает
+ * Bearer от Supabase, меняет схему на OAuth и проксирует ответ Яндекса.
+ */
+async function proxyYandexUserinfo(req, res) {
+  if (req.method !== 'GET') {
+    res.writeHead(405, { Allow: 'GET' });
+    res.end();
+    return;
+  }
+
+  const token = String(req.headers.authorization || '')
+    .replace(/^Bearer\s+/i, '')
+    .trim();
+
+  if (!token) {
+    sendJson(res, 401, { error: 'missing_token' });
+    return;
+  }
+
+  try {
+    const upstream = await fetch('https://login.yandex.ru/info?format=json', {
+      headers: { Authorization: `OAuth ${token}`, Accept: 'application/json' },
+    });
+    const body = await upstream.text();
+    res.writeHead(upstream.status, {
+      'Content-Type': upstream.headers.get('content-type') || 'application/json; charset=utf-8',
+      'Cache-Control': 'no-store',
+      'Content-Length': Buffer.byteLength(body),
+    });
+    res.end(body);
+  } catch (error) {
+    console.error(`[yandex-userinfo] ${error?.message || error}`);
+    sendJson(res, 502, { error: 'yandex_unreachable' });
+  }
+}
+
 const MIME = {
   '.html': 'text/html; charset=utf-8',
   '.js': 'text/javascript; charset=utf-8',
@@ -165,6 +203,11 @@ const server = http.createServer((req, res) => {
       root: ROOT,
       uptime: Math.round(process.uptime()),
     });
+    return;
+  }
+
+  if (urlPath === '/yandex-userinfo') {
+    proxyYandexUserinfo(req, res);
     return;
   }
 
