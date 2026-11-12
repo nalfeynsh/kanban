@@ -731,6 +731,60 @@ textarea.glass-input {
 	min-height: 84px;
 }
 
+/* Неделя и день: ось времени слева и слоты по часам */
+.fc .fc-timegrid-slot {
+	height: 2.1rem;
+}
+
+.fc .fc-timegrid-slot-minor {
+	border-top-style: dotted;
+	border-top-color: rgba(148, 163, 184, 0.22);
+}
+
+.fc .fc-timegrid-slot-label-cushion,
+.fc .fc-timegrid-axis-cushion {
+	font-size: 0.66rem;
+	font-variant-numeric: tabular-nums;
+	color: var(--ink-muted) !important;
+}
+
+.fc .fc-timegrid-slot-label {
+	border-right: 1px solid var(--fc-border-color);
+}
+
+.fc .fc-timegrid-now-indicator-line {
+	border-color: #ef4444;
+	border-width: 2px 0 0;
+}
+
+.fc .fc-timegrid-now-indicator-arrow {
+	border-color: #ef4444;
+	border-width: 5px 0 5px 6px;
+}
+
+.fc .fc-timegrid-event {
+	border-radius: 0.5rem;
+	border-left-width: 3px;
+	box-shadow: 0 6px 14px -10px rgba(30, 41, 99, 0.6);
+}
+
+.fc .fc-timegrid-event .fc-event-main {
+	padding: 0.15rem 0.3rem;
+}
+
+.fc .fc-timegrid-event .fc-event-time {
+	font-size: 0.62rem;
+	opacity: 0.9;
+}
+
+.fc .fc-highlight {
+	background: rgba(99, 102, 241, 0.18) !important;
+}
+
+.fc .fc-timegrid-col.fc-day-today {
+	background: var(--fc-today-bg-color) !important;
+}
+
 /* ============================================================
    ПРОЧЕЕ
    ============================================================ */

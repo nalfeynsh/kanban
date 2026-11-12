@@ -463,13 +463,14 @@ export default function App() {
     });
   };
 
-  const handleDateClick = (dateStr) => {
-    const due = dateStr ? `${dateStr}T18:00:00` : null;
+  /** Клик по слоту календаря: создаём задачу/встречу на выбранное время */
+  const handleCalendarSlot = ({ start, due }) => {
     setDraftKey((key) => key + 1);
     setSelectedTask({
       id: null,
       title: '',
       description: '',
+      start_at: start,
       due_at: due,
       links: [],
       files: [],
@@ -1119,7 +1120,7 @@ export default function App() {
             tasks={visibleTasks}
             numberById={numberById}
             onTaskClick={setSelectedTask}
-            onDateClick={handleDateClick}
+            onSlotSelect={handleCalendarSlot}
           />
         )}
 
