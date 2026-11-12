@@ -255,8 +255,8 @@ personal_email, telegram, role, position_title, is_active`
 6. ~~Применить `007_team_members.sql`~~ — **выполнено 12.11.2026**: общий чат создан, в нём 3 участника
    (все активные профили).
 7. ~~Задеплоить фронтенд~~ — **выполнено 12.11.2026**: прод-бандл совпадает с локальной сборкой `main`.
-8. Применить `008_avatars.sql` — без неё фото не загрузится: кнопка «Загрузить фото» заблокирована,
-   рядом подсказка про миграцию (аватары остаются инициалами).
+8. ~~Применить `008_avatars.sql`~~ — **выполнено 12.11.2026**: колонка `profiles.avatar_url` создана,
+   bucket `avatars` публичный (лимит 5 МБ), 4 политики Storage (`insert/update/delete_own`, `read_public`).
 
 ### Яндекс-вход: что проверено 11.11.2026
 - `GET /auth/v1/settings` → `external.email: true`, `disable_signup: false`, custom-провайдер не
@@ -314,7 +314,12 @@ personal_email, telegram, role, position_title, is_active`
   кнопка «В чат» в модалке задачи и рендер цитаты в общем чате (своё и чужое сообщение).
   Скриншоты: `chat-quote-light.png`, `chat-quote-dark.png`, `task-quote-button-light.png`,
   `profile-avatar-upload-light.png`, `team-avatars-light.png`. Стенд удалён.
-  Реальная загрузка в Storage не проверена: нужны миграция 008 и вход в аккаунт.
+  **Миграция 008 применена 12.11.2026** (Management API): `profiles.avatar_url` — `text`,
+  bucket `avatars` — `public = true`, `file_size_limit = 5 МБ`, политики `avatars_insert_own`,
+  `avatars_update_own`, `avatars_delete_own`, `avatars_read_public`.
+  **Задеплоено**: `main` → `e15df84`, Layero собрал `index-CfM3KF2C.js` (совпадает с локальной сборкой),
+  в бандле есть «Загрузить фото», «Цитата из задачи», `avatar_url`. Сквозная загрузка фото
+  в Storage ещё не проверена входом в аккаунт.
 - Сквозной сценарий с реальным Supabase не проверялся: нет тестового аккаунта (регистрация закрыта).
 
 ---
