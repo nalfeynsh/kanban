@@ -339,7 +339,8 @@ personal_email, telegram, role, position_title, is_active`
   `chat-file-menu-light.png`, `chat-file-menu-dark.png`, `chat-file-forward-light.png`. Стенд удалён.
   **Миграция 009 применена**: 4 колонки `attachment_*`, bucket `chat-files` (25 МБ), политики
   `chat_files_insert_own` / `chat_files_delete_own` / `chat_files_read_public`; анонимная загрузка — 403.
-  Реальная отправка файла через аккаунт не проверена.
+  **Задеплоено**: `main` → `c923b14`, Layero собрал `index-DzIGxAME.js`; в бандле «Прикрепить файл»,
+  «Переслать», `chat-files`, `attachment_path`. Реальная отправка файла через аккаунт не проверена.
 - Сквозной сценарий с реальным Supabase не проверялся: нет тестового аккаунта (регистрация закрыта).
 
 ---
