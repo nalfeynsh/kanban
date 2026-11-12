@@ -110,7 +110,7 @@ function serveStatic(req, res) {
   try {
     stat = statSync(filePath);
   } catch {
-    stat = null;
+    // файла нет — ниже отдадим index.html (SPA-fallback)
   }
 
   if (!stat || stat.isDirectory()) {

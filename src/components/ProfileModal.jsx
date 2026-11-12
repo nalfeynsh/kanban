@@ -16,8 +16,9 @@ import {
   ExternalLink,
   Camera,
   Trash2,
+  KeyRound,
 } from 'lucide-react';
-import { supabase } from '../supabaseClient';
+import { supabase, authRedirectUrl } from '../supabaseClient';
 import { pickFields, supports } from '../lib/schema';
 import { normalizeTelegram, telegramUrl } from '../lib/telegram';
 import { formatPhone } from '../lib/phone';
@@ -71,6 +72,9 @@ export default function ProfileModal({
   const [sqlCopied, setSqlCopied] = useState(false);
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
   const [avatarError, setAvatarError] = useState('');
+  const [identities, setIdentities] = useState([]);
+  const [identitiesError, setIdentitiesError] = useState('');
+  const [linkingYandex, setLinkingYandex] = useState(false);
   const avatarInputRef = useRef(null);
 
   const profileId = profile?.id || user?.id || null;
@@ -81,8 +85,58 @@ export default function ProfileModal({
   const avatarSql =
     'alter table public.profiles add column if not exists avatar_url text; -- + bucket avatars, см. migration 008';
 
-  const copyTelegramSql = async () => {
-    try {
+  const yandexIdentity = identities.find(
+    (identity) => identity.provider === 'custom:yandex' || identity.provider === 'yandex',
+  );
+
+  useEffect(() => {
+    if (!isOpen) return undefined;
+    let alive = true;
+    supabase.auth
+      .getUserIdentities()
+      .then(({ data, error }) => {
+        if (!alive) return;
+        if (error) {
+          setIdentitiesError(`Не удалось загрузить способы входа: ${error.message}`);
+          return;
+        }
+        setIdentitiesError('');
+        setIdentities(data?.identities || []);
+      })
+      .catch((error) => {
+        if (alive) setIdentitiesError(`Не удалось загрузить способы входа: ${error.message}`);
+      });
+    return () => {
+      alive = false;
+    };
+  }, [isOpen]);
+
+  const explainIdentityError = (message) => {
+    const raw = String(message || '');
+    if (/manual linking/i.test(raw)) {
+      return 'В Supabase выключено ручное связывание. Включите Authentication → Providers → Manual linking и повторите.';
+    }
+    if (/already|exists|linked/i.test(raw)) {
+      return 'Яндекс уже привязан к другому аккаунту. Выйдите из него и попробуйте снова.';
+    }
+    return `Не удалось привязать Яндекс: ${raw}`;
+  };
+
+  const linkYandex = async () => {
+    setLinkingYandex(true);
+    setIdentitiesError('');
+    const { error } = await supabase.auth.linkIdentity({
+      provider: 'custom:yandex',
+      options: { redirectTo: authRedirectUrl() },
+    });
+    if (error) {
+      setLinkingYandex(false);
+      setIdentitiesError(explainIdentityError(error.message));
+    }
+    // При успехе браузер уходит на Яндекс и возвращается уже с привязанным входом.
+  };
+
+  const copyTelegramSql = async () => {    try {
       await navigator.clipboard.writeText(telegramSql);
       setSqlCopied(true);
       setTimeout(() => setSqlCopied(false), 2000);
@@ -507,6 +561,39 @@ export default function ProfileModal({
                     </button>
                   </div>
                 </div>
+              )}
+            </div>
+
+            <div className="rounded-xl border border-white/40 bg-white/30 px-3 py-2.5 dark:border-white/10 dark:bg-white/5">
+              <div className="flex items-start justify-between gap-2">
+                <div className="min-w-0">
+                  <p className="flex items-center gap-1.5 text-xs font-medium text-slate-700 dark:text-slate-200">
+                    <KeyRound size={12} /> Вход через Яндекс
+                  </p>
+                  <p className="mt-0.5 text-[0.7rem] leading-snug text-slate-500 dark:text-slate-400">
+                    {yandexIdentity
+                      ? 'Привязан — на экране входа работает кнопка «Войти через Яндекс».'
+                      : 'Не привязан. Привяжите, чтобы входить в этот же аккаунт через Яндекс.'}
+                  </p>
+                </div>
+                {yandexIdentity ? (
+                  <span className="flex shrink-0 items-center gap-1 rounded-full bg-emerald-500/15 px-2 py-1 text-[0.65rem] font-medium text-emerald-700 dark:text-emerald-300">
+                    <BadgeCheck size={12} /> Привязан
+                  </span>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={linkYandex}
+                    disabled={linkingYandex}
+                    className="glass-btn shrink-0 !px-2.5 !py-1.5 !text-[0.7rem]"
+                  >
+                    {linkingYandex ? <Loader2 size={13} className="animate-spin" /> : <KeyRound size={13} />}
+                    Привязать
+                  </button>
+                )}
+              </div>
+              {identitiesError && (
+                <p className="mt-1.5 text-[0.65rem] text-rose-600 dark:text-rose-300">{identitiesError}</p>
               )}
             </div>
           </section>

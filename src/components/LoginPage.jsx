@@ -34,7 +34,7 @@ const FEATURES = [
 function translateError(message) {
   const raw = String(message || '');
   if (/Database error saving new user/i.test(raw)) {
-    return 'База отклонила создание пользователя: не сработал auth-триггер профиля. Откройте «Диагностика Яндекс-входа» ниже и примените SQL.';
+    return 'Почта Яндекса не подошла: её нет в приглашениях или она уже занята аккаунтом с паролем. Войдите по почте и паролю, а Яндекс привяжите в профиле — раздел «Вход через Яндекс».';
   }
   if (/Invalid login credentials/i.test(raw)) return 'Неверная почта или пароль.';
   if (/Email not confirmed/i.test(raw)) return 'Почта не подтверждена — проверьте письмо со ссылкой.';
