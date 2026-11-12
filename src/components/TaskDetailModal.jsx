@@ -79,6 +79,7 @@ export default function TaskDetailModal({
   const [isPreviewOpen, setIsPreviewOpen] = useState(false);
   const [formError, setFormError] = useState('');
   const panelRef = useRef(null);
+  const quoteSelectionRef = useRef('');
 
   const dueSupported = supports(allowedFields, 'due_at');
   const startSupported = supports(allowedFields, 'start_at');
@@ -102,6 +103,24 @@ export default function TaskDetailModal({
       document.body.style.overflow = '';
     };
   }, [isOpen, onClose]);
+
+  // Запоминаем выделение заранее: обычный клик по кнопке сворачивает выделённый текст
+  useEffect(() => {
+    if (!isOpen) return undefined;
+    const capture = () => {
+      const selection = window.getSelection();
+      if (!selection) return;
+      const node = selection.anchorNode;
+      if (!node || !panelRef.current?.contains(node)) return;
+      quoteSelectionRef.current = selection.isCollapsed ? '' : selection.toString().trim();
+    };
+    document.addEventListener('mouseup', capture);
+    document.addEventListener('keyup', capture);
+    return () => {
+      document.removeEventListener('mouseup', capture);
+      document.removeEventListener('keyup', capture);
+    };
+  }, [isOpen]);
 
   if (!isOpen || !editedTask) return null;
 
@@ -191,14 +210,8 @@ export default function TaskDetailModal({
 
   /** Цитата: выделенный в описании текст, иначе описание целиком, иначе название */
   const handleQuoteToChat = () => {
-    const selection = typeof window !== 'undefined' ? window.getSelection() : null;
-    let selected = '';
-    if (selection && !selection.isCollapsed) {
-      const node = selection.anchorNode;
-      if (node && panelRef.current?.contains(node)) selected = selection.toString();
-    }
-
-    const text = selected.trim() || htmlToText(editedTask.description) || editedTask.title;
+    const selected = quoteSelectionRef.current || '';
+    const text = selected || htmlToText(editedTask.description) || editedTask.title;
     if (!text) return;
     onQuoteToChat?.({ title: editedTask.title, number, text });
   };
@@ -304,6 +317,7 @@ export default function TaskDetailModal({
                   <button
                     type="button"
                     onClick={handleQuoteToChat}
+                    onMouseDown={(event) => event.preventDefault()}
                     className="glass-btn !px-2 !py-1 !text-[0.7rem]"
                     title="Процитировать в чат: выделенный текст или всё описание"
                   >
