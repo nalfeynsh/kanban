@@ -36,6 +36,7 @@ import { TaskCardView } from './components/TaskCard';
 import { supabase } from './supabaseClient';
 import { collectFields, mergeFields, pickFields, profileFields, supports, taskFields } from './lib/schema';
 import { buildTaskQuote } from './lib/quote';
+import { readOAuthError, explainOAuthError, cleanOAuthUrl } from './lib/oauth';
 import { canSeeTask, matchesMode } from './lib/access';
 import { byPosition, getDueValue, isOverdue } from './lib/format';
 import { normalizePriority } from './lib/priority';
@@ -73,6 +74,12 @@ export default function App() {
   const [allProfiles, setAllProfiles] = useState([]);
   const [loading, setLoading] = useState(true);
   const [banner, setBanner] = useState('');
+  const [oauthNotice, setOauthNotice] = useState(() => {
+    const error = readOAuthError();
+    if (!error) return '';
+    const info = explainOAuthError(error);
+    return `${info?.title || 'Вход не завершён'}. ${info?.text || error.description || error.code}`;
+  });
 
   const [selectedTask, setSelectedTask] = useState(null);
   const [draftKey, setDraftKey] = useState(0);
@@ -152,6 +159,11 @@ export default function App() {
       alive = false;
       subscription.unsubscribe();
     };
+  }, []);
+
+  // Ошибку OAuth из URL показываем один раз и убираем из адреса
+  useEffect(() => {
+    if (readOAuthError()) cleanOAuthUrl();
   }, []);
 
   // --- Профиль ---
@@ -999,6 +1011,23 @@ export default function App() {
         memberFilter={memberFilter}
         onClearMemberFilter={() => setMemberFilter(null)}
       />
+
+      {oauthNotice && (
+        <div className="mx-auto mt-3 w-full max-w-[1800px] px-4 sm:px-6">
+          <div className="flex items-start gap-2 rounded-2xl border border-amber-400/50 bg-amber-400/15 px-3 py-2 text-xs text-amber-900 backdrop-blur dark:text-amber-200">
+            <AlertTriangle size={14} className="mt-0.5 shrink-0" />
+            <span className="flex-1">{oauthNotice}</span>
+            <button
+              type="button"
+              onClick={() => setOauthNotice('')}
+              className="rounded p-0.5 transition hover:bg-amber-500/20"
+              title="Скрыть"
+            >
+              <X size={13} />
+            </button>
+          </div>
+        </div>
+      )}
 
       {banner && (
         <div className="mx-auto mt-3 w-full max-w-[1800px] px-4 sm:px-6">
