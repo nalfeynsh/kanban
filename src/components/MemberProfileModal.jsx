@@ -18,6 +18,7 @@ import {
 } from 'lucide-react';
 import { roleLabel, ROLE_OPTIONS } from '../lib/priority';
 import { telegramUrl } from '../lib/telegram';
+import { formatPhone, phoneHref } from '../lib/phone';
 import Avatar from './Avatar';
 
 function ContactRow({ icon: Icon, label, value, href, muted }) {
@@ -189,8 +190,8 @@ export default function MemberProfileModal({
             <ContactRow
               icon={Phone}
               label="Рабочий телефон"
-              value={member.work_phone}
-              href={member.work_phone ? `tel:${member.work_phone.replace(/[^\d+]/g, '')}` : null}
+              value={formatPhone(member.work_phone) || member.work_phone}
+              href={phoneHref(member.work_phone)}
               muted={!member.work_phone}
             />
             <ContactRow
@@ -206,8 +207,8 @@ export default function MemberProfileModal({
                 <ContactRow
                   icon={Phone}
                   label="Личный телефон"
-                  value={member.personal_phone}
-                  href={member.personal_phone ? `tel:${member.personal_phone.replace(/[^\d+]/g, '')}` : null}
+                  value={formatPhone(member.personal_phone) || member.personal_phone}
+                  href={phoneHref(member.personal_phone)}
                 />
                 <ContactRow
                   icon={Mail}

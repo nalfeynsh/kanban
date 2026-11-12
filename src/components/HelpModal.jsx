@@ -16,6 +16,7 @@ import {
 } from 'lucide-react';
 import Avatar from './Avatar';
 import { telegramUrl } from '../lib/telegram';
+import { formatPhone, phoneHref } from '../lib/phone';
 import { CHANGELOG, FAQ } from '../lib/changelog';
 import {
   addSuggestion,
@@ -391,10 +392,10 @@ export default function HelpModal({
                         )}
                         {admin.work_phone && (
                           <a
-                            href={`tel:${admin.work_phone.replace(/[^\d+]/g, '')}`}
+                            href={phoneHref(admin.work_phone) || undefined}
                             className="glass-btn !px-2 !py-1 !text-[0.65rem]"
                           >
-                            <Phone size={11} /> {admin.work_phone}
+                            <Phone size={11} /> {formatPhone(admin.work_phone) || admin.work_phone}
                           </a>
                         )}
                       </div>

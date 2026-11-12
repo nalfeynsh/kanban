@@ -20,6 +20,7 @@ import {
 import { supabase } from '../supabaseClient';
 import { pickFields, supports } from '../lib/schema';
 import { normalizeTelegram, telegramUrl } from '../lib/telegram';
+import { formatPhone } from '../lib/phone';
 import { resizeAvatarFile } from '../lib/image';
 import Avatar from './Avatar';
 
@@ -44,8 +45,8 @@ function toForm(profile) {
   return {
     full_name: profile.full_name || '',
     position_title: profile.position_title || '',
-    work_phone: profile.work_phone || '',
-    personal_phone: profile.personal_phone || '',
+    work_phone: formatPhone(profile.work_phone),
+    personal_phone: formatPhone(profile.personal_phone),
     work_email: profile.work_email || '',
     personal_email: profile.personal_email || '',
     telegram: profile.telegram || '',
@@ -388,20 +389,22 @@ export default function ProfileModal({
                 <span className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-300">Рабочий телефон</span>
                 <input
                   type="tel"
+                  inputMode="tel"
                   value={formData.work_phone}
-                  onChange={(event) => setField('work_phone', event.target.value)}
+                  onChange={(event) => setField('work_phone', formatPhone(event.target.value))}
                   className="glass-input"
-                  placeholder="+7 900 000-00-00"
+                  placeholder="+7 (999) 123-45-67"
                 />
               </label>
               <label className="block">
                 <span className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-300">Личный телефон</span>
                 <input
                   type="tel"
+                  inputMode="tel"
                   value={formData.personal_phone}
-                  onChange={(event) => setField('personal_phone', event.target.value)}
+                  onChange={(event) => setField('personal_phone', formatPhone(event.target.value))}
                   className="glass-input"
-                  placeholder="+7 900 000-00-00"
+                  placeholder="+7 (999) 123-45-67"
                 />
               </label>
               <label className="block">
