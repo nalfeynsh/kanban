@@ -24,13 +24,15 @@ const PORT = Number(process.env.PORT) || 3000;
 
 const PROXY_PATH = /^\/(auth|rest|storage|realtime)(\/|$)/;
 
+/** Последний ответ Яндекса на запрос userinfo — только статус и текст ошибки */
+let lastYandex = { status: null, at: null, error: null };
+
 /**
  * Яндекс принимает токен только как `Authorization: OAuth <token>`,
  * а Supabase (oauth2-клиент) шлёт `Bearer`. Этот эндпоинт принимает
  * Bearer от Supabase, меняет схему на OAuth и проксирует ответ Яндекса.
  */
-async function proxyYandexUserinfo(req, res) {
-  if (req.method !== 'GET') {
+async function proxyYandexUserinfo(req, res) {  if (req.method !== 'GET') {
     res.writeHead(405, { Allow: 'GET' });
     res.end();
     return;
@@ -50,6 +52,12 @@ async function proxyYandexUserinfo(req, res) {
       headers: { Authorization: `OAuth ${token}`, Accept: 'application/json' },
     });
     const body = await upstream.text();
+
+    lastYandex = {
+      status: upstream.status,
+      at: new Date().toISOString(),
+      error: upstream.ok ? null : body.slice(0, 300),
+    };
     res.writeHead(upstream.status, {
       'Content-Type': upstream.headers.get('content-type') || 'application/json; charset=utf-8',
       'Cache-Control': 'no-store',
@@ -208,6 +216,11 @@ const server = http.createServer((req, res) => {
 
   if (urlPath === '/yandex-userinfo') {
     proxyYandexUserinfo(req, res);
+    return;
+  }
+
+  if (urlPath === '/yandex-last') {
+    sendJson(res, 200, lastYandex);
     return;
   }
 
