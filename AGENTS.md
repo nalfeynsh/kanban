@@ -259,6 +259,7 @@ values ('you@example.com', 'admin', 'bootstrap');
 | 2026-11-12 | Телефоны в профиле: маска `+7 (999) 123-45-67` при вводе и показе (`lib/phone.js`). |
 | 2026-11-12 | Пароль на мобильном: глаз вынесен из `label`, зона нажатия 36×36, `pointerdown`+`preventDefault`. |
 | 2026-11-13 | Supabase проксируется через `kanban.layero.app` (Layero runtime `node_web`, `server.js`): браузер не обращается к `*.supabase.co`. |
+| 2026-11-13 | Яндекс-вход: manual linking, attribute_mapping, прокси token/userinfo (OAuth вместо Bearer); привязка пока падает на identity, вход по паролю работает. |
 
 ---
 
@@ -443,6 +444,16 @@ personal_email, telegram, role, position_title, is_active`
 11. **Runtime-прокси на Layero Free:** холодный старт 4–12 с после простоя (первый вход может
     подтормозить), лимиты 6 000 минут/мес и 300 тыс. запросов. Если станет тесно — тот же `server.js`
     переезжает на VPS за 300–600 ₽/мес без изменений кода.
+12. **Вход через Яндекс — пауза (13.11.2026).** Сделано: включён `manual linking`, в `custom:yandex`
+    прописан `attribute_mapping` (`sub←id`, `email←default_email`, `email_verified: true`, `name←real_name`),
+    обмен токена и userinfo идут через `kanban.layero.app/yandex-token` и `/yandex-userinfo`
+    (Яндекс требует `Authorization: OAuth`, Supabase шлёт `Bearer`; прокси меняет схему и приводит `id`
+    к строке). Яндекс отвечает 200 и на токен, и на профиль. Но привязка всё ещё падает с 500
+    на шаге создания identity; последняя попытка была **до** деплоя нормализации `id`.
+    Следующий шаг: одна попытка на свежей сборке, затем проверить `/yandex-last` (`idType`),
+    `/client-oauth-last` и `auth.identities`; если 500 остаётся — смотреть Auth Logs в Supabase
+    (Management API `analytics/endpoints/logs` у проекта отвечает `Backend error`).
+    Вход по почте и паролю при этом работает штатно.
 
 ---
 
