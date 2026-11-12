@@ -18,6 +18,7 @@ import {
   Stethoscope,
 } from 'lucide-react';
 import { supabase, authRedirectUrl, OAUTH_CALLBACK_URL } from '../supabaseClient';
+import { YANDEX_LOGIN_ENABLED } from '../lib/features';
 import {
   readOAuthError,
   cleanOAuthUrl,
@@ -34,7 +35,7 @@ const FEATURES = [
 function translateError(message) {
   const raw = String(message || '');
   if (/Database error saving new user/i.test(raw)) {
-    return 'Почта Яндекса не подошла: её нет в приглашениях или она уже занята аккаунтом с паролем. Войдите по почте и паролю, а Яндекс привяжите в профиле — раздел «Вход через Яндекс».';
+    return 'Почта Яндекса не подошла: её нет в приглашениях или она уже занята аккаунтом с паролем. Войдите по почте и паролю — этот способ работает всегда.';
   }
   if (/Invalid login credentials/i.test(raw)) return 'Неверная почта или пароль.';
   if (/Email not confirmed/i.test(raw)) return 'Почта не подтверждена — проверьте письмо со ссылкой.';
@@ -347,38 +348,42 @@ export default function LoginPage() {
             </button>
           </p>
 
-          <div className="relative my-5">
-            <div className="absolute inset-0 flex items-center">
-              <div className="w-full border-t border-white/45 dark:border-white/10" />
-            </div>
-            <div className="relative flex justify-center">
-              <span className="bg-white/60 px-2 text-[0.68rem] text-slate-500 backdrop-blur dark:bg-slate-900/60 dark:text-slate-400">
-                или
-              </span>
-            </div>
-          </div>
+          {YANDEX_LOGIN_ENABLED && (
+            <>
+              <div className="relative my-5">
+                <div className="absolute inset-0 flex items-center">
+                  <div className="w-full border-t border-white/45 dark:border-white/10" />
+                </div>
+                <div className="relative flex justify-center">
+                  <span className="bg-white/60 px-2 text-[0.68rem] text-slate-500 backdrop-blur dark:bg-slate-900/60 dark:text-slate-400">
+                    или
+                  </span>
+                </div>
+              </div>
 
-          <button
-            type="button"
-            onClick={handleYandexLogin}
-            className="flex w-full items-center justify-center gap-2.5 rounded-xl border border-rose-400/40 bg-rose-500/12 py-2.5 font-medium text-rose-700 transition hover:bg-rose-500/20 dark:text-rose-300"
-          >
-            <span className="flex h-5 w-5 items-center justify-center rounded-md bg-rose-500 text-[0.7rem] font-bold text-white">
-              Я
-            </span>
-            Войти через Яндекс
-          </button>
+              <button
+                type="button"
+                onClick={handleYandexLogin}
+                className="flex w-full items-center justify-center gap-2.5 rounded-xl border border-rose-400/40 bg-rose-500/12 py-2.5 font-medium text-rose-700 transition hover:bg-rose-500/20 dark:text-rose-300"
+              >
+                <span className="flex h-5 w-5 items-center justify-center rounded-md bg-rose-500 text-[0.7rem] font-bold text-white">
+                  Я
+                </span>
+                Войти через Яндекс
+              </button>
 
-          <button
-            type="button"
-            onClick={() => setShowDiag((prev) => !prev)}
-            className="mt-3 flex w-full items-center justify-center gap-1.5 text-[0.68rem] text-slate-500 underline-offset-2 hover:text-indigo-600 hover:underline dark:text-slate-400 dark:hover:text-indigo-300"
-          >
-            <Stethoscope size={12} />
-            {showDiag ? 'Скрыть диагностику Яндекс-входа' : 'Не работает вход через Яндекс?'}
-          </button>
+              <button
+                type="button"
+                onClick={() => setShowDiag((prev) => !prev)}
+                className="mt-3 flex w-full items-center justify-center gap-1.5 text-[0.68rem] text-slate-500 underline-offset-2 hover:text-indigo-600 hover:underline dark:text-slate-400 dark:hover:text-indigo-300"
+              >
+                <Stethoscope size={12} />
+                {showDiag ? 'Скрыть диагностику Яндекс-входа' : 'Не работает вход через Яндекс?'}
+              </button>
+            </>
+          )}
 
-          {showDiag && (
+          {YANDEX_LOGIN_ENABLED && showDiag && (
             <div className="mt-2 space-y-2.5 rounded-xl border border-white/50 bg-white/40 p-3 text-[0.68rem] text-slate-600 backdrop-blur dark:border-white/10 dark:bg-white/5 dark:text-slate-300">
               {oauthInfo && (
                 <div className="rounded-lg border border-rose-400/40 bg-rose-500/10 px-2.5 py-2 text-rose-700 dark:text-rose-300">
@@ -443,9 +448,11 @@ export default function LoginPage() {
             </div>
           )}
 
-          <p className="mt-4 flex items-center justify-center gap-1.5 text-center text-[0.65rem] text-slate-500 dark:text-slate-400">
-            <Send size={11} /> Вход через Яндекс также требует приглашения
-          </p>
+          {YANDEX_LOGIN_ENABLED && (
+            <p className="mt-4 flex items-center justify-center gap-1.5 text-center text-[0.65rem] text-slate-500 dark:text-slate-400">
+              <Send size={11} /> Вход через Яндекс также требует приглашения
+            </p>
+          )}
         </div>
       </div>
     </div>

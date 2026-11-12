@@ -23,6 +23,7 @@ import { pickFields, supports } from '../lib/schema';
 import { normalizeTelegram, telegramUrl } from '../lib/telegram';
 import { formatPhone } from '../lib/phone';
 import { resizeAvatarFile } from '../lib/image';
+import { YANDEX_LOGIN_ENABLED } from '../lib/features';
 import Avatar from './Avatar';
 
 const EMPTY_FORM = {
@@ -90,7 +91,7 @@ export default function ProfileModal({
   );
 
   useEffect(() => {
-    if (!isOpen) return undefined;
+    if (!YANDEX_LOGIN_ENABLED || !isOpen) return undefined;
     let alive = true;
     supabase.auth
       .getUserIdentities()
@@ -564,38 +565,40 @@ export default function ProfileModal({
               )}
             </div>
 
-            <div className="rounded-xl border border-white/40 bg-white/30 px-3 py-2.5 dark:border-white/10 dark:bg-white/5">
-              <div className="flex items-start justify-between gap-2">
-                <div className="min-w-0">
-                  <p className="flex items-center gap-1.5 text-xs font-medium text-slate-700 dark:text-slate-200">
-                    <KeyRound size={12} /> Вход через Яндекс
-                  </p>
-                  <p className="mt-0.5 text-[0.7rem] leading-snug text-slate-500 dark:text-slate-400">
-                    {yandexIdentity
-                      ? 'Привязан — на экране входа работает кнопка «Войти через Яндекс».'
-                      : 'Не привязан. Привяжите, чтобы входить в этот же аккаунт через Яндекс.'}
-                  </p>
+            {YANDEX_LOGIN_ENABLED && (
+              <div className="rounded-xl border border-white/40 bg-white/30 px-3 py-2.5 dark:border-white/10 dark:bg-white/5">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <p className="flex items-center gap-1.5 text-xs font-medium text-slate-700 dark:text-slate-200">
+                      <KeyRound size={12} /> Вход через Яндекс
+                    </p>
+                    <p className="mt-0.5 text-[0.7rem] leading-snug text-slate-500 dark:text-slate-400">
+                      {yandexIdentity
+                        ? 'Привязан — на экране входа работает кнопка «Войти через Яндекс».'
+                        : 'Не привязан. Привяжите, чтобы входить в этот же аккаунт через Яндекс.'}
+                    </p>
+                  </div>
+                  {yandexIdentity ? (
+                    <span className="flex shrink-0 items-center gap-1 rounded-full bg-emerald-500/15 px-2 py-1 text-[0.65rem] font-medium text-emerald-700 dark:text-emerald-300">
+                      <BadgeCheck size={12} /> Привязан
+                    </span>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={linkYandex}
+                      disabled={linkingYandex}
+                      className="glass-btn shrink-0 !px-2.5 !py-1.5 !text-[0.7rem]"
+                    >
+                      {linkingYandex ? <Loader2 size={13} className="animate-spin" /> : <KeyRound size={13} />}
+                      Привязать
+                    </button>
+                  )}
                 </div>
-                {yandexIdentity ? (
-                  <span className="flex shrink-0 items-center gap-1 rounded-full bg-emerald-500/15 px-2 py-1 text-[0.65rem] font-medium text-emerald-700 dark:text-emerald-300">
-                    <BadgeCheck size={12} /> Привязан
-                  </span>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={linkYandex}
-                    disabled={linkingYandex}
-                    className="glass-btn shrink-0 !px-2.5 !py-1.5 !text-[0.7rem]"
-                  >
-                    {linkingYandex ? <Loader2 size={13} className="animate-spin" /> : <KeyRound size={13} />}
-                    Привязать
-                  </button>
+                {identitiesError && (
+                  <p className="mt-1.5 text-[0.65rem] text-rose-600 dark:text-rose-300">{identitiesError}</p>
                 )}
               </div>
-              {identitiesError && (
-                <p className="mt-1.5 text-[0.65rem] text-rose-600 dark:text-rose-300">{identitiesError}</p>
-              )}
-            </div>
+            )}
           </section>
 
           {errorMsg && (
