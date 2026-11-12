@@ -11,8 +11,14 @@ import {
   Check,
   Plus,
   Users,
+  Paperclip,
+  Download,
+  Forward,
+  Trash2,
+  FileText,
 } from 'lucide-react';
 import { telegramUrl } from '../lib/telegram';
+import { chatFileUrl } from '../lib/chat';
 import Avatar from './Avatar';
 
 const pad = (n) => String(n).padStart(2, '0');
@@ -56,6 +62,14 @@ function membersLabel(count) {
   if (mod10 === 1 && mod100 !== 11) return `${n} участник`;
   if (mod10 >= 2 && mod10 <= 4 && (mod100 < 10 || mod100 >= 20)) return `${n} участника`;
   return `${n} участников`;
+}
+
+function formatBytes(size) {
+  const value = Number(size);
+  if (!value || value < 0) return 'файл';
+  if (value < 1024) return `${value} Б`;
+  if (value < 1024 * 1024) return `${Math.round(value / 1024)} КБ`;
+  return `${(value / 1024 / 1024).toFixed(1)} МБ`;
 }
 
 /**
@@ -135,6 +149,9 @@ export default function ChatView({
   teamUnavailable = false,
   onSelect,
   onSend,
+  onSendFiles,
+  onDeleteMessage,
+  onForwardMessage,
   onClose,
   onOpenProfile,
   onStartDialog,
@@ -145,7 +162,10 @@ export default function ChatView({
   const [draft, setDraft] = useState(initialDraft || '');
   const [pickerOpen, setPickerOpen] = useState(false);
   const [memberQuery, setMemberQuery] = useState('');
+  const [fileMenu, setFileMenu] = useState(null);
+  const [forwardMessage, setForwardMessage] = useState(null);
   const listRef = useRef(null);
+  const fileInputRef = useRef(null);
 
   const activeDialog = dialogs.find((dialog) => dialog.conversation_id === activeId) || null;
   const isTeam = Boolean(activeDialog?.is_team);
@@ -224,10 +244,68 @@ export default function ChatView({
     setPickerOpen(true);
   };
 
-  const startDialog = (memberId) => {
+  const closePicker = () => {
     setPickerOpen(false);
     setMemberQuery('');
+    setForwardMessage(null);
+  };
+
+  const startDialog = (memberId) => {
+    const target = forwardMessage;
+    setPickerOpen(false);
+    setMemberQuery('');
+    if (target) {
+      setForwardMessage(null);
+      onForwardMessage?.(target, { memberId });
+      return;
+    }
     onStartDialog?.(memberId);
+  };
+
+  /** Скачивание через blob: имя файла сохраняется, даже если это картинка или PDF */
+  const downloadFile = async (message) => {
+    const url = chatFileUrl(message.attachment_path);
+    if (!url) return;
+    try {
+      const response = await fetch(url);
+      const blob = await response.blob();
+      const objectUrl = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = objectUrl;
+      link.download = message.attachment_name || 'file';
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.setTimeout(() => URL.revokeObjectURL(objectUrl), 4000);
+    } catch {
+      window.open(url, '_blank', 'noopener');
+    }
+  };
+
+  const openFileMenu = (event, message) => {
+    event.preventDefault();
+    event.stopPropagation();
+    const menuWidth = 208;
+    const menuHeight = message.author_id === currentUserId ? 132 : 96;
+    setFileMenu({
+      message,
+      x: Math.max(8, Math.min(event.clientX, window.innerWidth - menuWidth - 8)),
+      y: Math.max(8, Math.min(event.clientY, window.innerHeight - menuHeight - 8)),
+    });
+  };
+
+  const startForward = (message) => {
+    setFileMenu(null);
+    setForwardMessage(message);
+    setMemberQuery('');
+    setPickerOpen(true);
+  };
+
+  const requestDelete = (message) => {
+    setFileMenu(null);
+    if (window.confirm('Удалить файл из чата? Он исчезнет у всех участников.')) {
+      onDeleteMessage?.(message);
+    }
   };
 
   return (
@@ -600,6 +678,34 @@ export default function ChatView({
                                   {own ? 'Вы' : author?.full_name || 'Сотрудник'}
                                 </span>
                               )}
+                              {message.attachment_path && (
+                                <button
+                                  type="button"
+                                  onClick={() => downloadFile(message)}
+                                  onContextMenu={(event) => openFileMenu(event, message)}
+                                  className={`mb-1 flex w-full max-w-[16rem] items-center gap-2 rounded-xl border px-2 py-1.5 text-left transition ${
+                                    own
+                                      ? 'border-white/30 bg-white/15 hover:bg-white/25'
+                                      : 'border-white/50 bg-white/60 hover:bg-white dark:border-white/10 dark:bg-white/10 dark:hover:bg-white/15'
+                                  }`}
+                                  title="Скачать · правый клик — действия"
+                                >
+                                  <FileText size={16} className="shrink-0" />
+                                  <span className="min-w-0 flex-1">
+                                    <span className="block truncate text-[0.72rem] font-semibold">
+                                      {message.attachment_name || 'Файл'}
+                                    </span>
+                                    <span
+                                      className={`block text-[0.6rem] ${
+                                        own ? 'text-white/70' : 'text-slate-500 dark:text-slate-400'
+                                      }`}
+                                    >
+                                      {formatBytes(message.attachment_size)}
+                                    </span>
+                                  </span>
+                                  <Download size={13} className="shrink-0 opacity-70" />
+                                </button>
+                              )}
                               <MessageBody text={message.body} own={own} />
                               <span
                                 className={`mt-1 flex items-center justify-end gap-1 text-[0.58rem] ${
@@ -620,6 +726,27 @@ export default function ChatView({
 
               <div className="border-t border-white/30 p-3 dark:border-white/10">
                 <div className="flex items-end gap-2">
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    multiple
+                    className="hidden"
+                    onChange={(event) => {
+                      const files = Array.from(event.target.files || []);
+                      event.target.value = '';
+                      if (files.length) onSendFiles?.(files);
+                    }}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => fileInputRef.current?.click()}
+                    disabled={!activeId || sending}
+                    className="glass-btn !px-2.5 !py-2"
+                    title="Прикрепить файл (до 20 МБ)"
+                    aria-label="Прикрепить файл"
+                  >
+                    <Paperclip size={15} />
+                  </button>
                   <textarea
                     value={draft}
                     onChange={(event) => setDraft(event.target.value)}
@@ -667,20 +794,24 @@ export default function ChatView({
         <div
           className="fixed inset-0 z-[70] flex items-center justify-center bg-slate-950/45 p-4 backdrop-blur-sm"
           onMouseDown={(event) => {
-            if (event.target === event.currentTarget) setPickerOpen(false);
+            if (event.target === event.currentTarget) closePicker();
           }}
         >
           <div className="glass-panel flex max-h-[80vh] w-full max-w-md flex-col overflow-hidden rounded-3xl shadow-2xl">
             <div className="flex items-center justify-between border-b border-white/30 px-5 py-3 dark:border-white/10">
               <div>
-                <h3 className="text-sm font-bold text-slate-800 dark:text-slate-100">Кому написать</h3>
+                <h3 className="text-sm font-bold text-slate-800 dark:text-slate-100">
+                  {forwardMessage ? 'Переслать файл' : 'Кому написать'}
+                </h3>
                 <p className="text-[0.65rem] text-slate-500 dark:text-slate-400">
-                  Только зарегистрированные сотрудники
+                  {forwardMessage
+                    ? `«${forwardMessage.attachment_name || 'Файл'}» — выберите получателя`
+                    : 'Только зарегистрированные сотрудники'}
                 </p>
               </div>
               <button
                 type="button"
-                onClick={() => setPickerOpen(false)}
+                onClick={closePicker}
                 className="rounded-xl p-1.5 text-slate-500 transition hover:bg-white/60 hover:text-slate-800 dark:text-slate-400 dark:hover:bg-white/10 dark:hover:text-white"
                 title="Закрыть"
               >
@@ -703,6 +834,33 @@ export default function ChatView({
             </div>
 
             <div className="scrollbar-slim flex-1 overflow-y-auto px-2 py-2">
+              {forwardMessage && teamDialog && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    const target = forwardMessage;
+                    setForwardMessage(null);
+                    setPickerOpen(false);
+                    setMemberQuery('');
+                    onForwardMessage?.(target, { conversationId: teamDialog.conversation_id });
+                  }}
+                  className="mb-1 flex w-full items-center gap-2.5 rounded-xl px-2.5 py-2 text-left transition hover:bg-white/60 dark:hover:bg-white/5"
+                >
+                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-indigo-500 to-sky-400 text-white">
+                    <Users size={15} />
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-[0.8rem] font-semibold text-slate-800 dark:text-slate-100">
+                      Общий чат команды
+                    </span>
+                    <span className="block truncate text-[0.65rem] text-slate-500 dark:text-slate-400">
+                      видят все сотрудники
+                    </span>
+                  </span>
+                  <MessageSquare size={14} className="shrink-0 text-indigo-400" />
+                </button>
+              )}
+
               {loadingCandidates && (
                 <div className="flex items-center justify-center py-8 text-slate-400">
                   <Loader2 size={18} className="animate-spin" />
@@ -742,6 +900,51 @@ export default function ChatView({
                   </button>
                 ))}
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Контекстное меню файла */}
+      {fileMenu && (
+        <div
+          className="fixed inset-0 z-[110]"
+          onMouseDown={() => setFileMenu(null)}
+          onContextMenu={(event) => {
+            event.preventDefault();
+            setFileMenu(null);
+          }}
+        >
+          <div
+            className="absolute w-52 overflow-hidden rounded-xl border border-white/60 bg-white/95 p-1 shadow-2xl backdrop-blur dark:border-white/15 dark:bg-slate-900/95"
+            style={{ left: fileMenu.x, top: fileMenu.y }}
+            onMouseDown={(event) => event.stopPropagation()}
+          >
+            <button
+              type="button"
+              onClick={() => {
+                downloadFile(fileMenu.message);
+                setFileMenu(null);
+              }}
+              className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-[0.75rem] font-medium text-slate-700 transition hover:bg-slate-500/10 dark:text-slate-200"
+            >
+              <Download size={13} /> Скачать
+            </button>
+            <button
+              type="button"
+              onClick={() => startForward(fileMenu.message)}
+              className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-[0.75rem] font-medium text-slate-700 transition hover:bg-slate-500/10 dark:text-slate-200"
+            >
+              <Forward size={13} /> Переслать
+            </button>
+            {fileMenu.message.author_id === currentUserId && (
+              <button
+                type="button"
+                onClick={() => requestDelete(fileMenu.message)}
+                className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-[0.75rem] font-medium text-rose-600 transition hover:bg-rose-500/10 dark:text-rose-300"
+              >
+                <Trash2 size={13} /> Удалить
+              </button>
+            )}
           </div>
         </div>
       )}

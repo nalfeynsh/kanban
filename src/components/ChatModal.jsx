@@ -10,6 +10,9 @@ import {
   openDialog,
   sendMessage,
   subscribeToMessages,
+  deleteChatMessage,
+  uploadChatFile,
+  MAX_CHAT_FILE_SIZE,
 } from '../lib/chat';
 
 export default function ChatModal({
@@ -182,6 +185,126 @@ export default function ChatModal({
     setSending(false);
   };
 
+  /** Отправка файлов: каждый файл — отдельное сообщение с вложением */
+  const handleSendFiles = async (files) => {
+    if (!activeId || sending || !files?.length) return;
+
+    setSending(true);
+    setError('');
+
+    for (const file of Array.from(files).slice(0, 5)) {
+      if (file.size > MAX_CHAT_FILE_SIZE) {
+        setError(`«${file.name}» больше 20 МБ — такой файл не отправить.`);
+        continue;
+      }
+
+      const { path, error: uploadError } = await uploadChatFile({
+        conversationId: activeId,
+        userId: currentUserId,
+        file,
+      });
+
+      if (uploadError) {
+        setError(
+          /bucket|not found|does not exist/i.test(uploadError.message || '')
+            ? 'Хранилище для файлов ещё не создано — примените миграцию 009.'
+            : `Файл не загружен: ${uploadError.message}`,
+        );
+        break;
+      }
+
+      const optimistic = {
+        id: `tmp-file-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+        body: file.name,
+        author_id: currentUserId,
+        created_at: new Date().toISOString(),
+        pending: true,
+        attachment_path: path,
+        attachment_name: file.name,
+        attachment_type: file.type || null,
+        attachment_size: file.size,
+      };
+      setMessages((prev) => [...prev, optimistic]);
+
+      const { message, error: sendError } = await sendMessage(activeId, file.name, currentUserId, {
+        path,
+        name: file.name,
+        type: file.type,
+        size: file.size,
+      });
+
+      if (sendError) {
+        setMessages((prev) => prev.filter((item) => item.id !== optimistic.id));
+        setError(
+          /attachment_|schema cache|does not exist/i.test(sendError.message || '')
+            ? 'В базе нет полей для файлов — примените миграцию 009.'
+            : sendError.message,
+        );
+        break;
+      }
+
+      setMessages((prev) => prev.map((item) => (item.id === optimistic.id ? message : item)));
+    }
+
+    const { dialogs: list } = await fetchDialogs();
+    if (list.length > 0) setDialogs(list);
+    setSending(false);
+  };
+
+  const handleDeleteMessage = async (message) => {
+    setError('');
+    const { error: deleteError } = await deleteChatMessage(message);
+    if (deleteError) {
+      setError(deleteError.message);
+      return;
+    }
+
+    setMessages((prev) => prev.filter((item) => item.id !== message.id));
+    const { dialogs: list } = await fetchDialogs();
+    if (list.length > 0) setDialogs(list);
+  };
+
+  /** Пересылка: копируем сообщение (и ссылку на файл) в другой диалог */
+  const handleForwardMessage = async (message, target) => {
+    setError('');
+    let conversationId = target?.conversationId || null;
+
+    if (!conversationId && target?.memberId) {
+      const { conversationId: openedId, error: openError } = await openDialog(target.memberId);
+      if (openError) {
+        setError(openError.message);
+        return;
+      }
+      conversationId = openedId;
+    }
+    if (!conversationId) return;
+
+    const attachment = message.attachment_path
+      ? {
+          path: message.attachment_path,
+          name: message.attachment_name,
+          type: message.attachment_type,
+          size: message.attachment_size,
+        }
+      : null;
+
+    const { error: forwardError } = await sendMessage(
+      conversationId,
+      message.body || message.attachment_name || 'Файл',
+      currentUserId,
+      attachment,
+    );
+
+    if (forwardError) {
+      setError(forwardError.message);
+      return;
+    }
+
+    const { dialogs: list } = await fetchDialogs();
+    if (list.length > 0) setDialogs(list);
+    await selectDialog(conversationId);
+  };
+
   const handleOpenProfile = (peer) => {
     const full = profilesById.get(peer.id);
     onOpenProfile?.(full || peer);
@@ -220,6 +343,9 @@ export default function ChatModal({
       initialDraft={initialDraft}
       onSelect={(dialog) => selectDialog(dialog.conversation_id)}
       onSend={handleSend}
+      onSendFiles={handleSendFiles}
+      onDeleteMessage={handleDeleteMessage}
+      onForwardMessage={handleForwardMessage}
       onClose={onClose}
       onOpenProfile={handleOpenProfile}
       onStartDialog={handleStartDialog}

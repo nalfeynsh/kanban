@@ -17,6 +17,7 @@
 | `migrations/006_chat_candidates.sql` | Список собеседников: только зарегистрированные пользователи (`chat_candidates`) |
 | `migrations/007_team_members.sql` | Все зарегистрированные сотрудники сразу участники общего чата (счётчик и доставка) |
 | `migrations/008_avatars.sql` | Фото в аватарке: `profiles.avatar_url` + bucket `avatars` с RLS |
+| `migrations/009_chat_files.sql` | Файлы в чате: поля `attachment_*` + bucket `chat-files` с RLS |
 
 Если делаете полный апгрейд — **002 запускать не нужно**, колонка уже входит в 001.
 
