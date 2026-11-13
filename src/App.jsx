@@ -110,6 +110,7 @@ export default function App() {
   const [memberFilter, setMemberFilter] = useState(null);
   const [activeTask, setActiveTask] = useState(null);
   const lastOverRef = useRef(null);
+  const doneCleanupRef = useRef(false);
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState(() => new Set());
 
@@ -298,6 +299,49 @@ export default function App() {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     loadData();
   }, [loadData]);
+
+  // Автоочистка «Готово»: задачи, пробывшие там дольше 3 дней, уходят в архив.
+  // Основная проверка живёт в pg_cron (миграция 011); это дублирующий запуск
+  // при входе администратора/менеджера на случай, если cron не установлен.
+  useEffect(() => {
+    if (doneCleanupRef.current) return;
+    if (loading || !userId || !supports(taskSchema, 'done_at')) return;
+    if (!['admin', 'manager'].includes(profile?.role)) return;
+
+    const doneColumn = columns.find((column) =>
+      /^(готово|done)$/i.test(String(column.title || '').trim()),
+    );
+    if (!doneColumn) return;
+
+    doneCleanupRef.current = true;
+
+    (async () => {
+      const cutoff = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString();
+      const payload = { deleted_at: new Date().toISOString() };
+      if (supports(taskSchema, 'deleted_by')) payload.deleted_by = userId;
+
+      const { data, error } = await supabase
+        .from('tasks')
+        .update(payload)
+        .eq('column_id', doneColumn.id)
+        .is('deleted_at', null)
+        .lt('done_at', cutoff)
+        .select('*');
+
+      if (error) {
+        setBanner(`Не удалось очистить «Готово»: ${error.message}`);
+        return;
+      }
+
+      const rows = (data ?? []).map(sanitizeTask);
+      if (!rows.length) return;
+
+      const ids = new Set(rows.map((task) => task.id));
+      setTasks((prev) => prev.filter((task) => !ids.has(task.id)));
+      setArchivedTasks((prev) => [...rows, ...prev]);
+      setBanner(`Блок «Готово»: ${rows.length} задач(и) старше 3 дней перенесены в архив.`);
+    })();
+  }, [loading, userId, profile?.role, columns, taskSchema]);
 
   // --- Производные данные ---
   const authorById = useMemo(() => new Map(allProfiles.map((item) => [item.id, item])), [allProfiles]);
@@ -598,6 +642,7 @@ export default function App() {
     const archived = archivedTasks.find((task) => task.id === taskId);
     const payload = { deleted_at: null };
     if (supports(taskSchema, 'deleted_by')) payload.deleted_by = null;
+    if (supports(taskSchema, 'done_at')) payload.done_at = new Date().toISOString();
 
     const { error } = await supabase.from('tasks').update(payload).eq('id', taskId);
     if (error) {
