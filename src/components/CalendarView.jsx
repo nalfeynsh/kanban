@@ -16,6 +16,11 @@ const PRIORITY_COLORS = {
 
 const pad = (value) => String(value).padStart(2, '0');
 
+function capitalizeFirst(value) {
+  const text = String(value || '');
+  return text ? text.charAt(0).toUpperCase() + text.slice(1) : text;
+}
+
 /** Date → значение для start_at/due_at: «2026-11-12T14:30:00» (локальное время) */
 function toInputValue(date) {
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}:00`;
@@ -270,7 +275,7 @@ export default function CalendarView({ tasks = [], numberById, onTaskClick, onSl
           allDayText="Весь день"
           datesSet={(arg) => {
             setCurrentDate(arg.view.currentStart);
-            setPeriodTitle(arg.view.title);
+            setPeriodTitle(capitalizeFirst(arg.view.title));
           }}
           eventDidMount={(info) => {
             info.el.title = info.event.title;
