@@ -20,6 +20,7 @@ import {
   AlertTriangle,
   Send,
   Quote,
+  Repeat,
 } from 'lucide-react';
 import TipTapEditor from './TipTapEditor';
 import DateTimeField from './DateTimeField';
@@ -34,6 +35,7 @@ import {
 import { PRIORITIES, getPriority, normalizePriority } from '../lib/priority';
 import { supports } from '../lib/schema';
 import { htmlToText } from '../lib/quote';
+import { recurrenceLabel, recurrenceNextValue, RECURRENCE_OPTIONS } from '../lib/recurrence';
 
 /** props.task → редактируемая копия (модалка монтируется заново на каждую задачу) */
 function toEditableTask(task) {
@@ -52,6 +54,9 @@ function toEditableTask(task) {
     is_private: Boolean(task.is_private),
     priority: normalizePriority(task.priority),
     assignee_id: task.assignee_id || '',
+    recurrence_freq: task.recurrence_freq || '',
+    recurrence_interval: Number(task.recurrence_interval) || 1,
+    recurrence_until: task.recurrence_until || '',
   };
 }
 
@@ -84,6 +89,7 @@ export default function TaskDetailModal({
   const startSupported = supports(allowedFields, 'start_at');
   const prioritySupported = supports(allowedFields, 'priority');
   const assigneeSupported = supports(allowedFields, 'assignee_id');
+  const recurrenceSupported = supports(allowedFields, 'recurrence_freq');
 
   const authorProfile = useMemo(
     () => allProfiles.find((profile) => profile.id === task?.created_by) || null,
@@ -187,6 +193,13 @@ export default function TaskDetailModal({
 
   const priorityInfo = getPriority(editedTask.priority);
   const assignee = allProfiles.find((profile) => profile.id === editedTask.assignee_id);
+  const nextRecurrence = recurrenceNextValue(
+    editedTask.due_at,
+    editedTask.recurrence_freq,
+    editedTask.recurrence_interval || 1,
+  );
+  const recurrenceEnded =
+    Boolean(nextRecurrence && editedTask.recurrence_until && nextRecurrence > editedTask.recurrence_until);
 
   /** Цитата: выделенный в описании текст, иначе описание целиком, иначе название */
   const handleQuoteToChat = () => {
@@ -500,6 +513,74 @@ export default function TaskDetailModal({
                   {dueSupported ? ' · время можно не указывать' : ' · время появится после миграции БД'}
                 </p>
               </div>
+
+              {recurrenceSupported && (
+                <div className="rounded-xl border border-indigo-300/50 bg-indigo-500/5 p-2">
+                  <label className="mb-1.5 flex items-center gap-1.5 text-[0.68rem] font-semibold tracking-[0.1em] text-indigo-700 uppercase dark:text-indigo-200">
+                    <Repeat size={12} /> Повторение
+                  </label>
+                  <select
+                    value={editedTask.recurrence_freq || ''}
+                    onChange={(event) => {
+                      const value = event.target.value;
+                      setEditedTask((prev) => ({
+                        ...prev,
+                        recurrence_freq: value || null,
+                        ...(value ? {} : { recurrence_until: '' }),
+                      }));
+                    }}
+                    className="glass-input !py-1.5 !text-xs"
+                  >
+                    <option value="">Не повторять</option>
+                    {RECURRENCE_OPTIONS.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+
+                  {editedTask.recurrence_freq && (
+                    <>
+                      <p className="mt-1 text-[0.65rem] text-slate-500 dark:text-slate-400">
+                        {editedTask.due_at
+                          ? recurrenceLabel(editedTask.recurrence_freq, editedTask.due_at)
+                          : 'Сначала укажите срок задачи'}
+                      </p>
+
+                      <label className="mt-2 block">
+                        <span className="mb-1 block text-[0.6rem] text-slate-500 dark:text-slate-400">
+                          Повторять до (необязательно)
+                        </span>
+                        <input
+                          type="date"
+                          value={editedTask.recurrence_until || ''}
+                          min={nextRecurrence || undefined}
+                          onChange={(event) => setField('recurrence_until', event.target.value || null)}
+                          className="glass-input !py-1.5 !text-xs"
+                        />
+                      </label>
+
+                      {nextRecurrence && (
+                        <p
+                          className={`mt-1 text-[0.65rem] ${
+                            recurrenceEnded
+                              ? 'text-rose-600 dark:text-rose-300'
+                              : 'text-indigo-700 dark:text-indigo-200'
+                          }`}
+                        >
+                          {recurrenceEnded
+                            ? 'Следующая копия не создастся: дата окончания раньше.'
+                            : `Следующая: ${formatDueLong(nextRecurrence)}`}
+                        </p>
+                      )}
+                    </>
+                  )}
+
+                  <p className="mt-1.5 text-[0.6rem] leading-snug text-slate-500 dark:text-slate-400">
+                    После завершения текущей задачи новая копия появится в первой колонке.
+                  </p>
+                </div>
+              )}
 
               <div>
                 <label className="mb-1.5 flex items-center gap-1.5 text-[0.68rem] font-semibold tracking-[0.1em] text-slate-500 uppercase dark:text-slate-400">

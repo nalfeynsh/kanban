@@ -9,6 +9,7 @@ import {
   Flag,
   AlertCircle,
   Check,
+  Repeat,
 } from 'lucide-react';
 import { formatDueBadge, getDueValue, isOverdue } from '../lib/format';
 import { getPriority } from '../lib/priority';
@@ -158,6 +159,12 @@ export function TaskCardView({
             >
               <Flag size={11} />
               {priority.short}
+            </span>
+          )}
+
+          {task.recurrence_freq && (
+            <span className="glass-chip" title="Повторяющаяся задача">
+              <Repeat size={11} />
             </span>
           )}
         </div>

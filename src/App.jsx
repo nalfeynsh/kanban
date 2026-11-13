@@ -525,6 +525,12 @@ export default function App() {
     setTasks((prev) => applyTaskUpdates(prev, plan.updates));
     const ok = await persistPositions(plan.updates);
     if (!ok) await loadData();
+
+    const activeUpdate = plan.updates.find((update) => update.id === activeId);
+    if (ok && activeUpdate?.column_id === doneColumnId && moving.recurrence_freq) {
+      // Триггер БД уже создал следующую копию — подтягиваем её в состояние
+      await loadData();
+    }
   };
 
   // --- CRUD задач ---
@@ -613,6 +619,18 @@ export default function App() {
       ...(supports(taskSchema, 'assignee_id')
         ? { assignee_id: taskToSave.assignee_id || null }
         : {}),
+      ...(supports(taskSchema, 'recurrence_freq')
+        ? { recurrence_freq: due ? taskToSave.recurrence_freq || null : null }
+        : {}),
+      ...(supports(taskSchema, 'recurrence_interval')
+        ? { recurrence_interval: Math.max(1, Number(taskToSave.recurrence_interval) || 1) }
+        : {}),
+      ...(supports(taskSchema, 'recurrence_until')
+        ? {
+            recurrence_until:
+              due && taskToSave.recurrence_freq ? taskToSave.recurrence_until || null : null,
+          }
+        : {}),
     };
 
     if (!taskToSave.id) {
@@ -679,6 +697,16 @@ export default function App() {
       if (supports(taskSchema, 'date')) payload.date = due ? String(due).slice(0, 10) : null;
       if (supports(taskSchema, 'priority')) payload.priority = normalizePriority(draft.priority);
       if (supports(taskSchema, 'assignee_id')) payload.assignee_id = draft.assignee_id || null;
+      if (supports(taskSchema, 'recurrence_freq')) {
+        payload.recurrence_freq = due ? draft.recurrence_freq || null : null;
+      }
+      if (supports(taskSchema, 'recurrence_interval')) {
+        payload.recurrence_interval = Math.max(1, Number(draft.recurrence_interval) || 1);
+      }
+      if (supports(taskSchema, 'recurrence_until')) {
+        payload.recurrence_until =
+          due && draft.recurrence_freq ? draft.recurrence_until || null : null;
+      }
     }
 
     const { data, error } = await supabase
@@ -1002,6 +1030,10 @@ export default function App() {
       return patch;
     });
     if (ok) setSelectedIds(new Set());
+    if (ok && columnId === doneColumnId && tasks.some((task) => ids.includes(task.id) && task.recurrence_freq)) {
+      // После завершения повторяющихся задач появляется следующая копия
+      await loadData();
+    }
   };
 
   const handleBulkAssign = async (assigneeId) => {
