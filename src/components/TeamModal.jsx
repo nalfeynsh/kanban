@@ -1,9 +1,10 @@
 import { useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { X, Users, Search, Send, ChevronRight, Mail, ShieldCheck, ListChecks, MessageSquare } from 'lucide-react';
+import { X, Users, Search, Send, ChevronRight, Mail, ShieldCheck, ListChecks, MessageSquare, Plug } from 'lucide-react';
 import { roleLabel } from '../lib/priority';
 import { telegramUrl } from '../lib/telegram';
 import AccessModal from './AccessModal';
+import IntegrationsPanel from './IntegrationsPanel';
 import Avatar from './Avatar';
 
 export default function TeamModal({
@@ -67,7 +68,9 @@ export default function TeamModal({
             <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
               {tab === 'access'
                 ? 'Роли, приглашения и матрица прав'
-                : `${activeCount} из ${members.length} активны · нажмите на сотрудника, чтобы открыть профиль`}
+                : tab === 'integrations'
+                  ? 'API-токены и обмен задачами с внешними системами'
+                  : `${activeCount} из ${members.length} активны · нажмите на сотрудника, чтобы открыть профиль`}
             </p>
           </div>
           <button
@@ -100,6 +103,17 @@ export default function TeamModal({
               <ShieldCheck size={14} />
               Доступ и права
             </button>
+            {currentRole === 'admin' && (
+              <button
+                type="button"
+                className="glass-segment-btn"
+                data-active={tab === 'integrations'}
+                onClick={() => setTab('integrations')}
+              >
+                <Plug size={14} />
+                Интеграции
+              </button>
+            )}
           </div>
         </div>
 
@@ -251,6 +265,12 @@ export default function TeamModal({
           )}
         </div>
           </>
+        )}
+
+        {tab === 'integrations' && currentRole === 'admin' && (
+          <div className="flex min-h-0 flex-1 flex-col">
+            <IntegrationsPanel />
+          </div>
         )}
 
         {tab === 'access' && (

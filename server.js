@@ -21,6 +21,9 @@ const ROOT = resolve(fileURLToPath(new URL('.', import.meta.url)), 'dist');
 const UPSTREAM = (process.env.SUPABASE_UPSTREAM || 'https://theybeeteusxwxboczhe.supabase.co').replace(/\/+$/, '');
 const UPSTREAM_HOST = new URL(UPSTREAM).host;
 const PORT = Number(process.env.PORT) || 3000;
+const ANON_KEY =
+  process.env.VITE_SUPABASE_ANON_KEY ||
+  'sb_publishable_kKouck2JRHJt04F0cMHk8g_alzlnidd';
 
 const PROXY_PATH = /^\/(auth|rest|storage|realtime)(\/|$)/;
 
@@ -205,9 +208,159 @@ function sendJson(res, status, payload) {
   res.writeHead(status, {
     'Content-Type': 'application/json; charset=utf-8',
     'Cache-Control': 'no-store',
+    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-API-Key',
+    'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
     'Content-Length': Buffer.byteLength(body),
   });
   res.end(body);
+}
+
+/** Вызов PostgREST RPC от имени anon; доступ проверяет сам API-токен внутри функции. */
+async function callRpc(name, params) {
+  const response = await fetch(`${UPSTREAM}/rest/v1/rpc/${name}`, {
+    method: 'POST',
+    headers: {
+      apikey: ANON_KEY,
+      Authorization: `Bearer ${ANON_KEY}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(params || {}),
+  });
+
+  const text = await response.text();
+  let data;
+  try {
+    data = text ? JSON.parse(text) : null;
+  } catch {
+    data = text;
+  }
+
+  if (!response.ok) {
+    const message =
+      (data && typeof data === 'object' && (data.message || data.error)) ||
+      text ||
+      `RPC ${name} failed`;
+    const error = new Error(String(message));
+    error.status = response.status;
+    error.code = data?.code;
+    throw error;
+  }
+
+  return data;
+}
+
+function apiToken(req) {
+  const header = String(req.headers.authorization || '');
+  return header.replace(/^Bearer\s+/i, '').trim() || String(req.headers['x-api-key'] || '').trim();
+}
+
+function apiErrorStatus(error) {
+  const message = String(error?.message || '');
+  if (/invalid_token/i.test(message)) return 401;
+  if (/forbidden/i.test(message)) return 403;
+  if (/not_found/i.test(message)) return 404;
+  if (/external_id_required|invalid_source|token_name_required|invalid input/i.test(message)) return 400;
+  return error?.status && error.status < 500 ? error.status : 500;
+}
+
+async function handleApi(req, res, url) {
+  if (req.method === 'OPTIONS') {
+    res.writeHead(204, {
+      'Access-Control-Allow-Origin': '*',
+      'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-API-Key',
+      'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+      'Access-Control-Max-Age': '86400',
+    });
+    res.end();
+    return;
+  }
+
+  if (url.pathname === '/api/v1/health') {
+    sendJson(res, 200, { ok: true, api: 'v1', time: new Date().toISOString() });
+    return;
+  }
+
+  const token = apiToken(req);
+  if (!token) {
+    sendJson(res, 401, { error: 'missing_token', message: 'Передайте Authorization: Bearer <token>.' });
+    return;
+  }
+
+  try {
+    if (req.method === 'GET' && url.pathname === '/api/v1/columns') {
+      const data = await callRpc('api_v1_columns', { p_token: token });
+      sendJson(res, 200, { data });
+      return;
+    }
+
+    if (req.method === 'GET' && url.pathname === '/api/v1/tasks') {
+      const since = url.searchParams.get('since');
+      const limit = Number(url.searchParams.get('limit')) || 200;
+      if (since && Number.isNaN(Date.parse(since))) {
+        sendJson(res, 400, { error: 'invalid_since', message: 'since должен быть ISO-8601.' });
+        return;
+      }
+      const data = await callRpc('api_v1_tasks', {
+        p_token: token,
+        p_since: since || null,
+        p_limit: limit,
+      });
+      sendJson(res, 200, { data });
+      return;
+    }
+
+    const taskMatch = url.pathname.match(/^\/api\/v1\/tasks\/([0-9a-fA-F-]{36})$/);
+    if (req.method === 'GET' && taskMatch) {
+      const data = await callRpc('api_v1_task', { p_token: token, p_id: taskMatch[1] });
+      sendJson(res, 200, { data });
+      return;
+    }
+
+    if (req.method === 'POST' && url.pathname === '/api/v1/tasks') {
+      const body = await readJsonBody(req, 512 * 1024);
+      if (!body) {
+        sendJson(res, 400, { error: 'invalid_json' });
+        return;
+      }
+      const { external_id: externalId, source = 'igor', ...payload } = body;
+      if (!externalId) {
+        sendJson(res, 400, { error: 'external_id_required' });
+        return;
+      }
+      const data = await callRpc('api_v1_upsert_task', {
+        p_token: token,
+        p_source: source,
+        p_external_id: String(externalId),
+        p_payload: payload,
+      });
+      sendJson(res, 200, { data: data?.task, created: data?.created, skipped: data?.skipped });
+      return;
+    }
+
+    if (req.method === 'POST' && url.pathname === '/api/v1/tasks/archive') {
+      const body = await readJsonBody(req, 16 * 1024);
+      if (!body?.external_id) {
+        sendJson(res, 400, { error: 'external_id_required' });
+        return;
+      }
+      const data = await callRpc('api_v1_archive_task', {
+        p_token: token,
+        p_source: body.source || 'igor',
+        p_external_id: String(body.external_id),
+      });
+      sendJson(res, 200, { data });
+      return;
+    }
+
+    sendJson(res, 404, { error: 'not_found', message: 'Неизвестный метод API.' });
+  } catch (error) {
+    console.error(`[api] ${req.method} ${url.pathname}: ${error?.message || error}`);
+    sendJson(res, apiErrorStatus(error), {
+      error: 'api_error',
+      message: error?.message || 'Ошибка API',
+    });
+  }
 }
 
 function resolveStatic(urlPath) {
@@ -290,6 +443,11 @@ function serveStatic(req, res) {
 
 const server = http.createServer((req, res) => {
   const urlPath = (req.url || '/').split('?')[0];
+
+  if (urlPath === '/api/v1' || urlPath.startsWith('/api/v1/')) {
+    handleApi(req, res, new URL(req.url || '/', 'http://localhost'));
+    return;
+  }
 
   if (urlPath === '/health') {
     sendJson(res, 200, {
