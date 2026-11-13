@@ -1393,6 +1393,11 @@ export default function App() {
           allowedFields={taskSchema}
           currentUserId={userId}
           onQuoteToChat={handleQuoteToChat}
+          columns={columns}
+          onOpenExistingTask={(taskId) => {
+            const existing = tasks.find((item) => item.id === taskId);
+            if (existing) setSelectedTask(existing);
+          }}
         />
       )}
 

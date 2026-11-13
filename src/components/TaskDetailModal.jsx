@@ -71,6 +71,8 @@ export default function TaskDetailModal({
   allowedFields,
   currentUserId,
   onQuoteToChat,
+  columns = [],
+  onOpenExistingTask,
 }) {
   const [editedTask, setEditedTask] = useState(() => toEditableTask(task));
   const [isCopied, setIsCopied] = useState(false);
@@ -78,6 +80,9 @@ export default function TaskDetailModal({
   const [newLinkUrl, setNewLinkUrl] = useState('');
   const [isUploading, setIsUploading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [isCheckingDuplicates, setIsCheckingDuplicates] = useState(false);
+  const [duplicateMatches, setDuplicateMatches] = useState([]);
+  const [forceCreate, setForceCreate] = useState(false);
   const [previewFile, setPreviewFile] = useState(null);
   const [isPreviewOpen, setIsPreviewOpen] = useState(false);
   const [formError, setFormError] = useState('');
@@ -133,17 +138,52 @@ export default function TaskDetailModal({
   // Приватность меняет только постановщик: иначе можно «запереть» чужую задачу
   const canTogglePrivacy = isNewTask || !editedTask.created_by || editedTask.created_by === currentUserId;
 
-  const setField = (key, value) => setEditedTask((prev) => ({ ...prev, [key]: value }));
+  const setField = (key, value) => {
+    setEditedTask((prev) => ({ ...prev, [key]: value }));
+    if (key === 'title' || key === 'description') {
+      setDuplicateMatches([]);
+      setForceCreate(false);
+    }
+  };
+
+  const saveTask = async () => {
+    setFormError('');
+    setIsSaving(true);
+    await onSaveTask({ ...editedTask, title: editedTask.title.trim() }, editedTask.column_id);
+    setIsSaving(false);
+  };
 
   const handleSave = async () => {
     if (!editedTask.title.trim()) {
       setFormError('Название задачи не может быть пустым');
       return;
     }
-    setFormError('');
-    setIsSaving(true);
-    await onSaveTask({ ...editedTask, title: editedTask.title.trim() }, editedTask.column_id);
-    setIsSaving(false);
+
+    // Перед созданием мягко проверяем похожие задачи. Ошибка проверки
+    // не должна мешать сохранить задачу.
+    if (isNewTask && !forceCreate) {
+      setIsCheckingDuplicates(true);
+      const { data, error } = await supabase.rpc('find_similar_tasks', {
+        p_title: editedTask.title.trim(),
+        p_description: editedTask.description || '',
+        p_exclude_id: editedTask.id || null,
+        p_limit: 3,
+      });
+      setIsCheckingDuplicates(false);
+
+      if (!error && Array.isArray(data) && data.length > 0) {
+        setDuplicateMatches(data);
+        return;
+      }
+    }
+
+    await saveTask();
+  };
+
+  const handleForceCreate = async () => {
+    setDuplicateMatches([]);
+    setForceCreate(true);
+    await saveTask();
   };
 
   const handleAddLink = () => {
@@ -685,16 +725,90 @@ export default function TaskDetailModal({
                 </div>
               )}
 
+              {duplicateMatches.length > 0 && !isSaving && (
+                <div className="rounded-xl border border-amber-400/60 bg-amber-400/10 p-2.5 dark:border-amber-400/40 dark:bg-amber-400/10">
+                  <p className="flex items-center gap-1.5 text-[0.7rem] font-semibold text-amber-800 dark:text-amber-200">
+                    <AlertTriangle size={13} /> Похожие задачи уже есть
+                  </p>
+                  <p className="mt-0.5 text-[0.62rem] text-amber-800/80 dark:text-amber-200/80">
+                    Проверьте, не дубль ли это. Создать задачу всё равно можно.
+                  </p>
+
+                  <div className="mt-2 space-y-1">
+                    {duplicateMatches.map((match) => {
+                      const matchAssignee = allProfiles.find((profile) => profile.id === match.assignee_id);
+                      const matchColumn =
+                        columns.find((column) => column.id === match.column_id)?.title || match.column_title;
+                      const reasonLabel =
+                        match.reason === 'title'
+                          ? 'похожее название'
+                          : match.reason === 'content'
+                            ? 'похожее описание'
+                            : 'похожий текст';
+
+                      return (
+                        <button
+                          key={match.id}
+                          type="button"
+                          onClick={() => onOpenExistingTask?.(match.id)}
+                          className="flex w-full items-center justify-between gap-2 rounded-lg border border-amber-400/40 bg-white/60 px-2 py-1.5 text-left transition hover:bg-white/90 dark:border-amber-400/30 dark:bg-white/5 dark:hover:bg-white/10"
+                          title="Открыть существующую задачу"
+                        >
+                          <span className="min-w-0">
+                            <span className="block truncate text-[0.7rem] font-medium text-slate-800 dark:text-slate-100">
+                              {match.title}
+                            </span>
+                            <span className="block truncate text-[0.6rem] text-slate-500 dark:text-slate-400">
+                              {[matchColumn, matchAssignee?.full_name, reasonLabel].filter(Boolean).join(' · ')}
+                            </span>
+                          </span>
+                          <span className="shrink-0 text-[0.6rem] text-amber-700 dark:text-amber-300">
+                            {match.score ? `${Math.round(Number(match.score) * 100)}%` : ''}
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  <div className="mt-2 flex flex-wrap justify-end gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => setDuplicateMatches([])}
+                      className="glass-btn !px-2 !py-1 !text-[0.65rem]"
+                    >
+                      Изменить
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleForceCreate}
+                      className="glass-btn !px-2 !py-1 !text-[0.65rem] !text-amber-800 dark:!text-amber-200"
+                    >
+                      Всё равно создать
+                    </button>
+                  </div>
+                </div>
+              )}
+
               <div className="space-y-2 pt-1">
                 <button
                   type="button"
                   onClick={handleSave}
-                  disabled={isSaving}
+                  disabled={isSaving || isCheckingDuplicates}
                   className="glass-btn glass-btn-primary w-full"
                   title={isNewTask ? 'Создать задачу и закрыть окно' : 'Сохранить изменения и закрыть окно'}
                 >
-                  {isSaving ? <Loader size={15} className="animate-spin" /> : <Check size={15} />}
-                  {isNewTask ? 'Создать и закрыть' : 'Сохранить и закрыть'}
+                  {isSaving || isCheckingDuplicates ? (
+                    <Loader size={15} className="animate-spin" />
+                  ) : (
+                    <Check size={15} />
+                  )}
+                  {isCheckingDuplicates
+                    ? 'Проверяем…'
+                    : isSaving
+                      ? 'Сохраняем…'
+                      : isNewTask
+                        ? 'Создать и закрыть'
+                        : 'Сохранить и закрыть'}
                 </button>
 
                 {!isNewTask && (

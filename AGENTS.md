@@ -162,6 +162,14 @@ docs/integration-api.md     — контракт API v1 и правила син
   Серия защищена от дублей уникальным `recurrence_parent_id`. Код: `TaskDetailModal`, `TaskCard`
   (значок), `lib/recurrence.js`, `App` (сохранение/обновление), миграция `013_recurring_tasks.sql`.
   Миграция применена 14.11.2026; триггер проверен в транзакции.
+- [x] **Проверка похожих задач при создании.** Перед созданием новой задачи вызывается RPC
+  `find_similar_tasks`: сравнивает название и очищенное от HTML описание с активными командными
+  задачами (pg_trgm + русский полнотекстовый поиск), возвращает top-3. В карточке показывается
+  мягкое предупреждение «Похожие задачи уже есть» с процентом, статусом и исполнителем; можно
+  открыть существующую или **«Всё равно создать»**. Проверка не блокирует создание, не сравнивает
+  личные задачи и пропускает автоматические копии повторяющихся задач. Ошибка RPC не мешает
+  сохранить задачу. Код: `TaskDetailModal` (`duplicateMatches`), `App` (`onOpenExistingTask`),
+  миграция `014_duplicate_check.sql`.
 - [x] **Телефон в формате +7 (999) 123-45-67.** Поля «Рабочий телефон» и «Личный телефон» форматируются
   на лету при вводе и при открытии профиля: 8…, +7…, 999… приводятся к одному виду. В карточке сотрудника
   и в «Поддержке» номер показывается так же, клик — `tel:`. Код: `lib/phone.js` (`formatPhone`, `phoneHref`).
@@ -298,6 +306,8 @@ docs/integration-api.md     — контракт API v1 и правила син
   RPC `api_v1_columns/tasks/task/upsert_task/archive_task`, создание и отзыв токенов.
 - `013_recurring_tasks.sql` — повторяющиеся задачи: поля `recurrence_*`, уникальный индекс
   по родителю и триггер `create_next_recurring_task()` (следующая копия при завершении).
+- `014_duplicate_check.sql` — проверка похожих задач: `pg_trgm`, GIN-индекс по названию,
+  RPC `find_similar_tasks()` с мягким порогом и top-3.
 - `README.md` — пошаговая инструкция: New query → Run, проверочные SQL,
   типовые ошибки и порядок действий после миграции.
 
@@ -355,6 +365,7 @@ values ('you@example.com', 'admin', 'bootstrap');
 | 2026-11-14 | Фильтр «Просрочено»: чип стал кнопкой, считает только активные задачи и работает вместе с фильтром по сотруднику. |
 | 2026-11-14 | Аналитика в «Команде»: KPI, структура, сроки, приоритеты и таблица по сотрудникам; фильтр период/сотрудник отдельным окном. |
 | 2026-11-14 | Повторяющиеся задачи: настройка в карточке, БД-триггер создания следующей копии при завершении; миграция 013 применена и проверена в транзакции. |
+| 2026-11-14 | Проверка дублей: RPC `find_similar_tasks` на pg_trgm + русский FTS, мягкое предупреждение с top-3, миграция 014 применена. |
 
 ---
 
@@ -372,6 +383,9 @@ is_private, deleted_at, due_at, start_at, task_no, priority, assignee_id, delete
 После `013_recurring_tasks.sql` также:
 `recurrence_freq, recurrence_interval, recurrence_until, recurrence_parent_id, recurrence_series_id`;
 триггер `trg_tasks_recurrence` и функция `create_next_recurring_task()`.
+
+После `014_duplicate_check.sql`: расширение `pg_trgm` в `extensions`, GIN-индекс
+`tasks_title_trgm_idx`, RPC `find_similar_tasks(text, text, uuid, integer)`.
 
 - номера проставлены существующим задачам (последний `task_no = 18`, следующий — 19);
 - `due_at` заполнен из `date`, `start_at` — из `created_at`.
@@ -423,6 +437,9 @@ personal_email, telegram, role, position_title, is_active`
     `create_next_recurring_task()` и триггер `trg_tasks_recurrence` созданы. Транзакционный
     smoke-тест: завершение weekly-задачи создало копию в первой колонке с `due_delta = 7 days`,
     связанную по `recurrence_parent_id`/`recurrence_series_id`; rollback, реальные данные не изменены.
+14. ~~Применить `014_duplicate_check.sql`~~ — **выполнено 14.11.2026** через Management API:
+    `pg_trgm` включён, GIN-индекс и RPC `find_similar_tasks` созданы; порог настроен так, чтобы
+    не ловить общие слова («тестовая задача» даёт 0 совпадений).
 
 ### Яндекс-вход: что проверено 11.11.2026
 - `GET /auth/v1/settings` → `external.email: true`, `disable_signup: false`, custom-провайдер не
@@ -451,7 +468,7 @@ personal_email, telegram, role, position_title, is_active`
   chat-team-light, chat-private-light, chat-team-dark, chat-picker-light, chat-picker-window,
   chat-authors-team, chat-authors-private, chat-employees-light,
   team-chat-icon-light, member-chat-button-light, chat-toasts-light, access-member-lock-light, calendar-light, access-admin-dark, team-access-dark,
-  header-light, header-dark, prod-login, analytics-dashboard, task-recurrence). Временный стенд удалён.
+  header-light, header-dark, prod-login, analytics-dashboard, task-recurrence, task-duplicate-warning). Временный стенд удалён.
 - Чат: отправка проверена в headless Chrome — ввод в composer, Enter, сообщение появилось
   в переписке, поле очистилось (PASS); выбор сотрудника через «+» проверен кликом (открывается
   список команды с поиском).
@@ -560,6 +577,13 @@ personal_email, telegram, role, position_title, is_active`
   функция, уникальный индекс и триггер. Транзакционный smoke-тест: завершение weekly-задачи
   создало копию в первой колонке, `due_delta = 7 days`, `recurrence_parent_id` и `series` связаны;
   rollback, реальные данные не изменены.
+- **Проверка дублей (14.11.2026):** на реальных данных 61 задача, 31 активная, 29 командных,
+  0 групп с одинаковым нормализованным названием; текстовый анализ нашёл одну слабую пару 0,25.
+  Миграция 014 применена: `pg_trgm` в `extensions`, GIN-индекс, RPC `find_similar_tasks`.
+  Проверка чувствительности: запрос «тестовая задача» после настройки порога даёт 0 совпадений
+  (до настройки было 5 ложных). На стенде RPC-ответ 82% показал «Похожие задачи уже есть»,
+  «Всё равно создать» создало задачу; `npm run lint` и `npm run build` — чисто.
+  Скриншот `task-duplicate-warning.png`.
 - **Телефон (12.11.2026):** `formatPhone` проверен на вариантах `8…`, `+7…`, `999…`, с пробелами и на пустом
   значении; в профиле на стенде поля показывают `+7 (999) 123-45-67` и `+7 (900) 000-00-00`,
   карточка сотрудника и «Поддержка» берут тот же формат. Скриншот `profile-phone-format.png`.
