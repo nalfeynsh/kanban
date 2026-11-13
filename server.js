@@ -323,7 +323,12 @@ async function handleApi(req, res, url) {
         sendJson(res, 400, { error: 'invalid_json' });
         return;
       }
-      const { external_id: externalId, source = 'igor', ...payload } = body;
+      const externalId = body.external_id;
+      const source = body.source || body.external_source || 'igor';
+      const payload = { ...body };
+      delete payload.external_id;
+      delete payload.source;
+      delete payload.external_source;
       if (!externalId) {
         sendJson(res, 400, { error: 'external_id_required' });
         return;
