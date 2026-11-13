@@ -166,6 +166,7 @@ export default function ChatView({
   const [forwardMessage, setForwardMessage] = useState(null);
   const listRef = useRef(null);
   const fileInputRef = useRef(null);
+  const composerRef = useRef(null);
 
   const activeDialog = dialogs.find((dialog) => dialog.conversation_id === activeId) || null;
   const isTeam = Boolean(activeDialog?.is_team);
@@ -230,6 +231,9 @@ export default function ChatView({
     if (!text || !activeId || sending) return;
     setDraft('');
     onSend?.(text);
+    // Не теряем курсор: можно сразу печатать следующее сообщение,
+    // даже если предыдущее ещё отправляется.
+    composerRef.current?.focus();
   };
 
   const handleKeyDown = (event) => {
@@ -748,11 +752,12 @@ export default function ChatView({
                     <Paperclip size={15} />
                   </button>
                   <textarea
+                    ref={composerRef}
                     value={draft}
                     onChange={(event) => setDraft(event.target.value)}
                     onKeyDown={handleKeyDown}
                     rows={1}
-                    disabled={!activeId || sending}
+                    disabled={!activeId}
                     placeholder={
                       activeId
                         ? isTeam
