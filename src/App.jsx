@@ -532,6 +532,35 @@ export default function App() {
     });
   };
 
+  /** Перетаскивание задачи в календаре: меняем дату начала и/или срока */
+  const handleCalendarTaskDateChange = async (taskId, patch) => {
+    const task = tasks.find((item) => item.id === taskId);
+    if (!task) return false;
+
+    const payload = {};
+    if (supports(taskSchema, 'due_at') && patch.due_at) payload.due_at = patch.due_at;
+    if (supports(taskSchema, 'start_at') && patch.start_at) payload.start_at = patch.start_at;
+    if (supports(taskSchema, 'date') && patch.due_at) payload.date = String(patch.due_at).slice(0, 10);
+
+    if (Object.keys(payload).length === 0) return false;
+
+    const { data, error } = await supabase
+      .from('tasks')
+      .update(payload)
+      .eq('id', taskId)
+      .select()
+      .maybeSingle();
+
+    if (error) {
+      setBanner(`Не удалось перенести задачу: ${error.message}`);
+      return false;
+    }
+
+    const updated = sanitizeTask(data) || { ...task, ...payload };
+    setTasks((prev) => prev.map((item) => (item.id === taskId ? { ...item, ...updated } : item)));
+    return true;
+  };
+
   /** Клик по слоту календаря: создаём задачу/встречу на выбранное время */
   const handleCalendarSlot = ({ start, due }) => {
     setDraftKey((key) => key + 1);
@@ -1225,6 +1254,7 @@ export default function App() {
             numberById={numberById}
             onTaskClick={setSelectedTask}
             onSlotSelect={handleCalendarSlot}
+            onTaskDateChange={handleCalendarTaskDateChange}
           />
         )}
 

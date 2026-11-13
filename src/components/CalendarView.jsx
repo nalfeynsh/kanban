@@ -4,7 +4,7 @@ import dayGridPlugin from '@fullcalendar/daygrid';
 import timeGridPlugin from '@fullcalendar/timegrid';
 import interactionPlugin from '@fullcalendar/interaction';
 import { ChevronLeft, ChevronRight, CalendarDays, CalendarRange, CalendarClock } from 'lucide-react';
-import { formatMonthTitle, getDueValue } from '../lib/format';
+import { formatMonthTitle, getDueValue, isDateOnly, parseDateValue } from '../lib/format';
 import { getPriority } from '../lib/priority';
 
 const PRIORITY_COLORS = {
@@ -21,23 +21,48 @@ function toInputValue(date) {
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}:00`;
 }
 
-function sameDay(a, b) {
-  return (
-    a.getFullYear() === b.getFullYear() &&
-    a.getMonth() === b.getMonth() &&
-    a.getDate() === b.getDate()
-  );
+function startOfDay(date) {
+  return new Date(date.getFullYear(), date.getMonth(), date.getDate());
 }
 
-export default function CalendarView({ tasks = [], numberById, onTaskClick, onSlotSelect }) {
+function addDays(date, days) {
+  const next = new Date(date);
+  next.setDate(next.getDate() + days);
+  return next;
+}
+
+/** Разница в календарных днях (без влияния часовых поясов/DST) */
+function dayDiff(from, to) {
+  const a = Date.UTC(from.getFullYear(), from.getMonth(), from.getDate());
+  const b = Date.UTC(to.getFullYear(), to.getMonth(), to.getDate());
+  return Math.round((b - a) / 86_400_000);
+}
+
+function toDateOnly(date) {
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+}
+
+export default function CalendarView({ tasks = [], numberById, onTaskClick, onSlotSelect, onTaskDateChange }) {
   const [currentDate, setCurrentDate] = useState(new Date());
   const [periodTitle, setPeriodTitle] = useState('');
   const [activeView, setActiveView] = useState('dayGridMonth');
   const calendarRef = useRef(null);
 
   const events = tasks.flatMap((task) => {
-    const due = getDueValue(task);
-    if (!due) return [];
+    const dueRaw = getDueValue(task);
+    if (!dueRaw) return [];
+
+    const dueDate = parseDateValue(dueRaw);
+    if (!dueDate) return [];
+
+    const startDate = task.start_at ? parseDateValue(task.start_at) : null;
+    const hasStart = startDate && startDate < dueDate ? startDate : null;
+    const effectiveStart = hasStart || dueDate;
+    const multiDay = dayDiff(effectiveStart, dueDate) > 0;
+    const dueDateOnly = isDateOnly(dueRaw);
+    // Многодневные задачи рисуем полосой «весь день», чтобы они были видны
+    // на каждом дне и в месяце, и в неделе. Внутри одного дня — по времени.
+    const timed = !dueDateOnly && !multiDay;
 
     const number = numberById?.get(task.id);
     const priority = getPriority(task.priority);
@@ -45,23 +70,25 @@ export default function CalendarView({ tasks = [], numberById, onTaskClick, onSl
     const title = number != null ? `№${number} · ${task.title || 'Без названия'}` : task.title || 'Без названия';
     const extendedProps = { isPrivate: Boolean(task.is_private) };
 
-    // Задача без времени — событие на весь день
-    if (!String(due).includes('T')) {
-      return [{ id: task.id, title, start: due, allDay: true, ...colors, extendedProps }];
+    if (!timed) {
+      return [
+        {
+          id: task.id,
+          title,
+          start: toDateOnly(startOfDay(effectiveStart)),
+          // FullCalendar считает end all-day события исключающим,
+          // поэтому добавляем день: срок «завтра» входит в показ.
+          end: toDateOnly(addDays(startOfDay(dueDate), 1)),
+          allDay: true,
+          ...colors,
+          extendedProps,
+        },
+      ];
     }
 
-    const dueDate = new Date(due);
-    if (Number.isNaN(dueDate.getTime())) return [];
-
-    // Если задано начало в тот же день — рисуем интервал, иначе точку в сроке (30 минут)
-    let startsAt = dueDate;
-    if (task.start_at && String(task.start_at).includes('T')) {
-      const startDate = new Date(task.start_at);
-      if (!Number.isNaN(startDate.getTime()) && startDate < dueDate && sameDay(startDate, dueDate)) {
-        startsAt = startDate;
-      }
-    }
-    const endsAt = startsAt === dueDate ? new Date(dueDate.getTime() + 60 * 60 * 1000) : dueDate;
+    let startsAt = hasStart || dueDate;
+    let endsAt = hasStart ? dueDate : new Date(dueDate.getTime() + 60 * 60 * 1000);
+    if (!(endsAt > startsAt)) endsAt = new Date(startsAt.getTime() + 60 * 60 * 1000);
 
     return [
       {
@@ -96,6 +123,51 @@ export default function CalendarView({ tasks = [], numberById, onTaskClick, onSl
     }
 
     info.view.calendar.unselect();
+  };
+
+  /** Перетаскивание задачи на другой день/время: сдвигаем сроки и сохраняем */
+  const handleEventDrop = async (info) => {
+    const task = tasks.find((item) => item.id === info.event.id);
+    const oldStart = info.oldEvent.start;
+    const newStart = info.event.start;
+    const dueRaw = getDueValue(task);
+    const dueDate = parseDateValue(dueRaw);
+    const startDate = task?.start_at ? parseDateValue(task.start_at) : null;
+
+    if (!task || !onTaskDateChange || !dueDate || !oldStart || !newStart) {
+      info.revert();
+      return;
+    }
+
+    let deltaDays = 0;
+    let deltaMs = 0;
+
+    if (info.event.allDay) {
+      deltaDays = dayDiff(oldStart, newStart);
+      if (!deltaDays) return;
+    } else {
+      deltaMs = newStart.getTime() - oldStart.getTime();
+      if (!deltaMs) return;
+    }
+
+    const shift = (value, dateOnly) => {
+      const date = parseDateValue(value);
+      if (!date) return null;
+      const next = info.event.allDay ? addDays(date, deltaDays) : new Date(date.getTime() + deltaMs);
+      return dateOnly ? toDateOnly(next) : toInputValue(next);
+    };
+
+    const patch = { due_at: shift(dueRaw, isDateOnly(dueRaw)) };
+    if (startDate && startDate < dueDate) {
+      patch.start_at = shift(task.start_at, isDateOnly(task.start_at));
+    }
+
+    try {
+      const saved = await onTaskDateChange(task.id, patch);
+      if (saved === false) info.revert();
+    } catch {
+      info.revert();
+    }
   };
 
   return (
@@ -175,6 +247,10 @@ export default function CalendarView({ tasks = [], numberById, onTaskClick, onSl
           selectable
           selectMirror
           select={handleSelect}
+          editable
+          eventDurationEditable={false}
+          eventDragMinDistance={5}
+          eventDrop={handleEventDrop}
           events={events}
           eventClick={(info) => {
             const task = tasks.find((item) => item.id === info.event.id);
