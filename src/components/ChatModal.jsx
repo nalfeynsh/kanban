@@ -24,6 +24,7 @@ export default function ChatModal({
   initialConversationId = null,
   initialDraft = '',
   onOpenProfile,
+  onOpenTask,
   onUnreadChange,
   onActiveChange,
 }) {
@@ -348,6 +349,7 @@ export default function ChatModal({
       onForwardMessage={handleForwardMessage}
       onClose={onClose}
       onOpenProfile={handleOpenProfile}
+      onOpenTask={onOpenTask}
       onStartDialog={handleStartDialog}
     />
   );

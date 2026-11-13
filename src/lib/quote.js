@@ -29,16 +29,24 @@ export function htmlToText(html) {
     .trim();
 }
 
+/** Убирает служебный маркер задачи из текста для превью и уведомлений */
+export function stripTaskMarker(text) {
+  return String(text || '')
+    .replace(/\s*\[\[task:[0-9a-f-]{36}\]\]/gi, '')
+    .trim();
+}
+
 /**
  * Собирает текст сообщения-цитаты.
- * @param {{title?: string, number?: number, text?: string, limit?: number}} params
+ * @param {{taskId?: string, title?: string, number?: number, text?: string, limit?: number}} params
  */
-export function buildTaskQuote({ title, number, text, limit = 600 }) {
+export function buildTaskQuote({ taskId, title, number, text, limit = 600 }) {
   const clean = String(text || '').trim();
   const clipped = clean.length > limit ? `${clean.slice(0, limit).trimEnd()}…` : clean;
+  const marker = taskId ? ` [[task:${taskId}]]` : '';
   const head = number
-    ? `Цитата из задачи № ${number} «${title || 'Без названия'}»`
-    : `Цитата из задачи «${title || 'Без названия'}»`;
+    ? `Цитата из задачи № ${number} «${title || 'Без названия'}»${marker}`
+    : `Цитата из задачи «${title || 'Без названия'}»${marker}`;
 
   if (!clipped) return `${head}.`;
   return `${head}:\n${clipped

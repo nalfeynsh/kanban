@@ -213,7 +213,7 @@ export default function TaskDetailModal({
     const selected = quoteSelectionRef.current || '';
     const text = selected || htmlToText(editedTask.description) || editedTask.title;
     if (!text) return;
-    onQuoteToChat?.({ title: editedTask.title, number, text });
+    onQuoteToChat?.({ taskId: editedTask.id, title: editedTask.title, number, text });
   };
 
   return (

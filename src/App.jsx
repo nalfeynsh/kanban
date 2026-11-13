@@ -35,7 +35,7 @@ import {
 import { TaskCardView } from './components/TaskCard';
 import { supabase } from './supabaseClient';
 import { collectFields, mergeFields, pickFields, profileFields, supports, taskFields } from './lib/schema';
-import { buildTaskQuote } from './lib/quote';
+import { buildTaskQuote, stripTaskMarker } from './lib/quote';
 import { readOAuthError, explainOAuthError, cleanOAuthUrl } from './lib/oauth';
 import { canSeeTask, matchesMode } from './lib/access';
 import { byPosition, getDueValue, isOverdue } from './lib/format';
@@ -696,12 +696,28 @@ export default function App() {
   };
 
   /** Цитата из задачи → черновик сообщения в чате (получателя выбирает пользователь) */
-  const handleQuoteToChat = ({ title, number, text }) => {
+  const handleQuoteToChat = ({ taskId, title, number, text }) => {
     setSelectedTask(null);
-    setChatDraft(buildTaskQuote({ title, number, text }));
+    setChatDraft(buildTaskQuote({ taskId, title, number, text }));
     setChatPeerId(null);
     setChatConversationId(null);
     setIsChatOpen(true);
+  };
+
+  /** Клик по цитате в чате → открыть исходную задачу в модалке */
+  const handleOpenTaskFromChat = (taskId) => {
+    const task = tasks.find((item) => item.id === taskId);
+    if (!task) {
+      setBanner('Задача из цитаты не найдена или больше недоступна.');
+      return;
+    }
+    setIsChatOpen(false);
+    setChatPeerId(null);
+    setChatConversationId(null);
+    setActiveChatId(null);
+    setChatDraft('');
+    setSelectedTask(task);
+    setDraftKey((value) => value + 1);
   };
 
   /** Клик по логотипу — всегда на главную (доска, без фильтров и модалок) */
@@ -775,10 +791,11 @@ export default function App() {
           if (viewed) return;
 
           const author = profilesRef.current.find((item) => item.id === row.author_id);
+          const preview = stripTaskMarker(row.body) || (row.attachment_name ? 'Файл' : '');
           const toast = {
             id: `toast-${row.id}`,
             title: author?.full_name || 'Сотрудник',
-            body: row.body,
+            body: preview,
             color: author?.color,
             avatar: author?.avatar_url,
             initials: initialsOf(author?.full_name),
@@ -797,7 +814,7 @@ export default function App() {
           if (document.hidden) {
             showSystemNotification({
               title: toast.title,
-              body: row.body,
+              body: preview,
               tag: row.conversation_id,
               onClick: () => openChatRef.current?.(null, row.conversation_id),
             });
@@ -1281,6 +1298,7 @@ export default function App() {
           initialDraft={chatDraft}
           onActiveChange={setActiveChatId}
           onUnreadChange={setChatUnread}
+          onOpenTask={handleOpenTaskFromChat}
           onOpenProfile={(peer) => {
             setIsChatOpen(false);
             setChatPeerId(null);

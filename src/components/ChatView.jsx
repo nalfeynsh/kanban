@@ -19,6 +19,7 @@ import {
 } from 'lucide-react';
 import { telegramUrl } from '../lib/telegram';
 import { chatFileUrl } from '../lib/chat';
+import { stripTaskMarker } from '../lib/quote';
 import Avatar from './Avatar';
 
 const pad = (n) => String(n).padStart(2, '0');
@@ -76,8 +77,11 @@ function formatBytes(size) {
  * Текст сообщения: строки «> …» рисуем как цитату,
  * остальное — обычным текстом с сохранением переносов.
  */
-function MessageBody({ text, own }) {
-  const lines = String(text ?? '').split('\n');
+function MessageBody({ text, own, onOpenTask }) {
+  const raw = String(text ?? '');
+  const taskId = raw.match(/\[\[task:([0-9a-f-]{36})\]\]/i)?.[1] || null;
+  const clean = raw.replace(/\s*\[\[task:[0-9a-f-]{36}\]\]/gi, '').trimEnd();
+  const lines = clean.split('\n');
   const blocks = [];
   let plain = [];
   let quote = [];
@@ -119,6 +123,19 @@ function MessageBody({ text, own }) {
           >
             {block.text}
           </blockquote>
+        ) : taskId && index === 0 && /^Цитата из задачи/.test(block.text.trim()) ? (
+          <button
+            key={`text-${index}`}
+            type="button"
+            onClick={() => onOpenTask?.(taskId)}
+            className={`mb-0.5 flex w-full items-start gap-1 text-left font-semibold underline decoration-dotted underline-offset-2 transition hover:opacity-80 ${
+              own ? 'text-white' : 'text-slate-800 dark:text-slate-100'
+            }`}
+            title="Открыть задачу, из которой взята цитата"
+          >
+            <span className="whitespace-pre-wrap">{block.text}</span>
+            <ExternalLink size={11} className="mt-0.5 shrink-0 opacity-70" />
+          </button>
         ) : (
           <span key={`text-${index}`} className="block whitespace-pre-wrap">
             {block.text}
@@ -154,6 +171,7 @@ export default function ChatView({
   onForwardMessage,
   onClose,
   onOpenProfile,
+  onOpenTask,
   onStartDialog,
   onRetry,
   initialDraft = '',
@@ -237,10 +255,52 @@ export default function ChatView({
   };
 
   const handleKeyDown = (event) => {
-    if (event.key === 'Enter' && !event.shiftKey) {
+    if (event.key !== 'Enter') return;
+
+    // Ctrl/Cmd + Enter — перенос строки (для списков), Shift + Enter — тоже
+    if (event.ctrlKey || event.metaKey) {
       event.preventDefault();
-      handleSend();
+      const textarea = event.currentTarget;
+      const start = textarea.selectionStart ?? draft.length;
+      const end = textarea.selectionEnd ?? start;
+      setDraft(`${draft.slice(0, start)}\n${draft.slice(end)}`);
+      window.requestAnimationFrame(() => {
+        textarea.selectionStart = start + 1;
+        textarea.selectionEnd = start + 1;
+      });
+      return;
     }
+
+    if (event.shiftKey) return;
+    event.preventDefault();
+    handleSend();
+  };
+
+  /** Вставка файлов и скриншотов из буфера обмена */
+  const handlePaste = (event) => {
+    if (!activeId || sending) return;
+    const data = event.clipboardData;
+    if (!data) return;
+
+    let files = Array.from(data.files || []);
+    if (!files.length) {
+      files = Array.from(data.items || [])
+        .filter((item) => item.kind === 'file')
+        .map((item) => item.getAsFile())
+        .filter(Boolean);
+    }
+    if (!files.length) return;
+
+    const now = new Date();
+    const stamp = `${pad(now.getHours())}-${pad(now.getMinutes())}`;
+    files = files.map((file) =>
+      file.type.startsWith('image/') && (!file.name || /^image\./i.test(file.name))
+        ? new File([file], `Скриншот ${stamp}.png`, { type: file.type || 'image/png' })
+        : file,
+    );
+
+    event.preventDefault();
+    onSendFiles?.(files);
   };
 
   const openPicker = () => {
@@ -395,7 +455,7 @@ export default function ChatView({
                       </span>
                       <span className="flex items-center justify-between gap-2">
                         <span className="truncate text-[0.68rem] text-slate-500 dark:text-slate-400">
-                          {teamDialog.last_message || membersLabel(teamDialog.member_count)}
+                          {stripTaskMarker(teamDialog.last_message) || membersLabel(teamDialog.member_count)}
                         </span>
                         {teamDialog.unread > 0 && (
                           <span className="shrink-0 rounded-full bg-indigo-500 px-1.5 py-0.5 text-[0.58rem] font-bold text-white">
@@ -464,7 +524,7 @@ export default function ChatView({
                         </span>
                         <span className="flex items-center justify-between gap-2">
                           <span className="truncate text-[0.68rem] text-slate-500 dark:text-slate-400">
-                            {dialog.last_message || 'Нет сообщений'}
+                            {stripTaskMarker(dialog.last_message) || 'Нет сообщений'}
                           </span>
                           {dialog.unread > 0 && (
                             <span className="shrink-0 rounded-full bg-indigo-500 px-1.5 py-0.5 text-[0.58rem] font-bold text-white">
@@ -710,7 +770,7 @@ export default function ChatView({
                                   <Download size={13} className="shrink-0 opacity-70" />
                                 </button>
                               )}
-                              <MessageBody text={message.body} own={own} />
+                              <MessageBody text={message.body} own={own} onOpenTask={onOpenTask} />
                               <span
                                 className={`mt-1 flex items-center justify-end gap-1 text-[0.58rem] ${
                                   own ? 'text-white/75' : 'text-slate-400'
@@ -756,13 +816,14 @@ export default function ChatView({
                     value={draft}
                     onChange={(event) => setDraft(event.target.value)}
                     onKeyDown={handleKeyDown}
+                    onPaste={handlePaste}
                     rows={1}
                     disabled={!activeId}
                     placeholder={
                       activeId
                         ? isTeam
-                          ? 'Сообщение в общий чат… (Enter — отправить)'
-                          : 'Сообщение… (Enter — отправить, Shift+Enter — новая строка)'
+                          ? 'Сообщение в общий чат… (Enter — отправить, Ctrl+Enter — строка)'
+                          : 'Сообщение… (Enter — отправить, Ctrl+Enter — строка, можно вставить скрин)'
                         : 'Выберите диалог'
                     }
                     className="glass-input max-h-32 !min-h-[2.6rem] flex-1 resize-none !py-2 !text-xs"
