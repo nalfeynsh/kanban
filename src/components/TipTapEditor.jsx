@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { forwardRef, useEffect, useImperativeHandle } from 'react';
 import { useEditor, EditorContent } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import Underline from '@tiptap/extension-underline';
@@ -18,7 +18,7 @@ import {
   Link as LinkIcon,
 } from 'lucide-react';
 
-export default function TipTapEditor({ content, onChange }) {
+export default forwardRef(function TipTapEditor({ content, onChange }, ref) {
   const editor = useEditor({
     extensions: [
       StarterKit.configure({ link: false, underline: false }),
@@ -42,6 +42,21 @@ export default function TipTapEditor({ content, onChange }) {
       editor.commands.setContent(content || '', false);
     }
   }, [content, editor]);
+
+  useImperativeHandle(
+    ref,
+    () => ({
+      focus: () => {
+        if (!editor) return;
+        // editor.commands.focus() в некоторых сборках не ставит фокус на DOM —
+        // фокусируем contenteditable напрямую и ставим курсор в конец.
+        editor.view.dom.focus();
+        const end = editor.state.doc.content.size;
+        editor.commands.setTextSelection(end);
+      },
+    }),
+    [editor],
+  );
 
   if (!editor) return null;
 
@@ -115,4 +130,4 @@ export default function TipTapEditor({ content, onChange }) {
       <EditorContent editor={editor} />
     </div>
   );
-}
+});

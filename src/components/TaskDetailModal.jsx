@@ -80,6 +80,7 @@ export default function TaskDetailModal({
   const [formError, setFormError] = useState('');
   const panelRef = useRef(null);
   const quoteSelectionRef = useRef('');
+  const descriptionRef = useRef(null);
 
   const dueSupported = supports(allowedFields, 'due_at');
   const startSupported = supports(allowedFields, 'start_at');
@@ -250,6 +251,13 @@ export default function TaskDetailModal({
                 type="text"
                 value={editedTask.title}
                 onChange={(event) => setField('title', event.target.value)}
+                onKeyDown={(event) => {
+                  // Tab из названия — сразу в описание, минуя панель форматирования
+                  if (event.key === 'Tab' && !event.shiftKey) {
+                    event.preventDefault();
+                    descriptionRef.current?.focus();
+                  }
+                }}
                 className="w-full border-b-2 border-transparent bg-transparent pb-1 text-xl font-bold text-slate-900 outline-none transition-colors placeholder:text-slate-400 hover:border-white/60 focus:border-indigo-500 dark:text-white dark:hover:border-white/15"
                 placeholder="Название задачи"
                 autoFocus={isNewTask}
@@ -339,6 +347,7 @@ export default function TaskDetailModal({
               <div className="overflow-hidden rounded-2xl border border-slate-300/60 bg-white/75 backdrop-blur-md dark:border-white/10 dark:bg-white/5">
                 <TipTapEditor
                   key={editedTask.id || 'new'}
+                  ref={descriptionRef}
                   content={editedTask.description}
                   onChange={(html) => setField('description', html)}
                 />
