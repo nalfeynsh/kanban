@@ -1,4 +1,4 @@
-import { MessageSquare, Users, X } from 'lucide-react';
+import { CalendarClock, MessageSquare, Users, X } from 'lucide-react';
 import Avatar from './Avatar';
 
 /** Всплывающие уведомления в правом нижнем углу */
@@ -16,9 +16,16 @@ export default function Toasts({ toasts = [], onDismiss, onOpen }) {
             type="button"
             onClick={() => onOpen?.(toast)}
             className="flex min-w-0 flex-1 items-start gap-2.5 text-left"
-            title="Открыть чат"
+            title={toast.meetingId ? 'Открыть встречу' : 'Открыть чат'}
           >
-            {toast.isTeam ? (
+            {toast.meetingId ? (
+              <span
+                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-white"
+                style={{ backgroundColor: toast.color || '#0ea5e9' }}
+              >
+                <CalendarClock size={15} />
+              </span>
+            ) : toast.isTeam ? (
               <span
                 className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-white"
                 style={{ backgroundColor: toast.color || '#6366f1' }}
@@ -39,7 +46,11 @@ export default function Toasts({ toasts = [], onDismiss, onOpen }) {
                 <span className="truncate text-[0.78rem] font-semibold text-slate-800 dark:text-slate-100">
                   {toast.title}
                 </span>
-                <MessageSquare size={11} className="shrink-0 text-indigo-400" />
+                {toast.meetingId ? (
+                  <CalendarClock size={11} className="shrink-0 text-sky-400" />
+                ) : (
+                  <MessageSquare size={11} className="shrink-0 text-indigo-400" />
+                )}
               </span>
               <span className="mt-0.5 block line-clamp-2 text-[0.7rem] text-slate-600 dark:text-slate-300">
                 {toast.body}

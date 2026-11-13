@@ -17,6 +17,7 @@ import {
   Bell,
   BellOff,
   LifeBuoy,
+  Video,
 } from 'lucide-react';
 
 export default function Header({
@@ -33,6 +34,9 @@ export default function Header({
   onArchiveClick,
   onTeamClick,
   onChatClick,
+  onMeetingsClick,
+  meetingsCount = 0,
+  meetingsEnabled = true,
   onHelpClick,
   chatUnread = 0,
   notificationsEnabled = true,
@@ -194,6 +198,23 @@ export default function Header({
             {notificationsEnabled ? <Bell size={17} /> : <BellOff size={17} />}
             <span className="hidden xl:inline">Уведомления</span>
           </button>
+
+          {meetingsEnabled && (
+            <button
+              type="button"
+              onClick={onMeetingsClick}
+              className="glass-btn relative !px-2.5 !py-1.5"
+              title="Встречи"
+            >
+              <Video size={17} />
+              <span className="hidden lg:inline">Встречи</span>
+              {meetingsCount > 0 && (
+                <span className="absolute -top-1 -right-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-indigo-500 px-1 text-[0.55rem] font-bold text-white shadow">
+                  {meetingsCount > 9 ? '9+' : meetingsCount}
+                </span>
+              )}
+            </button>
+          )}
 
           <button
             type="button"

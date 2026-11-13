@@ -25,6 +25,10 @@ import BulkActions from './components/BulkActions';
 import ChatModal from './components/ChatModal';
 import HelpModal from './components/HelpModal';
 import Toasts from './components/Toasts';
+import MeetingModal from './components/MeetingModal';
+import MeetingsModal from './components/MeetingsModal';
+import MeetingDetailsModal from './components/MeetingDetailsModal';
+import MeetingRoomPage from './components/MeetingRoomPage';
 import {
   notificationPermission,
   playChime,
@@ -89,6 +93,12 @@ export default function App() {
   const [isTeamOpen, setIsTeamOpen] = useState(false);
   const [isHelpOpen, setIsHelpOpen] = useState(false);
   const [isChatOpen, setIsChatOpen] = useState(false);
+  const [isMeetingsOpen, setIsMeetingsOpen] = useState(false);
+  const [isMeetingModalOpen, setIsMeetingModalOpen] = useState(false);
+  const [selectedMeeting, setSelectedMeeting] = useState(null);
+  const [meetings, setMeetings] = useState([]);
+  const [meetingParticipants, setMeetingParticipants] = useState([]);
+  const [meetingsSupported, setMeetingsSupported] = useState(true);
   const [chatPeerId, setChatPeerId] = useState(null);
   const [chatConversationId, setChatConversationId] = useState(null);
   const [chatDraft, setChatDraft] = useState('');
@@ -112,6 +122,7 @@ export default function App() {
   const [activeTask, setActiveTask] = useState(null);
   const lastOverRef = useRef(null);
   const doneCleanupRef = useRef(false);
+  const meetingRemindedRef = useRef(new Set());
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState(() => new Set());
 
@@ -120,6 +131,10 @@ export default function App() {
 
   const userId = session?.user?.id ?? null;
   const userEmail = session?.user?.email ?? '';
+  const roomToken = useMemo(() => {
+    const match = window.location.pathname.match(/^\/meet\/([^/]+)\/?$/);
+    return match ? decodeURIComponent(match[1]) : null;
+  }, []);
 
   // --- Тема ---
   const [theme, setTheme] = useState(() => localStorage.getItem('theme') || 'light');
@@ -152,6 +167,9 @@ export default function App() {
         setTasks([]);
         setArchivedTasks([]);
         setSelectedTask(null);
+        setMeetings([]);
+        setMeetingParticipants([]);
+        setSelectedMeeting(null);
         setMemberFilter(null);
         setLoading(false);
       }
@@ -301,6 +319,94 @@ export default function App() {
     loadData();
   }, [loadData]);
 
+  // --- Встречи (Phase 1 ВКС) ---
+  const loadMeetings = useCallback(async () => {
+    if (!userId) return;
+    const [meetingsResult, participantsResult] = await Promise.all([
+      supabase.from('meetings').select('*').order('start_at', { ascending: true }),
+      supabase.from('meeting_participants').select('*'),
+    ]);
+    const error = meetingsResult.error || participantsResult.error;
+    if (error) {
+      if (['42P01', 'PGRST205'].includes(error.code)) {
+        setMeetingsSupported(false);
+        return;
+      }
+      setBanner(`Встречи не загружены: ${error.message}`);
+      return;
+    }
+    setMeetings(meetingsResult.data ?? []);
+    setMeetingParticipants(participantsResult.data ?? []);
+    setMeetingsSupported(true);
+  }, [userId]);
+
+  useEffect(() => {
+    if (!userId) return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    loadMeetings();
+  }, [userId, loadMeetings]);
+
+  const handleOpenMeeting = useCallback((meeting) => {
+    setIsMeetingsOpen(false);
+    setSelectedMeeting(meeting);
+  }, []);
+
+  // Напоминания о встречах: 30 и 5 минут. Работают, пока открыта вкладка.
+  useEffect(() => {
+    if (!userId || meetings.length === 0) return undefined;
+
+    const checkReminders = () => {
+      const now = Date.now();
+      const stages = [
+        { key: '30', minutes: 30, from: 29, label: 'через 30 минут' },
+        { key: '5', minutes: 5, from: 4, label: 'через 5 минут' },
+      ];
+
+      meetings.forEach((meeting) => {
+        if (meeting.status !== 'scheduled') return;
+        const participation = meetingParticipants.find(
+          (item) => item.meeting_id === meeting.id && item.user_id === userId,
+        );
+        if (!participation || participation.status === 'declined') return;
+
+        const startsIn = (new Date(meeting.start_at).getTime() - now) / 60_000;
+        stages.forEach((stage) => {
+          if (startsIn > stage.minutes || startsIn <= stage.from) return;
+          const reminderKey = `${meeting.id}:${stage.key}`;
+          if (meetingRemindedRef.current.has(reminderKey)) return;
+          meetingRemindedRef.current.add(reminderKey);
+
+          const toast = {
+            id: `meeting-toast-${reminderKey}`,
+            meetingId: meeting.id,
+            title: `Встреча ${stage.label}`,
+            body: meeting.title,
+            color: '#0ea5e9',
+          };
+          setToasts((prev) => [...prev.filter((item) => item.id !== toast.id), toast].slice(-3));
+          playChime();
+          window.setTimeout(() => {
+            setToasts((prev) => prev.filter((item) => item.id !== toast.id));
+          }, 12_000);
+
+          if (notificationsEnabled) {
+            showSystemNotification({
+              title: toast.title,
+              body: toast.body,
+              tag: toast.id,
+              onClick: () => handleOpenMeeting(meeting),
+            });
+          }
+        });
+      });
+    };
+
+    checkReminders();
+    const timer = window.setInterval(checkReminders, 30_000);
+    return () => window.clearInterval(timer);
+    // handleOpenMeeting стабилен (useCallback), meetings обновляют замыкание
+  }, [meetings, meetingParticipants, userId, notificationsEnabled, handleOpenMeeting]);
+
   // Автоочистка «Готово»: задачи, пробывшие там дольше 3 дней, уходят в архив.
   // Основная проверка живёт в pg_cron (миграция 011); это дублирующий запуск
   // при входе администратора/менеджера на случай, если cron не установлен.
@@ -425,6 +531,77 @@ export default function App() {
   );
 
   const canManageRoles = profile?.role === 'admin';
+
+  const upcomingMeetingCount = useMemo(() => {
+    const declined = new Set(
+      meetingParticipants
+        .filter((item) => item.user_id === userId && item.status === 'declined')
+        .map((item) => item.meeting_id),
+    );
+    return meetings.filter(
+      (meeting) => meeting.status === 'scheduled' && !declined.has(meeting.id),
+    ).length;
+  }, [meetings, meetingParticipants, userId]);
+
+  const handleCreateMeeting = async ({ title, description, start_at, end_at, participantIds = [] }) => {    if (!userId) return false;
+    const meetingId = crypto.randomUUID();
+    const { error } = await supabase
+      .from('meetings')
+      .insert({
+        id: meetingId,
+        title,
+        description,
+        start_at,
+        end_at,
+        organizer_id: userId,
+      });
+
+    if (error) {
+      setBanner(`Не удалось создать встречу: ${error.message}`);
+      return false;
+    }
+
+    const inviteIds = participantIds.filter((id) => id !== userId);
+    if (inviteIds.length > 0) {
+      const { error: inviteError } = await supabase.from('meeting_participants').insert(
+        inviteIds.map((id) => ({ meeting_id: meetingId, user_id: id, status: 'invited' })),
+      );
+      if (inviteError) {
+        setBanner(`Встреча создана, но приглашения не отправлены: ${inviteError.message}`);
+      }
+    }
+
+    await loadMeetings();
+    return true;
+  };
+
+  const handleRespondMeeting = async (meetingId, status) => {
+    if (!userId) return false;
+    const { error } = await supabase
+      .from('meeting_participants')
+      .update({ status, responded_at: new Date().toISOString() })
+      .eq('meeting_id', meetingId)
+      .eq('user_id', userId);
+    if (error) {
+      setBanner(`Не удалось сохранить ответ: ${error.message}`);
+      return false;
+    }
+    await loadMeetings();
+    return true;
+  };
+
+  const handleCancelMeeting = async (meetingId) => {
+    const { error } = await supabase
+      .from('meetings')
+      .update({ status: 'cancelled' })
+      .eq('id', meetingId);
+    if (error) {
+      setBanner(`Не удалось отменить встречу: ${error.message}`);
+      return false;
+    }
+    await loadMeetings();
+    return true;
+  };
 
   // --- Drag & Drop ---
   const visibleTaskIds = useMemo(() => new Set(visibleTasks.map((task) => task.id)), [visibleTasks]);
@@ -1162,6 +1339,17 @@ export default function App() {
     );
   }
 
+  if (roomToken) {
+    return (
+      <MeetingRoomPage
+        token={roomToken}
+        profile={profile}
+        userEmail={userEmail}
+        onExit={() => window.location.assign('/')}
+      />
+    );
+  }
+
   return (
     <div className="app-bg flex min-h-screen flex-col">
       <Header
@@ -1178,6 +1366,9 @@ export default function App() {
         onArchiveClick={() => setIsArchiveOpen(true)}
         onTeamClick={() => setIsTeamOpen(true)}
         onChatClick={() => openChat()}
+        onMeetingsClick={() => setIsMeetingsOpen(true)}
+        meetingsCount={upcomingMeetingCount}
+        meetingsEnabled={meetingsSupported}
         onHelpClick={() => setIsHelpOpen(true)}
         chatUnread={chatUnread}
         notificationsEnabled={notificationsEnabled}
@@ -1342,8 +1533,10 @@ export default function App() {
         {currentView === 'calendar' && (
           <CalendarView
             tasks={visibleTasks}
+            meetings={meetings}
             numberById={numberById}
             onTaskClick={setSelectedTask}
+            onMeetingClick={handleOpenMeeting}
             onSlotSelect={handleCalendarSlot}
             onTaskDateChange={handleCalendarTaskDateChange}
           />
@@ -1483,11 +1676,50 @@ export default function App() {
         />
       )}
 
+      {isMeetingsOpen && meetingsSupported && (
+        <MeetingsModal
+          meetings={meetings}
+          participants={meetingParticipants}
+          members={allProfiles}
+          currentUserId={userId}
+          onClose={() => setIsMeetingsOpen(false)}
+          onCreate={() => setIsMeetingModalOpen(true)}
+          onMeetingClick={handleOpenMeeting}
+        />
+      )}
+
+      {isMeetingModalOpen && meetingsSupported && (
+        <MeetingModal
+          members={allProfiles}
+          currentUserId={userId}
+          onClose={() => setIsMeetingModalOpen(false)}
+          onSave={handleCreateMeeting}
+        />
+      )}
+
+      {selectedMeeting && (
+        <MeetingDetailsModal
+          meeting={selectedMeeting}
+          participants={meetingParticipants.filter((item) => item.meeting_id === selectedMeeting.id)}
+          members={allProfiles}
+          currentUserId={userId}
+          onClose={() => setSelectedMeeting(null)}
+          onRespond={handleRespondMeeting}
+          onCancel={handleCancelMeeting}
+          onJoin={(meeting) => window.location.assign(`/meet/${meeting.room_token}`)}
+        />
+      )}
+
       <Toasts
         toasts={toasts}
         onDismiss={(id) => setToasts((prev) => prev.filter((item) => item.id !== id))}
         onOpen={(toast) => {
           setToasts((prev) => prev.filter((item) => item.id !== toast.id));
+          if (toast.meetingId) {
+            const meeting = meetings.find((item) => item.id === toast.meetingId);
+            if (meeting) handleOpenMeeting(meeting);
+            return;
+          }
           openChat(null, toast.conversationId);
         }}
       />

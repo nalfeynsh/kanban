@@ -47,13 +47,21 @@ function toDateOnly(date) {
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
 }
 
-export default function CalendarView({ tasks = [], numberById, onTaskClick, onSlotSelect, onTaskDateChange }) {
+export default function CalendarView({
+  tasks = [],
+  meetings = [],
+  numberById,
+  onTaskClick,
+  onMeetingClick,
+  onSlotSelect,
+  onTaskDateChange,
+}) {
   const [currentDate, setCurrentDate] = useState(new Date());
   const [periodTitle, setPeriodTitle] = useState('');
   const [activeView, setActiveView] = useState('dayGridMonth');
   const calendarRef = useRef(null);
 
-  const events = tasks.flatMap((task) => {
+  const taskEvents = tasks.flatMap((task) => {
     const dueRaw = getDueValue(task);
     if (!dueRaw) return [];
 
@@ -107,6 +115,25 @@ export default function CalendarView({ tasks = [], numberById, onTaskClick, onSl
       },
     ];
   });
+
+  const meetingEvents = meetings
+    .filter((meeting) => meeting.status === 'scheduled')
+    .map((meeting) => ({
+      id: `meeting-${meeting.id}`,
+      title: `Встреча · ${meeting.title}`,
+      start: toInputValue(parseDateValue(meeting.start_at)),
+      end: toInputValue(parseDateValue(meeting.end_at)),
+      allDay: false,
+      backgroundColor: '#0ea5e9',
+      borderColor: '#0284c7',
+      eventOrder: '00-meeting',
+      editable: false,
+      startEditable: false,
+      durationEditable: false,
+      extendedProps: { isMeeting: true, meetingId: meeting.id },
+    }));
+
+  const events = [...taskEvents, ...meetingEvents];
 
   const changeView = (view) => {
     setActiveView(view);
@@ -258,12 +285,17 @@ export default function CalendarView({ tasks = [], numberById, onTaskClick, onSl
           eventDrop={handleEventDrop}
           events={events}
           eventClick={(info) => {
+            if (info.event.extendedProps?.isMeeting) {
+              const meeting = meetings.find((item) => item.id === info.event.extendedProps.meetingId);
+              if (meeting && onMeetingClick) onMeetingClick(meeting);
+              return;
+            }
             const task = tasks.find((item) => item.id === info.event.id);
             if (task && onTaskClick) onTaskClick(task);
           }}
           headerToolbar={false}
           height="100%"
-          dayMaxEvents={4}
+          dayMaxEvents={6}
           eventDisplay="block"
           nowIndicator
           slotDuration="01:00:00"

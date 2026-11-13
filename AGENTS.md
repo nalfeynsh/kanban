@@ -45,6 +45,10 @@ components/
   AccessModal.jsx           — «Доступ»: роли, приглашения, матрица прав
   ChatModal.jsx             — контейнер чата: диалоги, Realtime, отправка
   ChatView.jsx              — презентационная часть чата (список, сообщения, composer)
+  MeetingModal.jsx          — создание встречи и выбор участников
+  MeetingsModal.jsx         — список встреч, приглашения
+  MeetingDetailsModal.jsx   — детали встречи, ответ, отмена, ссылка
+  MeetingRoomPage.jsx       — комната /meet/<token> (Jitsi, временный провайдер)
   Toasts.jsx                — всплывающие уведомления о новых сообщениях
   LoginPage.jsx             — вход/регистрация (invite-only)
   CalendarView.jsx          — календарь
@@ -227,16 +231,21 @@ docs/vks-scope.md           — скоуп ВКС: встречи, звонки,
 
 ### Идеи на будущее (обсудить с заказчиком)
 
-- [ ] **ВКС (следующий этап).** Аудио/видеовстречи: создание встречи, приглашения, добавление
+- [~] **ВКС (Phase 1 сделана, идут звонки).** Аудио/видеовстречи: создание встречи, приглашения, добавление
   в календарь участников, подключение по ссылке, выбор камеры/микрофона/динамиков,
   стандартные фоны и блюр (слабый/средний/сильный), mic/cam toggle, демонстрация окна/экрана/монитора,
   напоминания за 30 и 5 минут (тост + звук), чат встречи с файлами и изображениями.
+  Сделано: кнопка «Встречи», создание/список/детали, приглашения и ответы, слой встреч в календаре,
+  напоминания 30/5, комната `/meet/<token>` на Jitsi (устройства, mic/cam, screen share, фоны —
+  средствами Jitsi). Осталось: SFU/self-host, запись, постоянный чат встречи, Google/Outlook,
+  кастомные фоны/блюр, гости, 50.
   Ориентир — Teams и Яндекс Телемост. Зафиксировано: гости без аккаунта — не в MVP;
   жёсткий лимит 10 участников в первом релизе с архитектурным запасом до 50; запись встреч — нужна; чат сохраняется
   после встречи; интеграция и с Google Calendar, и с Outlook — нужна. Предварительно:
   self-hosted LiveKit в РФ (SFU + Egress) или LiveKit Cloud как быстрый старт.
   Оценка после ответов: 5–8 недель с записью, календарями и проверкой масштаба до 50.
-  Полный скоуп, риски и этапы: `docs/vks-scope.md`. **Не начато; приступаем позже.**
+  Полный скоуп, риски и этапы: `docs/vks-scope.md`. **Phase 1 запущена; следующие шаги — SFU,
+  запись, чат встречи, Google/Outlook.**
 - [x] **«Доступ» перенесён внутрь «Команды».** Отдельная кнопка в шапке убрана; в окне «Команда» две вкладки: «Сотрудники» (контакты, чат, профиль) и «Доступ и права» (встроенная панель: Роли / Приглашения / Права ролей). Реализовано через `embedded`-режим `AccessModal`, встроенный в `TeamModal`. Шапка стала короче, права живут там, где команда.
 
 ### Требует действий в Supabase (без этого фичи работают в ограниченном режиме)
@@ -286,6 +295,8 @@ docs/vks-scope.md           — скоуп ВКС: встречи, звонки,
   `https://theybeeteusxwxboczhe.supabase.co`. Это обходит недоступность `*.supabase.co` из РФ.
 - Переменные Layero (`VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`) остаются как есть: в production
   клиент всё равно ходит на `window.location.origin` (см. `supabaseClient.js`).
+- ВКС: `VITE_JITSI_DOMAIN` — домен Jitsi (по умолчанию `meet.jit.si`). Для self-hosted указать
+  свой домен при сборке. Это временный провайдер Phase 1, не финальный SFU.
 - Проверка живости: `GET /health` → `{"ok":true,"upstream":"…","root":"/app/dist"}`.
 - Preview ветки: `https://kanban-<branch>.layero.app` (слэши в имени заменяются на `-`).
 - Откат: `npx layero deploys list` → `npx layero promote <commit_sha>`.
@@ -319,6 +330,8 @@ docs/vks-scope.md           — скоуп ВКС: встречи, звонки,
   по родителю и триггер `create_next_recurring_task()` (следующая копия при завершении).
 - `014_duplicate_check.sql` — проверка похожих задач: `pg_trgm`, GIN-индекс по названию,
   RPC `find_similar_tasks()` с мягким порогом и top-3.
+- `015_meetings.sql` — встречи ВКС: `meetings`, `meeting_participants`, RLS, организатор
+  автоматически участник; ссылка `/meet/<room_token>`.
 - `README.md` — пошаговая инструкция: New query → Run, проверочные SQL,
   типовые ошибки и порядок действий после миграции.
 
@@ -378,6 +391,7 @@ values ('you@example.com', 'admin', 'bootstrap');
 | 2026-11-14 | Повторяющиеся задачи: настройка в карточке, БД-триггер создания следующей копии при завершении; миграция 013 применена и проверена в транзакции. |
 | 2026-11-14 | Проверка дублей: RPC `find_similar_tasks` на pg_trgm + русский FTS, мягкое предупреждение с top-3, миграция 014 применена. |
 | 2026-11-14 | Зафиксирован скоуп ВКС: без гостей в MVP, жёсткий лимит 10 с запасом до 50, запись, сохранение чата, Google/Outlook; предварительно self-hosted LiveKit; работы не начаты. |
+| 2026-11-14 | ВКС Phase 1: миграция 015, встречи/приглашения/календарь/напоминания, комната `/meet/<token>` на Jitsi (временный провайдер). SFU, запись, чат встречи и Google/Outlook — следующие шаги. |
 
 ---
 
@@ -405,6 +419,13 @@ is_private, deleted_at, due_at, start_at, task_no, priority, assignee_id, delete
 ### `public.profiles`
 `id, full_name, color, show_personal_data, work_phone, personal_phone, work_email,
 personal_email, telegram, role, position_title, is_active`
+
+### `public.meetings` — создана 14.11.2026
+`id, title, description, organizer_id, start_at, end_at, room_token, status, created_at, updated_at`.
+`meeting_participants`: `meeting_id, user_id, status, invited_at, responded_at`.
+RLS: видит организатор/участник; приглашать может только организатор; ответ — свой.
+Организатор автоматически становится участником (`accepted`) через триггер.
+Проверено двумя тестовыми пользователями: приглашение, ответ, запрет самозаписи (403).
 
 ### `public.invites` — создана
 Плюс функции `verify_invite`, `is_admin`, `current_role`, `handle_new_user`,
@@ -452,6 +473,9 @@ personal_email, telegram, role, position_title, is_active`
 14. ~~Применить `014_duplicate_check.sql`~~ — **выполнено 14.11.2026** через Management API:
     `pg_trgm` включён, GIN-индекс и RPC `find_similar_tasks` созданы; порог настроен так, чтобы
     не ловить общие слова («тестовая задача» даёт 0 совпадений).
+15. ~~Применить `015_meetings.sql`~~ — **выполнено 14.11.2026** через Management API:
+    таблицы `meetings`, `meeting_participants`, RLS, триггер организатора; проверено двумя
+    тестовыми пользователями (создание, приглашение, ответ, запрет самостоятельной записи).
 
 ### Яндекс-вход: что проверено 11.11.2026
 - `GET /auth/v1/settings` → `external.email: true`, `disable_signup: false`, custom-провайдер не
@@ -480,7 +504,8 @@ personal_email, telegram, role, position_title, is_active`
   chat-team-light, chat-private-light, chat-team-dark, chat-picker-light, chat-picker-window,
   chat-authors-team, chat-authors-private, chat-employees-light,
   team-chat-icon-light, member-chat-button-light, chat-toasts-light, access-member-lock-light, calendar-light, access-admin-dark, team-access-dark,
-  header-light, header-dark, prod-login, analytics-dashboard, task-recurrence, task-duplicate-warning). Временный стенд удалён.
+  header-light, header-dark, prod-login, analytics-dashboard, task-recurrence, task-duplicate-warning,
+  meetings-list, meeting-create, meeting-details, meeting-calendar, meeting-reminder, meeting-room). Временный стенд удалён.
 - Чат: отправка проверена в headless Chrome — ввод в composer, Enter, сообщение появилось
   в переписке, поле очистилось (PASS); выбор сотрудника через «+» проверен кликом (открывается
   список команды с поиском).
@@ -596,6 +621,13 @@ personal_email, telegram, role, position_title, is_active`
   (до настройки было 5 ложных). На стенде RPC-ответ 82% показал «Похожие задачи уже есть»,
   «Всё равно создать» создало задачу; `npm run lint` и `npm run build` — чисто.
   Скриншот `task-duplicate-warning.png`.
+- **ВКС Phase 1 (14.11.2026):** миграция 015 применена; RLS проверена двумя тестовыми
+  пользователями (создание, приглашение, ответ, запрет самостоятельной записи — 403). В headless
+  Chrome создана встреча через UI, приглашён второй сотрудник, встреча видна в календаре, напоминание
+  за 30 минут показало тост и звук. Комната `/meet/<token>` открылась на Jitsi: prejoin, камера/микрофон,
+  устройства, screen share и настройки доступны. Скриншоты: `meetings-list.png`, `meeting-create.png`,
+  `meeting-details.png`, `meeting-calendar.png`, `meeting-reminder.png`, `meeting-room.png`.
+  `npm run lint` и `npm run build` — чисто. Тестовые пользователи и встречи удалены.
 - **Телефон (12.11.2026):** `formatPhone` проверен на вариантах `8…`, `+7…`, `999…`, с пробелами и на пустом
   значении; в профиле на стенде поля показывают `+7 (999) 123-45-67` и `+7 (900) 000-00-00`,
   карточка сотрудника и «Поддержка» берут тот же формат. Скриншот `profile-phone-format.png`.
@@ -692,9 +724,9 @@ personal_email, telegram, role, position_title, is_active`
   ПланФикс, Битрикс24, Trello, Asana, ClickUp, Notion, Linear), выявить обязательный минимум
   и дифференциаторы, предложить 3–5 итераций внедрения. Результат — таблица «функция × аналоги ×
   спрос × сложность × приоритет». Оценка: 1–2 недели аналитики без разработки.
-- [ ] **ВКС: аудио и видео.** Варианты по возрастанию сложности: ссылка на внешний сервис →
-  встроенный Jitsi (self-hosted) → свой WebRTC (LiveKit/mediasoup). Привязать встречу к задаче
-  и календарю, учесть TURN, запись, 10 участников, 152-ФЗ. MVP на Jitsi — 1–2 недели.
+- [~] **ВКС: аудио и видео.** Phase 1 реализована: встречи, приглашения, календарь, напоминания,
+  комната на Jitsi. Дальше — self-hosted SFU (LiveKit/Jitsi), запись, чат встречи, Google/Outlook,
+  TURN, 10 участников, 152-ФЗ. Полный скоуп — `docs/vks-scope.md`.
 - [ ] **Android APK.** Capacitor-обёртка текущего React-приложения: каркас и сборка (3–5 дней),
   мобильная адаптация (1–2 недели), push/камера/deep links (1–2 недели), публикация в RuStore/Play
   (3–5 дней). Риск: ВКС в WebView ограничены камерой/микрофоном.
