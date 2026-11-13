@@ -11,6 +11,7 @@ import {
   Archive,
   Layers,
   X,
+  AlarmClock,
 
   MessageSquare,
   Bell,
@@ -40,6 +41,8 @@ export default function Header({
   teamCount = 0,
   memberFilter,
   onClearMemberFilter,
+  overdueOnly = false,
+  onClearOverdue,
   onHome,
 }) {
   const displayName = profile?.full_name || user?.email || 'Профиль';
@@ -158,6 +161,17 @@ export default function Header({
             />
             {memberFilter.full_name || 'Сотрудник'}
             <X size={11} />
+          </button>
+        )}
+
+        {overdueOnly && (
+          <button
+            type="button"
+            onClick={onClearOverdue}
+            className="glass-chip cursor-pointer !border-rose-400/60 !bg-rose-500/10 !py-1 !text-[0.7rem] !text-rose-700 hover:!border-rose-400 dark:!text-rose-200"
+            title="Сбросить фильтр просроченных задач"
+          >
+            <AlarmClock size={11} /> Просроченные <X size={11} />
           </button>
         )}
 

@@ -38,7 +38,7 @@ import { collectFields, mergeFields, pickFields, profileFields, supports, taskFi
 import { buildTaskQuote, stripTaskMarker } from './lib/quote';
 import { readOAuthError, explainOAuthError, cleanOAuthUrl } from './lib/oauth';
 import { canSeeTask, matchesMode } from './lib/access';
-import { byPosition, getDueValue, isOverdue } from './lib/format';
+import { byPosition, isTaskOverdue } from './lib/format';
 import { normalizePriority } from './lib/priority';
 import { clearLocalTelegram, getLocalTelegram, setLocalTelegram } from './lib/localProfile';
 import { applyTaskUpdates, planTaskMove } from './lib/dnd';
@@ -107,6 +107,7 @@ export default function App() {
 
   const [currentView, setCurrentView] = useState('board');
   const [filterMode, setFilterMode] = useState('all');
+  const [overdueOnly, setOverdueOnly] = useState(false);
   const [memberFilter, setMemberFilter] = useState(null);
   const [activeTask, setActiveTask] = useState(null);
   const lastOverRef = useRef(null);
@@ -358,7 +359,12 @@ export default function App() {
     return map;
   }, [tasks, archivedTasks]);
 
-  const visibleTasks = useMemo(
+  const doneColumnId = useMemo(
+    () => columns.find((column) => /^(готово|done)$/i.test(String(column.title || '').trim()))?.id || null,
+    [columns],
+  );
+
+  const scopedTasks = useMemo(
     () =>
       tasks.filter(
         (task) =>
@@ -366,6 +372,16 @@ export default function App() {
           (!memberFilter || task.created_by === memberFilter.id),
       ),
     [tasks, filterMode, userId, memberFilter],
+  );
+
+  const overdueTasks = useMemo(
+    () => scopedTasks.filter((task) => isTaskOverdue(task, doneColumnId)),
+    [scopedTasks, doneColumnId],
+  );
+
+  const visibleTasks = useMemo(
+    () => (overdueOnly ? overdueTasks : scopedTasks),
+    [overdueOnly, overdueTasks, scopedTasks],
   );
 
   const boardColumns = useMemo(
@@ -396,13 +412,9 @@ export default function App() {
   }, [tasks]);
 
   const stats = useMemo(() => {
-    const overdue = visibleTasks.filter((task) => {
-      const due = getDueValue(task);
-      return due && isOverdue(due);
-    }).length;
-    const personal = visibleTasks.filter((task) => task.is_private).length;
-    return { total: visibleTasks.length, overdue, personal };
-  }, [visibleTasks]);
+    const personal = scopedTasks.filter((task) => task.is_private).length;
+    return { total: scopedTasks.length, overdue: overdueTasks.length, personal };
+  }, [scopedTasks, overdueTasks]);
 
   // Перетаскивание полос в Ганте возможно, только если есть и начало, и срок
   const canEditGantt = useMemo(
@@ -831,6 +843,7 @@ export default function App() {
     setChatDraft('');
     setMemberFilter(null);
     setFilterMode('all');
+    setOverdueOnly(false);
     changeView('board');
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
@@ -838,6 +851,12 @@ export default function App() {
   const changeFilter = (mode) => {
     exitSelection();
     setFilterMode(mode);
+    setOverdueOnly(false);
+  };
+
+  const toggleOverdue = () => {
+    exitSelection();
+    setOverdueOnly((current) => !current);
   };
 
   // --- Уведомления (чат): всплывашки, звук, браузерные оповещения ---
@@ -1136,6 +1155,8 @@ export default function App() {
         teamCount={allProfiles.length}
         memberFilter={memberFilter}
         onClearMemberFilter={() => setMemberFilter(null)}
+        overdueOnly={overdueOnly}
+        onClearOverdue={() => setOverdueOnly(false)}
       />
 
       {oauthNotice && (
@@ -1187,11 +1208,27 @@ export default function App() {
             <div className="mx-auto flex max-w-[1800px] flex-col gap-3">
               <div className="flex flex-wrap items-center gap-2 text-[0.7rem] text-slate-500 dark:text-slate-400">
                 <span className="glass-chip">
-                  <ListChecks size={11} /> Задач: {stats.total}
+                  <ListChecks size={11} /> Задач: {overdueOnly ? `${visibleTasks.length} из ${stats.total}` : stats.total}
                 </span>
-                <span className="glass-chip">
+                <button
+                  type="button"
+                  onClick={toggleOverdue}
+                  disabled={!overdueOnly && stats.overdue === 0}
+                  className={`glass-chip cursor-pointer transition ${
+                    overdueOnly
+                      ? '!border-rose-400/70 !bg-rose-500/15 !text-rose-700 ring-1 ring-rose-400/40 dark:!text-rose-200'
+                      : 'hover:border-rose-400/60 hover:!text-rose-700 dark:hover:!text-rose-200'
+                  } disabled:cursor-default disabled:opacity-50`}
+                  title={
+                    overdueOnly
+                      ? 'Показать все задачи — сбросить фильтр просроченных'
+                      : 'Показать только просроченные задачи'
+                  }
+                  aria-pressed={overdueOnly}
+                >
                   <AlarmClock size={11} /> Просрочено: {stats.overdue}
-                </span>
+                  {overdueOnly && <X size={11} />}
+                </button>
                 <span className="glass-chip">
                   <UserRound size={11} /> Личных: {stats.personal}
                 </span>

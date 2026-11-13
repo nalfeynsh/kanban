@@ -128,6 +128,13 @@ export function isOverdue(value) {
   return date.getTime() < Date.now();
 }
 
+/** Просрочена ли активная задача (задачи в «Готово» не считаются висящими) */
+export function isTaskOverdue(task, doneColumnId = null) {
+  if (!task) return false;
+  if (doneColumnId && task.column_id === doneColumnId) return false;
+  return isOverdue(getDueValue(task));
+}
+
 /** Подпись срока для карточки: «Сегодня, 14:30» / «Завтра, 09:00» / «11 ноя, 14:30» */
 export function formatDueBadge(value) {
   const date = parseDateValue(value);
