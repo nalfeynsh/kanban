@@ -1396,6 +1396,9 @@ export default function App() {
         currentRole={profile?.role || 'member'}
         onRoleChange={handleRoleChange}
         roleSaving={roleSaving}
+        tasks={tasks}
+        archivedTasks={archivedTasks}
+        columns={columns}
         onOpenChat={(member) => {
           setIsTeamOpen(false);
           openChat(member.id);

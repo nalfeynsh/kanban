@@ -1,10 +1,11 @@
 import { useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { X, Users, Search, Send, ChevronRight, Mail, ShieldCheck, ListChecks, MessageSquare, Plug } from 'lucide-react';
+import { X, Users, Search, Send, ChevronRight, Mail, ShieldCheck, ListChecks, MessageSquare, Plug, BarChart3 } from 'lucide-react';
 import { roleLabel } from '../lib/priority';
 import { telegramUrl } from '../lib/telegram';
 import AccessModal from './AccessModal';
 import IntegrationsPanel from './IntegrationsPanel';
+import AnalyticsPanel from './AnalyticsPanel';
 import Avatar from './Avatar';
 
 export default function TeamModal({
@@ -18,10 +19,14 @@ export default function TeamModal({
   currentRole = 'member',
   onRoleChange,
   roleSaving = false,
+  tasks = [],
+  archivedTasks = [],
+  columns = [],
 }) {
   const [query, setQuery] = useState('');
   const [roleFilter, setRoleFilter] = useState('all');
   const [tab, setTab] = useState('members');
+  const canAnalytics = ['admin', 'manager', 'deputy'].includes(currentRole);
 
   const matchesRole = (member) => {
     if (roleFilter === 'admin') return member.role === 'admin';
@@ -58,7 +63,7 @@ export default function TeamModal({
         if (event.target === event.currentTarget) onClose();
       }}
     >
-      <div className="modal-panel glass-panel flex max-h-[88vh] w-full max-w-3xl flex-col overflow-hidden rounded-3xl">
+      <div className={`modal-panel glass-panel flex max-h-[88vh] w-full flex-col overflow-hidden rounded-3xl ${tab === 'analytics' ? 'max-w-6xl' : 'max-w-3xl'}`}>
         <div className="flex items-start justify-between gap-4 border-b border-slate-300/50 px-6 py-4 dark:border-white/10">
           <div>
             <h2 className="flex items-center gap-2 text-lg font-bold text-slate-900 dark:text-white">
@@ -70,7 +75,9 @@ export default function TeamModal({
                 ? 'Роли, приглашения и матрица прав'
                 : tab === 'integrations'
                   ? 'API-токены и обмен задачами с внешними системами'
-                  : `${activeCount} из ${members.length} активны · нажмите на сотрудника, чтобы открыть профиль`}
+                  : tab === 'analytics'
+                    ? 'Сроки, статусы и нагрузка по сотрудникам за период'
+                    : `${activeCount} из ${members.length} активны · нажмите на сотрудника, чтобы открыть профиль`}
             </p>
           </div>
           <button
@@ -94,6 +101,17 @@ export default function TeamModal({
               <Users size={14} />
               Сотрудники
             </button>
+            {canAnalytics && (
+              <button
+                type="button"
+                className="glass-segment-btn"
+                data-active={tab === 'analytics'}
+                onClick={() => setTab('analytics')}
+              >
+                <BarChart3 size={14} />
+                Аналитика
+              </button>
+            )}
             <button
               type="button"
               className="glass-segment-btn"
@@ -270,6 +288,17 @@ export default function TeamModal({
         {tab === 'integrations' && currentRole === 'admin' && (
           <div className="flex min-h-0 flex-1 flex-col">
             <IntegrationsPanel />
+          </div>
+        )}
+
+        {tab === 'analytics' && canAnalytics && (
+          <div className="flex min-h-0 flex-1 flex-col">
+            <AnalyticsPanel
+              tasks={tasks}
+              archivedTasks={archivedTasks}
+              columns={columns}
+              members={members}
+            />
           </div>
         )}
 
