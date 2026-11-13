@@ -645,23 +645,45 @@ export default function App() {
     setSelectedTask(null);
   };
 
-  const handleDeleteTask = async (taskId) => {
-    if (!window.confirm('Переместить задачу в архив? Восстановить её смогут те, у кого есть доступ.')) {
+  const handleDeleteTask = async (taskId, draft) => {
+    if (!window.confirm('Переместить задачу в архив? Текущие изменения сохранятся, задачу можно восстановить.')) {
       return;
     }
 
     const payload = { deleted_at: new Date().toISOString() };
     if (supports(taskSchema, 'deleted_by')) payload.deleted_by = userId;
 
-    const { error } = await supabase.from('tasks').update(payload).eq('id', taskId);
+    // Архивируем вместе с текущими правками из модалки, чтобы изменения
+    // не терялись, если пользователь сначала отредактировал задачу.
+    if (draft) {
+      const due = draft.due_at || null;
+      if (draft.title?.trim()) payload.title = draft.title.trim();
+      payload.description = draft.description || '';
+      payload.links = Array.isArray(draft.links) ? draft.links : [];
+      payload.files = Array.isArray(draft.files) ? draft.files : [];
+      payload.is_private = Boolean(draft.is_private);
+      if (supports(taskSchema, 'due_at')) payload.due_at = due;
+      if (supports(taskSchema, 'start_at')) payload.start_at = draft.start_at || null;
+      if (supports(taskSchema, 'date')) payload.date = due ? String(due).slice(0, 10) : null;
+      if (supports(taskSchema, 'priority')) payload.priority = normalizePriority(draft.priority);
+      if (supports(taskSchema, 'assignee_id')) payload.assignee_id = draft.assignee_id || null;
+    }
+
+    const { data, error } = await supabase
+      .from('tasks')
+      .update(payload)
+      .eq('id', taskId)
+      .select()
+      .maybeSingle();
+
     if (error) {
       setBanner(`Не удалось переместить в архив: ${error.message}`);
       return;
     }
 
-    const task = tasks.find((item) => item.id === taskId);
+    const task = sanitizeTask(data) || tasks.find((item) => item.id === taskId);
     if (task) {
-      setArchivedTasks((prev) => [{ ...task, ...payload }, ...prev]);
+      setArchivedTasks((prev) => [{ ...task, ...payload }, ...prev.filter((item) => item.id !== taskId)]);
       setTasks((prev) => prev.filter((item) => item.id !== taskId));
     }
     setSelectedTask(null);

@@ -22,6 +22,7 @@ import {
   Quote,
 } from 'lucide-react';
 import TipTapEditor from './TipTapEditor';
+import DateTimeField from './DateTimeField';
 import FilePreviewModal from './FilePreviewModal';
 import Avatar from './Avatar';
 import { supabase } from '../supabaseClient';
@@ -29,9 +30,6 @@ import {
   formatCreated,
   formatDueLong,
   getDueValue,
-  toDateTimeLocalValue,
-  toDateInputValue,
-  fromDateTimeLocalValue,
 } from '../lib/format';
 import { PRIORITIES, getPriority, normalizePriority } from '../lib/priority';
 import { supports } from '../lib/schema';
@@ -187,25 +185,6 @@ export default function TaskDetailModal({
     setTimeout(() => setIsCopied(false), 2000);
   };
 
-  const dueInputValue = dueSupported
-    ? toDateTimeLocalValue(editedTask.due_at)
-    : toDateInputValue(editedTask.due_at);
-
-  const handleDueChange = (raw) => {
-    if (!raw) {
-      setField('due_at', null);
-      return;
-    }
-    if (dueSupported) {
-      const iso = fromDateTimeLocalValue(raw);
-      setField('due_at', iso);
-    } else {
-      // Колонка date — храним как есть, без времени
-      const [year, month, day] = raw.split('-');
-      setField('due_at', raw ? `${year}-${month}-${day}` : null);
-    }
-  };
-
   const priorityInfo = getPriority(editedTask.priority);
   const assignee = allProfiles.find((profile) => profile.id === editedTask.assignee_id);
 
@@ -219,9 +198,7 @@ export default function TaskDetailModal({
 
   return (
     <>
-      <div className="modal-overlay" onMouseDown={(event) => {
-        if (event.target === event.currentTarget) onClose();
-      }}>
+      <div className="modal-overlay">
         <div
           ref={panelRef}
           className="modal-panel glass-panel scrollbar-slim max-h-[94vh] w-full max-w-4xl overflow-y-auto rounded-3xl"
@@ -308,7 +285,7 @@ export default function TaskDetailModal({
               type="button"
               onClick={onClose}
               className="rounded-xl p-1.5 text-slate-500 transition hover:bg-white/60 hover:text-slate-800 dark:text-slate-400 dark:hover:bg-white/10 dark:hover:text-white"
-              title="Закрыть"
+              title="Закрыть (Esc)"
             >
               <X size={20} />
             </button>
@@ -497,13 +474,9 @@ export default function TaskDetailModal({
                   <label className="mb-1.5 flex items-center gap-1.5 text-[0.68rem] font-semibold tracking-[0.1em] text-slate-500 uppercase dark:text-slate-400">
                     <CalendarClock size={12} /> Начало
                   </label>
-                  <input
-                    type="datetime-local"
-                    value={toDateTimeLocalValue(editedTask.start_at)}
-                    onChange={(event) =>
-                      setField('start_at', event.target.value ? fromDateTimeLocalValue(event.target.value) : null)
-                    }
-                    className="glass-input !py-1.5 !text-xs"
+                  <DateTimeField
+                    value={editedTask.start_at}
+                    onChange={(value) => setField('start_at', value)}
                   />
                   <p className="mt-1 text-[0.65rem] text-slate-500 dark:text-slate-400">
                     {editedTask.start_at ? formatDueLong(editedTask.start_at) : 'Не задано — берётся дата создания'}
@@ -515,17 +488,16 @@ export default function TaskDetailModal({
                 <label className="mb-1.5 flex items-center gap-1.5 text-[0.68rem] font-semibold tracking-[0.1em] text-slate-500 uppercase dark:text-slate-400">
                   <CalendarClock size={12} /> Срок
                 </label>
-                <input
-                  type={dueSupported ? 'datetime-local' : 'date'}
-                  value={dueInputValue}
-                  onChange={(event) => handleDueChange(event.target.value)}
-                  className="glass-input !py-1.5 !text-xs"
+                <DateTimeField
+                  value={editedTask.due_at}
+                  onChange={(value) => setField('due_at', value)}
+                  withTime={dueSupported}
                 />
                 <p className="mt-1 text-[0.65rem] text-slate-500 dark:text-slate-400">
                   {editedTask.due_at
                     ? formatDueLong(editedTask.due_at)
                     : 'Срок не задан'}
-                  {!dueSupported && ' · время появится после миграции БД'}
+                  {dueSupported ? ' · время можно не указывать' : ' · время появится после миграции БД'}
                 </p>
               </div>
 
@@ -638,16 +610,18 @@ export default function TaskDetailModal({
                   onClick={handleSave}
                   disabled={isSaving}
                   className="glass-btn glass-btn-primary w-full"
+                  title={isNewTask ? 'Создать задачу и закрыть окно' : 'Сохранить изменения и закрыть окно'}
                 >
                   {isSaving ? <Loader size={15} className="animate-spin" /> : <Check size={15} />}
-                  {isNewTask ? 'Создать задачу' : 'Сохранить'}
+                  {isNewTask ? 'Создать и закрыть' : 'Сохранить и закрыть'}
                 </button>
 
                 {!isNewTask && (
                   <button
                     type="button"
-                    onClick={() => onDeleteTask(editedTask.id)}
+                    onClick={() => onDeleteTask(editedTask.id, editedTask)}
                     className="glass-btn glass-btn-danger w-full"
+                    title="Сохранить изменения и переместить задачу в архив"
                   >
                     <Trash2 size={15} /> В архив
                   </button>
