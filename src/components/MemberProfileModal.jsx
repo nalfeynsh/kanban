@@ -23,7 +23,7 @@ import Avatar from './Avatar';
 
 function ContactRow({ icon: Icon, label, value, href, muted }) {
   return (
-    <div className="flex items-center gap-3 rounded-xl border border-white/40 bg-white/35 px-3 py-2.5 dark:border-white/10 dark:bg-white/5">
+    <div className="flex items-center gap-3 rounded-xl border border-slate-300/60 bg-white/70 px-3 py-2.5 dark:border-white/10 dark:bg-white/5">
       <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-indigo-500/12 text-indigo-600 dark:text-indigo-300">
         <Icon size={15} />
       </span>
@@ -248,7 +248,7 @@ export default function MemberProfileModal({
           )}
         </div>
 
-        <div className="flex flex-wrap gap-2 border-t border-white/30 px-6 py-4 dark:border-white/10">
+        <div className="flex flex-wrap gap-2 border-t border-slate-300/50 px-6 py-4 dark:border-white/10">
           {!isSelf && (
             <button
               type="button"

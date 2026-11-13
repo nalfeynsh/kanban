@@ -140,7 +140,7 @@ export default function HelpModal({
       }}
     >
       <div className="modal-panel glass-panel flex max-h-[88vh] w-full max-w-3xl flex-col overflow-hidden rounded-3xl">
-        <div className="flex items-start justify-between gap-4 border-b border-white/30 px-5 py-4 dark:border-white/10">
+        <div className="flex items-start justify-between gap-4 border-b border-slate-300/50 px-5 py-4 dark:border-white/10">
           <div className="flex items-center gap-3">
             <span className="flex h-10 w-10 items-center justify-center rounded-2xl bg-gradient-to-br from-indigo-500 to-sky-400 text-white shadow-lg">
               <LifeBuoy size={19} />
@@ -162,7 +162,7 @@ export default function HelpModal({
           </button>
         </div>
 
-        <div className="scrollbar-slim flex gap-1 overflow-x-auto border-b border-white/30 px-3 py-2 dark:border-white/10">
+        <div className="scrollbar-slim flex gap-1 overflow-x-auto border-b border-slate-300/50 px-3 py-2 dark:border-white/10">
           {TABS.map((item) => {
             const Icon = item.icon;
             const active = tab === item.id;
@@ -194,7 +194,7 @@ export default function HelpModal({
               {FAQ.map((item) => (
                 <details
                   key={item.q}
-                  className="group rounded-xl border border-white/40 bg-white/35 px-3 py-2 dark:border-white/10 dark:bg-white/5"
+                  className="group rounded-xl border border-slate-300/60 bg-white/70 px-3 py-2 dark:border-white/10 dark:bg-white/5"
                 >
                   <summary className="flex cursor-pointer list-none items-center justify-between gap-2 text-[0.8rem] font-semibold text-slate-800 dark:text-slate-100">
                     {item.q}
@@ -219,7 +219,7 @@ export default function HelpModal({
                     {release.items.map((text) => (
                       <li
                         key={text}
-                        className="flex gap-2 rounded-xl border border-white/40 bg-white/30 px-3 py-2 text-[0.75rem] leading-relaxed text-slate-700 dark:border-white/10 dark:bg-white/5 dark:text-slate-200"
+                        className="flex gap-2 rounded-xl border border-slate-300/60 bg-white/70 px-3 py-2 text-[0.75rem] leading-relaxed text-slate-700 dark:border-white/10 dark:bg-white/5 dark:text-slate-200"
                       >
                         <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-indigo-400" />
                         {text}
@@ -233,7 +233,7 @@ export default function HelpModal({
 
           {tab === 'ideas' && (
             <div className="space-y-4">
-              <div className="rounded-2xl border border-white/40 bg-white/35 p-3 dark:border-white/10 dark:bg-white/5">
+              <div className="rounded-2xl border border-slate-300/60 bg-white/70 p-3 dark:border-white/10 dark:bg-white/5">
                 <label className="block">
                   <span className="mb-1 block text-[0.7rem] font-semibold text-slate-600 dark:text-slate-300">
                     Что улучшить в сервисе?
@@ -279,7 +279,7 @@ export default function HelpModal({
                   return (
                     <li
                       key={idea.id}
-                      className="flex gap-2.5 rounded-2xl border border-white/40 bg-white/35 p-3 dark:border-white/10 dark:bg-white/5"
+                      className="flex gap-2.5 rounded-2xl border border-slate-300/60 bg-white/70 p-3 dark:border-white/10 dark:bg-white/5"
                     >
                       <Avatar
                         name={author?.full_name}
@@ -343,7 +343,7 @@ export default function HelpModal({
                   return (
                     <li
                       key={admin.id}
-                      className="rounded-2xl border border-white/40 bg-white/35 p-3 dark:border-white/10 dark:bg-white/5"
+                      className="rounded-2xl border border-slate-300/60 bg-white/70 p-3 dark:border-white/10 dark:bg-white/5"
                     >
                       <div className="flex items-center gap-2.5">
                         <Avatar

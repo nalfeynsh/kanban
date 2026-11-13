@@ -60,7 +60,7 @@ export default function ArchiveModal({
       }}
     >
       <div className="modal-panel glass-panel flex max-h-[88vh] w-full max-w-3xl flex-col overflow-hidden rounded-3xl">
-        <div className="flex items-start justify-between gap-4 border-b border-white/30 px-6 py-4 dark:border-white/10">
+        <div className="flex items-start justify-between gap-4 border-b border-slate-300/50 px-6 py-4 dark:border-white/10">
           <div>
             <h2 className="flex items-center gap-2 text-lg font-bold text-slate-900 dark:text-white">
               <Archive size={20} className="text-indigo-500 dark:text-indigo-300" />

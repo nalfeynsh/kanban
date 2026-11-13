@@ -162,7 +162,7 @@ export default function GanttView({
   return (
     <div className="gantt-shell flex max-h-[calc(100vh-150px)] min-h-[320px] flex-col overflow-hidden rounded-3xl">
       {/* Панель инструментов */}
-      <div className="no-print flex flex-wrap items-center gap-2 border-b border-white/40 px-4 py-2.5 dark:border-white/10">
+      <div className="no-print flex flex-wrap items-center gap-2 border-b border-slate-300/50 px-4 py-2.5 dark:border-white/10">
         <h2 className="flex items-center gap-1.5 text-sm font-bold text-slate-800 dark:text-slate-100">
           <BarChart3 size={17} className="text-indigo-500 dark:text-indigo-300" />
           Диаграмма Ганта
@@ -306,14 +306,14 @@ export default function GanttView({
                 {header.months.map((month) => (
                   <div
                     key={`${month.label}-${month.index}`}
-                    className="flex shrink-0 items-center border-r border-white/40 px-2 text-[0.68rem] font-semibold tracking-wide text-slate-600 dark:border-white/10 dark:text-slate-300"
+                    className="flex shrink-0 items-center border-r border-slate-300/50 px-2 text-[0.68rem] font-semibold tracking-wide text-slate-600 dark:border-white/10 dark:text-slate-300"
                     style={{ width: month.width }}
                   >
                     <span className="truncate">{month.label}</span>
                   </div>
                 ))}
               </div>
-              <div className="relative h-6 border-t border-white/30 dark:border-white/10">
+              <div className="relative h-6 border-t border-slate-300/50 dark:border-white/10">
                 {header.ticks.map((tick) => (
                   <span
                     key={tick.index}
@@ -369,7 +369,7 @@ export default function GanttView({
               >
                 {/* Левая таблица */}
                 <div
-                  className="sticky left-0 z-20 flex shrink-0 items-center border-r border-white/40 bg-white/70 backdrop-blur-xl dark:border-white/10 dark:bg-slate-950/75"
+                  className="sticky left-0 z-20 flex shrink-0 items-center border-r border-slate-300/50 bg-white/70 backdrop-blur-xl dark:border-white/10 dark:bg-slate-950/75"
                   style={{ width: LEFT_WIDTH }}
                 >
                   <div className="px-2 text-center text-[0.65rem] font-mono text-slate-500 dark:text-slate-400" style={{ width: 52 }}>
@@ -479,7 +479,7 @@ export default function GanttView({
                   {/* Подпись с датами при перетаскивании */}
                   {isDragging && (
                     <div
-                      className="absolute top-1/2 z-40 -translate-y-[calc(100%+22px)] rounded-lg border border-white/40 bg-slate-900/90 px-2 py-1 text-[0.6rem] font-medium whitespace-nowrap text-white shadow-lg"
+                      className="absolute top-1/2 z-40 -translate-y-[calc(100%+22px)] rounded-lg border border-slate-300/50 bg-slate-900/90 px-2 py-1 text-[0.6rem] font-medium whitespace-nowrap text-white shadow-lg"
                       style={{ left: geometry.left }}
                     >
                       {formatDayMonth(schedule.start)} — {formatDayMonth(schedule.finish)} · {days} дн.
@@ -493,7 +493,7 @@ export default function GanttView({
       </div>
 
       {/* Легенда */}
-      <div className="no-print flex flex-wrap items-center gap-3 border-t border-white/40 px-4 py-2 text-[0.62rem] text-slate-500 dark:border-white/10 dark:text-slate-400">
+      <div className="no-print flex flex-wrap items-center gap-3 border-t border-slate-300/50 px-4 py-2 text-[0.62rem] text-slate-500 dark:border-white/10 dark:text-slate-400">
         {[
           { color: 'bg-rose-500', label: 'Высокий' },
           { color: 'bg-amber-400', label: 'Средний' },

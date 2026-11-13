@@ -384,7 +384,7 @@ export default function LoginPage() {
           )}
 
           {YANDEX_LOGIN_ENABLED && showDiag && (
-            <div className="mt-2 space-y-2.5 rounded-xl border border-white/50 bg-white/40 p-3 text-[0.68rem] text-slate-600 backdrop-blur dark:border-white/10 dark:bg-white/5 dark:text-slate-300">
+            <div className="mt-2 space-y-2.5 rounded-xl border border-slate-300/60 bg-white/75 p-3 text-[0.68rem] text-slate-600 backdrop-blur dark:border-white/10 dark:bg-white/5 dark:text-slate-300">
               {oauthInfo && (
                 <div className="rounded-lg border border-rose-400/40 bg-rose-500/10 px-2.5 py-2 text-rose-700 dark:text-rose-300">
                   <p className="mb-0.5 font-semibold">{oauthInfo.title}</p>

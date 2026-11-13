@@ -226,7 +226,7 @@ export default function TaskDetailModal({
           className="modal-panel glass-panel scrollbar-slim max-h-[94vh] w-full max-w-4xl overflow-y-auto rounded-3xl"
         >
           {/* Шапка */}
-          <div className="sticky top-0 z-10 flex items-start justify-between gap-4 border-b border-white/30 bg-white/40 px-6 py-4 backdrop-blur-xl dark:border-white/10 dark:bg-slate-950/40">
+          <div className="sticky top-0 z-10 flex items-start justify-between gap-4 border-b border-slate-300/60 bg-white/80 px-6 py-4 backdrop-blur-xl dark:border-white/10 dark:bg-slate-950/40">
             <div className="min-w-0 flex-1">
               <div className="mb-1 flex flex-wrap items-center gap-1.5">
                 {number != null && (
@@ -336,7 +336,7 @@ export default function TaskDetailModal({
                 </div>
               </div>
 
-              <div className="overflow-hidden rounded-2xl border border-white/40 bg-white/30 backdrop-blur-md dark:border-white/10 dark:bg-white/5">
+              <div className="overflow-hidden rounded-2xl border border-slate-300/60 bg-white/75 backdrop-blur-md dark:border-white/10 dark:bg-white/5">
                 <TipTapEditor
                   key={editedTask.id || 'new'}
                   content={editedTask.description}
@@ -358,7 +358,7 @@ export default function TaskDetailModal({
                     {editedTask.links.map((link) => (
                       <li
                         key={link.id}
-                        className="flex items-center justify-between gap-2 rounded-xl border border-white/40 bg-white/35 px-3 py-2 dark:border-white/10 dark:bg-white/5"
+                        className="flex items-center justify-between gap-2 rounded-xl border border-slate-300/60 bg-white/70 px-3 py-2 dark:border-white/10 dark:bg-white/5"
                       >
                         <a
                           href={link.url}
@@ -427,7 +427,7 @@ export default function TaskDetailModal({
                       return (
                         <li
                           key={file.id}
-                          className="group flex items-center justify-between gap-2 rounded-xl border border-white/40 bg-white/35 px-3 py-2 dark:border-white/10 dark:bg-white/5"
+                          className="group flex items-center justify-between gap-2 rounded-xl border border-slate-300/60 bg-white/70 px-3 py-2 dark:border-white/10 dark:bg-white/5"
                         >
                           <div className="flex min-w-0 items-center gap-2">
                             <FileText size={14} className="shrink-0 text-slate-400" />
@@ -482,7 +482,7 @@ export default function TaskDetailModal({
             </div>
 
             {/* Боковая панель */}
-            <aside className="space-y-4 lg:border-l lg:border-white/30 lg:pl-5 dark:lg:border-white/10">
+            <aside className="space-y-4 lg:border-l lg:border-slate-300/50 lg:pl-5 dark:lg:border-white/10">
               {startSupported && (
                 <div>
                   <label className="mb-1.5 flex items-center gap-1.5 text-[0.68rem] font-semibold tracking-[0.1em] text-slate-500 uppercase dark:text-slate-400">
@@ -534,7 +534,7 @@ export default function TaskDetailModal({
                       className={`flex items-center justify-center gap-1.5 rounded-xl border px-2 py-1.5 text-[0.7rem] font-medium transition ${
                         editedTask.priority === option.value
                           ? option.chip
-                          : 'border-white/40 bg-white/25 text-slate-600 hover:bg-white/50 dark:border-white/10 dark:bg-white/5 dark:text-slate-300'
+                          : 'border-slate-300/60 bg-white/70 text-slate-700 hover:bg-white/90 dark:border-white/10 dark:bg-white/5 dark:text-slate-300'
                       } ${!prioritySupported ? 'cursor-not-allowed opacity-50' : ''}`}
                     >
                       <span className={`h-1.5 w-1.5 rounded-full ${option.dot}`} />
@@ -576,7 +576,7 @@ export default function TaskDetailModal({
                 className={`flex w-full items-center gap-2 rounded-xl border px-3 py-2 text-left text-xs font-medium transition disabled:cursor-not-allowed disabled:opacity-60 ${
                   editedTask.is_private
                     ? 'border-violet-400/60 bg-violet-500/15 text-violet-700 dark:text-violet-300'
-                    : 'border-white/40 bg-white/25 text-slate-600 hover:bg-white/50 dark:border-white/10 dark:bg-white/5 dark:text-slate-300'
+                    : 'border-slate-300/60 bg-white/70 text-slate-700 hover:bg-white/90 dark:border-white/10 dark:bg-white/5 dark:text-slate-300'
                 }`}
                 title={canTogglePrivacy ? 'Сделать задачу личной' : 'Приватность меняет постановщик задачи'}
               >

@@ -297,7 +297,7 @@ export default function ProfileModal({
       }}
     >
       <div className="modal-panel glass-panel w-full max-w-xl overflow-hidden rounded-3xl">
-        <div className="flex items-start justify-between gap-4 border-b border-white/30 px-6 py-4 dark:border-white/10">
+        <div className="flex items-start justify-between gap-4 border-b border-slate-300/50 px-6 py-4 dark:border-white/10">
           <div className="flex items-center gap-3">
             <Avatar
               name={formData.full_name || user?.email}
@@ -329,7 +329,7 @@ export default function ProfileModal({
               <BadgeCheck size={13} /> Основное
             </h3>
 
-            <div className="flex flex-wrap items-center gap-3 rounded-2xl border border-white/40 bg-white/30 p-3 dark:border-white/10 dark:bg-white/5">
+            <div className="flex flex-wrap items-center gap-3 rounded-2xl border border-slate-300/60 bg-white/70 p-3 dark:border-white/10 dark:bg-white/5">
               <Avatar
                 name={formData.full_name || user?.email}
                 color={formData.color}
@@ -418,10 +418,10 @@ export default function ProfileModal({
                   type="color"
                   value={formData.color}
                   onChange={(event) => setField('color', event.target.value)}
-                  className="h-10 w-16 cursor-pointer rounded-xl border border-white/50 bg-transparent p-0 dark:border-white/15"
+                  className="h-10 w-16 cursor-pointer rounded-xl border border-slate-300/50 bg-transparent p-0 dark:border-white/15"
                 />
               </label>
-              <label className="flex cursor-pointer items-center gap-2 rounded-xl border border-white/40 bg-white/30 px-3 py-2.5 dark:border-white/10 dark:bg-white/5">
+              <label className="flex cursor-pointer items-center gap-2 rounded-xl border border-slate-300/60 bg-white/70 px-3 py-2.5 dark:border-white/10 dark:bg-white/5">
                 <input
                   type="checkbox"
                   checked={formData.show_personal_data}
@@ -566,7 +566,7 @@ export default function ProfileModal({
             </div>
 
             {YANDEX_LOGIN_ENABLED && (
-              <div className="rounded-xl border border-white/40 bg-white/30 px-3 py-2.5 dark:border-white/10 dark:bg-white/5">
+              <div className="rounded-xl border border-slate-300/60 bg-white/70 px-3 py-2.5 dark:border-white/10 dark:bg-white/5">
                 <div className="flex items-start justify-between gap-2">
                   <div className="min-w-0">
                     <p className="flex items-center gap-1.5 text-xs font-medium text-slate-700 dark:text-slate-200">
@@ -614,7 +614,7 @@ export default function ProfileModal({
           )}
         </div>
 
-        <div className="flex items-center justify-end gap-2 border-t border-white/30 px-6 py-4 dark:border-white/10">
+        <div className="flex items-center justify-end gap-2 border-t border-slate-300/50 px-6 py-4 dark:border-white/10">
           <button type="button" onClick={onClose} className="glass-btn">
             Отмена
           </button>

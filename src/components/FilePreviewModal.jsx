@@ -15,7 +15,7 @@ export default function FilePreviewModal({ isOpen, onClose, file }) {
       }}
     >
       <div className="modal-panel glass-panel flex h-[86vh] w-full max-w-5xl flex-col overflow-hidden rounded-3xl">
-        <div className="flex items-center justify-between gap-3 border-b border-white/30 px-4 py-3 dark:border-white/10">
+        <div className="flex items-center justify-between gap-3 border-b border-slate-300/50 px-4 py-3 dark:border-white/10">
           <h3 className="truncate pr-4 text-sm font-semibold text-slate-800 dark:text-slate-100">{file.name}</h3>
           <div className="flex shrink-0 items-center gap-1.5">
             <a href={file.url} download={file.name} className="glass-btn !p-2" title="Скачать">
@@ -32,7 +32,7 @@ export default function FilePreviewModal({ isOpen, onClose, file }) {
             <TransformWrapper initialScale={1} minScale={0.4} maxScale={6} centerOnInit>
               {({ zoomIn, zoomOut, resetTransform }) => (
                 <>
-                  <div className="absolute top-4 right-4 z-10 flex flex-col gap-1.5 rounded-xl border border-white/30 bg-white/60 p-1.5 backdrop-blur dark:border-white/10 dark:bg-slate-900/70">
+                  <div className="absolute top-4 right-4 z-10 flex flex-col gap-1.5 rounded-xl border border-slate-300/50 bg-white/60 p-1.5 backdrop-blur dark:border-white/10 dark:bg-slate-900/70">
                     <button type="button" onClick={() => zoomIn()} className="rounded-lg p-1.5 text-slate-700 transition hover:bg-white/70 dark:text-slate-200 dark:hover:bg-white/10" title="Приблизить">
                       <ZoomIn size={18} />
                     </button>

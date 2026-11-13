@@ -123,7 +123,7 @@ export default function BulkActions({
                 className={`h-6 w-6 rounded-lg border transition hover:scale-105 disabled:opacity-40 ${
                   priority.value === 0
                     ? 'border-slate-400/40 bg-slate-400/10'
-                    : `border-white/40 bg-gradient-to-br ${priority.bar}`
+                    : `border-slate-300/50 bg-gradient-to-br ${priority.bar}`
                 }`}
                 title={`Приоритет: ${priority.label}`}
               >

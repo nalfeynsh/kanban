@@ -56,7 +56,7 @@ export default function TipTapEditor({ content, onChange }) {
 
   return (
     <div className="flex flex-col">
-      <div className="flex flex-wrap items-center gap-0.5 border-b border-white/40 bg-white/30 px-2 py-1.5 backdrop-blur dark:border-white/10 dark:bg-white/5">
+      <div className="flex flex-wrap items-center gap-0.5 border-b border-slate-300/60 bg-white/70 px-2 py-1.5 backdrop-blur dark:border-white/10 dark:bg-white/5">
         <button type="button" onClick={() => editor.chain().focus().toggleBold().run()} className={btnClass(editor.isActive('bold'))} title="Жирный">
           <Bold size={15} />
         </button>

@@ -486,7 +486,7 @@ export default function AccessModal({
                     {PERMISSIONS.map((permission) => (
                       <tr
                         key={permission.key}
-                        className="border-t border-white/40 dark:border-white/5"
+                        className="border-t border-slate-300/50 dark:border-white/5"
                       >
                         <td className="px-3 py-2">
                           <p className="text-[0.72rem] font-medium text-slate-800 dark:text-slate-100">
@@ -518,7 +518,7 @@ export default function AccessModal({
           )}
         </div>
 
-        <div className="flex items-center justify-between gap-2 border-t border-white/30 px-6 py-3 dark:border-white/10">
+        <div className="flex items-center justify-between gap-2 border-t border-slate-300/50 px-6 py-3 dark:border-white/10">
           <p className="text-[0.65rem] text-slate-500 dark:text-slate-400">
             {mayManageRoles
               ? 'Вы можете менять роли — изменения сохраняются сразу.'
@@ -543,7 +543,7 @@ export default function AccessModal({
       }}
     >
       <div className="modal-panel glass-panel flex max-h-[90vh] w-full max-w-4xl flex-col overflow-hidden rounded-3xl">
-        <div className="flex items-start justify-between gap-4 border-b border-white/30 px-6 py-4 dark:border-white/10">
+        <div className="flex items-start justify-between gap-4 border-b border-slate-300/50 px-6 py-4 dark:border-white/10">
           <div>
             <h2 className="flex items-center gap-2 text-lg font-bold text-slate-900 dark:text-white">
               <ShieldCheck size={20} className="text-indigo-500 dark:text-indigo-300" />

@@ -10,7 +10,7 @@ export default function Toasts({ toasts = [], onDismiss, onOpen }) {
       {toasts.map((toast) => (
         <div
           key={toast.id}
-          className="glass-panel pointer-events-auto flex items-start gap-2.5 rounded-2xl border border-white/50 p-3 shadow-xl dark:border-white/10"
+          className="glass-panel pointer-events-auto flex items-start gap-2.5 rounded-2xl border border-slate-300/50 p-3 shadow-xl dark:border-white/10"
         >
           <button
             type="button"

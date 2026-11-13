@@ -318,11 +318,11 @@ export default function ChatView({
       <div className="modal-panel glass-panel flex h-[84vh] w-full max-w-5xl overflow-hidden rounded-3xl">
         {/* Список диалогов */}
         <aside
-          className={`flex w-full shrink-0 flex-col border-r border-white/30 dark:border-white/10 sm:w-[18.5rem] ${
+          className={`flex w-full shrink-0 flex-col border-r border-slate-300/50 dark:border-white/10 sm:w-[18.5rem] ${
             activeId ? 'hidden sm:flex' : 'flex'
           }`}
         >
-          <div className="flex items-center justify-between gap-2 border-b border-white/30 px-4 py-3 dark:border-white/10">
+          <div className="flex items-center justify-between gap-2 border-b border-slate-300/50 px-4 py-3 dark:border-white/10">
             <h2 className="flex items-center gap-2 text-sm font-bold text-slate-800 dark:text-slate-100">
               <MessageSquare size={16} className="text-indigo-500 dark:text-indigo-300" />
               Чат
@@ -513,7 +513,7 @@ export default function ChatView({
 
         {/* Переписка */}
         <section className="flex min-w-0 flex-1 flex-col">
-          <div className="flex items-center gap-2 border-b border-white/30 px-4 py-2.5 dark:border-white/10">
+          <div className="flex items-center gap-2 border-b border-slate-300/50 px-4 py-2.5 dark:border-white/10">
             {isTeam ? (
               <>
                 <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-indigo-500 to-sky-400 text-white">
@@ -664,7 +664,7 @@ export default function ChatView({
                               className={`rounded-2xl px-3 py-2 text-[0.8rem] leading-snug break-words whitespace-pre-wrap ${
                                 own
                                   ? 'bg-gradient-to-br from-indigo-500 to-sky-500 text-white shadow-sm'
-                                  : 'border border-white/50 bg-white/60 text-slate-800 dark:border-white/10 dark:bg-white/10 dark:text-slate-100'
+                                  : 'border border-slate-300/60 bg-white/80 text-slate-800 dark:border-white/10 dark:bg-white/10 dark:text-slate-100'
                               } ${message.pending ? 'opacity-60' : ''}`}
                             >
                               {(!own || isTeam) && (
@@ -685,8 +685,8 @@ export default function ChatView({
                                   onContextMenu={(event) => openFileMenu(event, message)}
                                   className={`mb-1 flex w-full max-w-[16rem] items-center gap-2 rounded-xl border px-2 py-1.5 text-left transition ${
                                     own
-                                      ? 'border-white/30 bg-white/15 hover:bg-white/25'
-                                      : 'border-white/50 bg-white/60 hover:bg-white dark:border-white/10 dark:bg-white/10 dark:hover:bg-white/15'
+                                      ? 'border-slate-300/50 bg-white/15 hover:bg-white/25'
+                                      : 'border-slate-300/60 bg-white/80 hover:bg-white dark:border-white/10 dark:bg-white/10 dark:hover:bg-white/15'
                                   }`}
                                   title="Скачать · правый клик — действия"
                                 >
@@ -724,7 +724,7 @@ export default function ChatView({
                 </div>
               </div>
 
-              <div className="border-t border-white/30 p-3 dark:border-white/10">
+              <div className="border-t border-slate-300/50 p-3 dark:border-white/10">
                 <div className="flex items-end gap-2">
                   <input
                     ref={fileInputRef}
@@ -798,7 +798,7 @@ export default function ChatView({
           }}
         >
           <div className="glass-panel flex max-h-[80vh] w-full max-w-md flex-col overflow-hidden rounded-3xl shadow-2xl">
-            <div className="flex items-center justify-between border-b border-white/30 px-5 py-3 dark:border-white/10">
+            <div className="flex items-center justify-between border-b border-slate-300/50 px-5 py-3 dark:border-white/10">
               <div>
                 <h3 className="text-sm font-bold text-slate-800 dark:text-slate-100">
                   {forwardMessage ? 'Переслать файл' : 'Кому написать'}

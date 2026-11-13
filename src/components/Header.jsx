@@ -45,7 +45,7 @@ export default function Header({
   const displayName = profile?.full_name || user?.email || 'Профиль';
 
   return (
-    <header className="sticky top-0 z-40 border-b border-white/40 bg-white/55 backdrop-blur-2xl backdrop-saturate-150 dark:border-white/10 dark:bg-slate-950/55">
+    <header className="sticky top-0 z-40 border-b border-slate-300/50 bg-white/55 backdrop-blur-2xl backdrop-saturate-150 dark:border-white/10 dark:bg-slate-950/55">
       <div className="mx-auto flex max-w-[1800px] flex-wrap items-center gap-3 px-4 py-2.5 sm:px-6">
         {/* Логотип — всегда ведёт на главную */}
         <a
