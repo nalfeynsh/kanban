@@ -16,10 +16,13 @@ import {
   Forward,
   Trash2,
   FileText,
+  ShieldCheck,
+  MicOff,
 } from 'lucide-react';
 import { telegramUrl } from '../lib/telegram';
 import { chatFileUrl } from '../lib/chat';
 import { stripTaskMarker } from '../lib/quote';
+import { canModerateChat, canModerateRole } from '../lib/permissions';
 import Avatar from './Avatar';
 
 const pad = (n) => String(n).padStart(2, '0');
@@ -157,6 +160,8 @@ export default function ChatView({
   candidates = [],
   profilesById,
   currentUserId,
+  currentUserRole = 'member',
+  myRestriction = null,
   loadingDialogs = false,
   loadingMessages = false,
   loadingCandidates = false,
@@ -174,6 +179,7 @@ export default function ChatView({
   onOpenTask,
   onStartDialog,
   onRetry,
+  onOpenModeration,
   initialDraft = '',
 }) {
   const [query, setQuery] = useState('');
@@ -187,6 +193,30 @@ export default function ChatView({
   const composerRef = useRef(null);
 
   const activeDialog = dialogs.find((dialog) => dialog.conversation_id === activeId) || null;
+  const canModerate = canModerateChat(currentUserRole);
+  const muted = Boolean(myRestriction);
+  const restrictionText = !myRestriction
+    ? ''
+    : myRestriction.kind === 'ban'
+      ? 'Администратор заблокировал вам отправку сообщений в чат.'
+      : `Вам временно запрещено писать в чат${
+          myRestriction.expires_at
+            ? ` до ${new Date(myRestriction.expires_at).toLocaleString('ru-RU', {
+                day: 'numeric',
+                month: 'short',
+                hour: '2-digit',
+                minute: '2-digit',
+              })}`
+            : ''
+        }.`;
+
+  const canDeleteMessage = (message) => {
+    if (!message || message.pending) return false;
+    if (message.author_id === currentUserId) return true;
+    const targetRole = profilesById?.get?.(message.author_id)?.role || 'member';
+    return canModerateRole(currentUserRole, targetRole);
+  };
+
   const isTeam = Boolean(activeDialog?.is_team);
   const peer = activeDialog && !isTeam
     ? {
@@ -246,7 +276,7 @@ export default function ChatView({
 
   const handleSend = () => {
     const text = draft.trim();
-    if (!text || !activeId || sending) return;
+    if (!text || !activeId || sending || muted) return;
     setDraft('');
     onSend?.(text);
     // Не теряем курсор: можно сразу печатать следующее сообщение,
@@ -640,6 +670,18 @@ export default function ChatView({
               <p className="text-xs text-slate-500 dark:text-slate-400">Выберите диалог</p>
             )}
 
+            {canModerate && (
+              <button
+                type="button"
+                onClick={onOpenModeration}
+                className="glass-btn !px-2 !py-1 !text-[0.65rem]"
+                title="Модерация чата"
+              >
+                <ShieldCheck size={13} />
+                <span className="hidden sm:inline">Модерация</span>
+              </button>
+            )}
+
             <button
               type="button"
               onClick={onClose}
@@ -649,7 +691,6 @@ export default function ChatView({
               <X size={18} />
             </button>
           </div>
-
           {schemaMissing ? (
             <div className="flex flex-1 flex-col items-center justify-center gap-2 p-8 text-center">
               <AlertTriangle size={26} className="text-amber-500" />
@@ -778,6 +819,22 @@ export default function ChatView({
                               >
                                 {timeOf(message.created_at)}
                                 {own && <Check size={10} />}
+                                {canDeleteMessage(message) && (
+                                  <button
+                                    type="button"
+                                    onClick={(event) => {
+                                      event.stopPropagation();
+                                      if (window.confirm('Удалить сообщение у всех участников?')) {
+                                        onDeleteMessage?.(message);
+                                      }
+                                    }}
+                                    className="rounded p-0.5 opacity-60 transition hover:bg-rose-500/20 hover:opacity-100"
+                                    title="Удалить сообщение"
+                                    aria-label="Удалить сообщение"
+                                  >
+                                    <Trash2 size={10} />
+                                  </button>
+                                )}
                               </span>
                             </div>
                           </div>
@@ -789,6 +846,11 @@ export default function ChatView({
               </div>
 
               <div className="border-t border-slate-300/50 p-3 dark:border-white/10">
+                {muted && (
+                  <p className="mb-2 flex items-start gap-1.5 rounded-xl bg-amber-400/15 px-2.5 py-2 text-[0.68rem] text-amber-800 dark:text-amber-200">
+                    <MicOff size={12} className="mt-0.5 shrink-0" /> {restrictionText}
+                  </p>
+                )}
                 <div className="flex items-end gap-2">
                   <input
                     ref={fileInputRef}
@@ -804,7 +866,7 @@ export default function ChatView({
                   <button
                     type="button"
                     onClick={() => fileInputRef.current?.click()}
-                    disabled={!activeId || sending}
+                    disabled={!activeId || sending || muted}
                     className="glass-btn !px-2.5 !py-2"
                     title="Прикрепить файл (до 20 МБ)"
                     aria-label="Прикрепить файл"
@@ -818,20 +880,22 @@ export default function ChatView({
                     onKeyDown={handleKeyDown}
                     onPaste={handlePaste}
                     rows={1}
-                    disabled={!activeId}
+                    disabled={!activeId || muted}
                     placeholder={
-                      activeId
-                        ? isTeam
-                          ? 'Сообщение в общий чат… (Enter — отправить, Ctrl+Enter — строка)'
-                          : 'Сообщение… (Enter — отправить, Ctrl+Enter — строка, можно вставить скрин)'
-                        : 'Выберите диалог'
+                      muted
+                        ? 'Отправка сообщений ограничена'
+                        : activeId
+                          ? isTeam
+                            ? 'Сообщение в общий чат… (Enter — отправить, Ctrl+Enter — строка)'
+                            : 'Сообщение… (Enter — отправить, Ctrl+Enter — строка, можно вставить скрин)'
+                          : 'Выберите диалог'
                     }
                     className="glass-input max-h-32 !min-h-[2.6rem] flex-1 resize-none !py-2 !text-xs"
                   />
                   <button
                     type="button"
                     onClick={handleSend}
-                    disabled={!draft.trim() || !activeId || sending}
+                    disabled={!draft.trim() || !activeId || sending || muted}
                     className="glass-btn glass-btn-primary !px-3 !py-2"
                     title="Отправить"
                   >
@@ -1002,7 +1066,7 @@ export default function ChatView({
             >
               <Forward size={13} /> Переслать
             </button>
-            {fileMenu.message.author_id === currentUserId && (
+            {canDeleteMessage(fileMenu.message) && (
               <button
                 type="button"
                 onClick={() => requestDelete(fileMenu.message)}

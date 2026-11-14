@@ -137,3 +137,23 @@ export function permissionsFor(profileOrRole) {
 export function isAdmin(profileOrRole) {
   return roleOf(profileOrRole) === 'admin';
 }
+
+export const CHAT_MODERATION_ROLES = ['admin', 'manager', 'deputy'];
+
+export function roleRank(profileOrRole) {
+  const role = roleOf(profileOrRole);
+  return { admin: 4, manager: 3, deputy: 2, member: 1 }[role] || 1;
+}
+
+/** Может ли роль открывать панель модерации чата. */
+export function canModerateChat(profileOrRole) {
+  return CHAT_MODERATION_ROLES.includes(roleOf(profileOrRole));
+}
+
+/** Строгая иерархия: модерировать можно только роль ниже своей. */
+export function canModerateRole(actorProfileOrRole, targetProfileOrRole) {
+  return (
+    canModerateChat(actorProfileOrRole) &&
+    roleRank(actorProfileOrRole) > roleRank(targetProfileOrRole)
+  );
+}

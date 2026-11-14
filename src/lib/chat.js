@@ -125,6 +125,50 @@ export async function markDialogRead(conversationId) {
   return { error };
 }
 
+export async function fetchChatRestrictions() {
+  const { data, error } = await supabase.from('chat_restrictions').select('*');
+  return { restrictions: Array.isArray(data) ? data : [], error };
+}
+
+export async function moderateChatUser(userId, kind, minutes = null, reason = '') {
+  const { data, error } = await supabase.rpc('moderate_chat_user', {
+    p_user: userId,
+    p_kind: kind,
+    p_minutes: minutes,
+    p_reason: reason || null,
+  });
+  return { restriction: data, error };
+}
+
+export async function unmuteChatUser(userId) {
+  const { error } = await supabase.rpc('unmute_chat_user', { p_user: userId });
+  return { error };
+}
+
+/** Полная очистка чата администратором: сообщения + вложения. */
+export async function clearChatMessages(conversationId) {
+  const { data: rows, error: listError } = await supabase
+    .from('messages')
+    .select('attachment_path')
+    .eq('conversation_id', conversationId);
+  if (listError) return { deleted: 0, error: listError };
+
+  const paths = (rows || []).map((row) => row.attachment_path).filter(Boolean);
+  const { data, error } = await supabase.rpc('clear_conversation_messages', {
+    p_conversation: conversationId,
+  });
+  if (error) return { deleted: 0, error };
+
+  if (paths.length > 0) {
+    const { error: storageError } = await supabase.storage.from(CHAT_FILES_BUCKET).remove(paths);
+    if (storageError) {
+      return { deleted: Number(data) || 0, error: storageError };
+    }
+  }
+
+  return { deleted: Number(data) || 0, error: null };
+}
+
 /** Подписка на новые сообщения диалога. Возвращает функцию отписки. */
 export function subscribeToMessages(conversationId, onInsert) {
   const channel = supabase

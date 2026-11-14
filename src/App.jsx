@@ -1879,6 +1879,7 @@ export default function App() {
             setChatDraft('');
           }}
           currentUserId={userId}
+          currentUserRole={profile?.role || 'member'}
           members={allProfiles}
           peerId={chatPeerId}
           initialConversationId={chatConversationId}

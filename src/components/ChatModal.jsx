@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import ChatView from './ChatView';
+import ChatModerationModal from './ChatModerationModal';
 import {
   ensureTeamChat,
   fetchChatCandidates,
+  fetchChatRestrictions,
   fetchDialogs,
   fetchMessages,
   isChatSchemaMissing,
@@ -20,6 +22,7 @@ export default function ChatModal({
   onClose,
   currentUserId,
   members = [],
+  currentUserRole = 'member',
   peerId = null,
   initialConversationId = null,
   initialDraft = '',
@@ -39,6 +42,8 @@ export default function ChatModal({
   const [teamUnavailable, setTeamUnavailable] = useState(false);
   const [candidates, setCandidates] = useState([]);
   const [loadingCandidates, setLoadingCandidates] = useState(true);
+  const [moderationOpen, setModerationOpen] = useState(false);
+  const [myRestriction, setMyRestriction] = useState(null);
 
   const profilesById = useMemo(() => new Map(members.map((member) => [member.id, member])), [members]);
 
@@ -145,6 +150,36 @@ export default function ChatModal({
       markDialogRead(activeId);
     });
   }, [isOpen, activeId]);
+
+  // Текущие ограничения пользователя: показываем, если ему запрещено писать.
+  useEffect(() => {
+    if (!isOpen) return undefined;
+    let alive = true;
+    fetchChatRestrictions().then(({ restrictions }) => {
+      if (!alive) return;
+      const row = restrictions.find((item) => item.user_id === currentUserId) || null;
+      const active =
+        row && (!row.expires_at || new Date(row.expires_at).getTime() > Date.now()) ? row : null;
+      setMyRestriction(active);
+    });
+    return () => {
+      alive = false;
+    };
+  }, [isOpen, currentUserId]);
+
+  const handleModerationChanged = async () => {
+    const { restrictions } = await fetchChatRestrictions();
+    const row = restrictions.find((item) => item.user_id === currentUserId) || null;
+    const active =
+      row && (!row.expires_at || new Date(row.expires_at).getTime() > Date.now()) ? row : null;
+    setMyRestriction(active);
+  };
+
+  const handleChatCleared = async () => {
+    if (activeId) await selectDialog(activeId);
+    const { dialogs: list } = await fetchDialogs();
+    if (list.length > 0) setDialogs(list);
+  };
 
   // Сумма непрочитанных для бейджа в шапке
   useEffect(() => {
@@ -326,31 +361,47 @@ export default function ChatModal({
   };
 
   return (
-    <ChatView
-      dialogs={dialogs}
-      activeId={activeId}
-      messages={messages}
-      candidates={candidates}
-      profilesById={profilesById}
-      currentUserId={currentUserId}
-      loadingDialogs={loadingDialogs}
-      loadingMessages={loadingMessages}
-      loadingCandidates={loadingCandidates}
-      sending={sending}
-      error={error}
-      schemaMissing={schemaMissing}
-      teamUnavailable={teamUnavailable}
-      initialConversationId={initialConversationId}
-      initialDraft={initialDraft}
-      onSelect={(dialog) => selectDialog(dialog.conversation_id)}
-      onSend={handleSend}
-      onSendFiles={handleSendFiles}
-      onDeleteMessage={handleDeleteMessage}
-      onForwardMessage={handleForwardMessage}
-      onClose={onClose}
-      onOpenProfile={handleOpenProfile}
-      onOpenTask={onOpenTask}
-      onStartDialog={handleStartDialog}
-    />
+    <>
+      <ChatView
+        dialogs={dialogs}
+        activeId={activeId}
+        messages={messages}
+        candidates={candidates}
+        profilesById={profilesById}
+        currentUserId={currentUserId}
+        currentUserRole={currentUserRole}
+        myRestriction={myRestriction}
+        loadingDialogs={loadingDialogs}
+        loadingMessages={loadingMessages}
+        loadingCandidates={loadingCandidates}
+        sending={sending}
+        error={error}
+        schemaMissing={schemaMissing}
+        teamUnavailable={teamUnavailable}
+        initialConversationId={initialConversationId}
+        initialDraft={initialDraft}
+        onSelect={(dialog) => selectDialog(dialog.conversation_id)}
+        onSend={handleSend}
+        onSendFiles={handleSendFiles}
+        onDeleteMessage={handleDeleteMessage}
+        onForwardMessage={handleForwardMessage}
+        onClose={onClose}
+        onOpenProfile={handleOpenProfile}
+        onOpenTask={onOpenTask}
+        onStartDialog={handleStartDialog}
+        onOpenModeration={() => setModerationOpen(true)}
+      />
+      {moderationOpen && (
+        <ChatModerationModal
+          conversationId={activeId}
+          members={members}
+          currentUserId={currentUserId}
+          currentUserRole={currentUserRole}
+          onClose={() => setModerationOpen(false)}
+          onChanged={handleModerationChanged}
+          onCleared={handleChatCleared}
+        />
+      )}
+    </>
   );
 }
