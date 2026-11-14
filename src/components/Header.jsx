@@ -52,6 +52,7 @@ export default function Header({
   onHome,
   project,
   onProjectsClick,
+  features = {},
 }) {
   const displayName = profile?.full_name || user?.email || 'Профиль';
 
@@ -88,7 +89,7 @@ export default function Header({
           </span>
         </a>
 
-        {onProjectsClick && (
+        {onProjectsClick && features.projects !== false && (
           <button
             type="button"
             onClick={onProjectsClick}
@@ -114,25 +115,29 @@ export default function Header({
             <LayoutDashboard size={15} />
             <span className="hidden sm:inline">Канбан</span>
           </button>
-          <button
-            type="button"
-            className="glass-segment-btn"
-            data-active={currentView === 'calendar'}
-            onClick={() => onViewChange('calendar')}
-          >
-            <CalendarDays size={15} />
-            <span className="hidden sm:inline">Календарь</span>
-          </button>
-          <button
-            type="button"
-            className="glass-segment-btn"
-            data-active={currentView === 'gantt'}
-            onClick={() => onViewChange('gantt')}
-            title="Диаграмма Ганта"
-          >
-            <BarChart3 size={15} />
-            <span className="hidden sm:inline">Гант</span>
-          </button>
+          {features.calendar !== false && (
+            <button
+              type="button"
+              className="glass-segment-btn"
+              data-active={currentView === 'calendar'}
+              onClick={() => onViewChange('calendar')}
+            >
+              <CalendarDays size={15} />
+              <span className="hidden sm:inline">Календарь</span>
+            </button>
+          )}
+          {features.gantt !== false && (
+            <button
+              type="button"
+              className="glass-segment-btn"
+              data-active={currentView === 'gantt'}
+              onClick={() => onViewChange('gantt')}
+              title="Диаграмма Ганта"
+            >
+              <BarChart3 size={15} />
+              <span className="hidden sm:inline">Гант</span>
+            </button>
+          )}
         </div>
 
         {/* Фильтр задач */}
@@ -199,26 +204,28 @@ export default function Header({
         )}
 
         <div className="ml-auto flex items-center gap-1.5 sm:gap-2">
-          <button
-            type="button"
-            onClick={onToggleNotifications}
-            className={`glass-btn relative !px-2.5 !py-1.5 ${
-              notificationsEnabled ? '' : 'opacity-60'
-            }`}
-            title={
-              notificationsEnabled
-                ? notificationsPermission === 'granted'
-                  ? 'Уведомления включены: звук и браузерные оповещения'
-                  : 'Уведомления включены (только внутри Канбана — разрешите браузерные)'
-                : 'Включить уведомления'
-            }
-            aria-pressed={notificationsEnabled}
-          >
-            {notificationsEnabled ? <Bell size={17} /> : <BellOff size={17} />}
-            <span className="hidden xl:inline">Уведомления</span>
-          </button>
+          {features.notifications !== false && (
+            <button
+              type="button"
+              onClick={onToggleNotifications}
+              className={`glass-btn relative !px-2.5 !py-1.5 ${
+                notificationsEnabled ? '' : 'opacity-60'
+              }`}
+              title={
+                notificationsEnabled
+                  ? notificationsPermission === 'granted'
+                    ? 'Уведомления включены: звук и браузерные оповещения'
+                    : 'Уведомления включены (только внутри Канбана — разрешите браузерные)'
+                  : 'Включить уведомления'
+              }
+              aria-pressed={notificationsEnabled}
+            >
+              {notificationsEnabled ? <Bell size={17} /> : <BellOff size={17} />}
+              <span className="hidden xl:inline">Уведомления</span>
+            </button>
+          )}
 
-          {meetingsEnabled && (
+          {meetingsEnabled && features.meetings !== false && (
             <button
               type="button"
               onClick={onMeetingsClick}
@@ -235,20 +242,22 @@ export default function Header({
             </button>
           )}
 
-          <button
-            type="button"
-            onClick={onChatClick}
-            className="glass-btn relative !px-2.5 !py-1.5"
-            title="Внутренний чат"
-          >
-            <MessageSquare size={17} />
-            <span className="hidden lg:inline">Чат</span>
-            {chatUnread > 0 && (
-              <span className="absolute -top-1 -right-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-rose-500 px-1 text-[0.55rem] font-bold text-white shadow">
-                {chatUnread > 9 ? '9+' : chatUnread}
-              </span>
-            )}
-          </button>
+          {features.chat !== false && (
+            <button
+              type="button"
+              onClick={onChatClick}
+              className="glass-btn relative !px-2.5 !py-1.5"
+              title="Внутренний чат"
+            >
+              <MessageSquare size={17} />
+              <span className="hidden lg:inline">Чат</span>
+              {chatUnread > 0 && (
+                <span className="absolute -top-1 -right-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-rose-500 px-1 text-[0.55rem] font-bold text-white shadow">
+                  {chatUnread > 9 ? '9+' : chatUnread}
+                </span>
+              )}
+            </button>
+          )}
 
           <button
             type="button"

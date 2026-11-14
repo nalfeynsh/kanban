@@ -1,11 +1,12 @@
 import { useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { X, Users, Search, Send, ChevronRight, Mail, ShieldCheck, ListChecks, MessageSquare, Plug, BarChart3 } from 'lucide-react';
+import { X, Users, Search, Send, ChevronRight, Mail, ShieldCheck, ListChecks, MessageSquare, Plug, BarChart3, ToggleLeft } from 'lucide-react';
 import { roleLabel } from '../lib/priority';
 import { telegramUrl } from '../lib/telegram';
 import AccessModal from './AccessModal';
 import IntegrationsPanel from './IntegrationsPanel';
 import AnalyticsPanel from './AnalyticsPanel';
+import FeatureFlagsPanel from './FeatureFlagsPanel';
 import Avatar from './Avatar';
 
 export default function TeamModal({
@@ -23,11 +24,14 @@ export default function TeamModal({
   archivedTasks = [],
   statusEvents = [],
   columns = [],
+  features = {},
+  onFeatureChange,
 }) {
   const [query, setQuery] = useState('');
   const [roleFilter, setRoleFilter] = useState('all');
   const [tab, setTab] = useState('members');
-  const canAnalytics = ['admin', 'manager', 'deputy'].includes(currentRole);
+  const canAnalytics =
+    ['admin', 'manager', 'deputy'].includes(currentRole) && features.analytics !== false;
 
   const matchesRole = (member) => {
     if (roleFilter === 'admin') return member.role === 'admin';
@@ -122,6 +126,17 @@ export default function TeamModal({
               <ShieldCheck size={14} />
               Доступ и права
             </button>
+            {currentRole === 'admin' && (
+              <button
+                type="button"
+                className="glass-segment-btn"
+                data-active={tab === 'features'}
+                onClick={() => setTab('features')}
+              >
+                <ToggleLeft size={14} />
+                Функции
+              </button>
+            )}
             {currentRole === 'admin' && (
               <button
                 type="button"
@@ -284,6 +299,12 @@ export default function TeamModal({
           )}
         </div>
           </>
+        )}
+
+        {tab === 'features' && currentRole === 'admin' && (
+          <div className="flex min-h-0 flex-1 flex-col">
+            <FeatureFlagsPanel onChanged={onFeatureChange} />
+          </div>
         )}
 
         {tab === 'integrations' && currentRole === 'admin' && (

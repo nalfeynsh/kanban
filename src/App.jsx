@@ -45,6 +45,7 @@ import { supabase } from './supabaseClient';
 import { collectFields, mergeFields, pickFields, profileFields, supports, taskFields } from './lib/schema';
 import { buildTaskQuote, stripTaskMarker } from './lib/quote';
 import { fetchProjects, PROJECT_STORAGE_KEY } from './lib/projects';
+import { DEFAULT_FEATURES, fetchFeatureFlags, rowsToFeatures } from './lib/features';
 import { readOAuthError, explainOAuthError, cleanOAuthUrl } from './lib/oauth';
 import { canSeeTask, matchesMode } from './lib/access';
 import { byPosition, isTaskOverdue } from './lib/format';
@@ -85,6 +86,7 @@ export default function App() {
   const [projects, setProjects] = useState([]);
   const [currentProjectId, setCurrentProjectId] = useState(null);
   const [isProjectsOpen, setIsProjectsOpen] = useState(false);
+  const [features, setFeatures] = useState(DEFAULT_FEATURES);
   const [loading, setLoading] = useState(true);
   const [banner, setBanner] = useState('');
   const [oauthNotice, setOauthNotice] = useState(() => {
@@ -330,6 +332,19 @@ export default function App() {
       if (!next) setLoading(false);
     })();
 
+    return () => {
+      alive = false;
+    };
+  }, [userId]);
+
+  // Функциональные флаги: при ошибке оставляем всё включённым.
+  useEffect(() => {
+    if (!userId) return undefined;
+    let alive = true;
+    fetchFeatureFlags().then(({ rows, error }) => {
+      if (!alive || error) return;
+      setFeatures(rowsToFeatures(rows));
+    });
     return () => {
       alive = false;
     };
@@ -1322,12 +1337,28 @@ export default function App() {
   };
 
   const changeView = (view) => {
+    if (view === 'calendar' && features.calendar === false) return;
+    if (view === 'gantt' && features.gantt === false) return;
     exitSelection();
     setCurrentView(view);
   };
 
+  const handleFeatureChange = (key, enabled) => {
+    setFeatures((prev) => ({ ...prev, [key]: enabled }));
+    if (enabled) return;
+    if (key === 'calendar' && currentView === 'calendar') setCurrentView('board');
+    if (key === 'gantt' && currentView === 'gantt') setCurrentView('board');
+    if (key === 'chat') setIsChatOpen(false);
+    if (key === 'meetings') {
+      setIsMeetingsOpen(false);
+      setSelectedMeeting(null);
+    }
+    if (key === 'projects') setIsProjectsOpen(false);
+  };
+
   /** Открыть чат на главной, на диалоге с сотрудником или на конкретном диалоге */
   const openChat = (peerId = null, conversationId = null) => {
+    if (features.chat === false) return;
     exitSelection();
     unlockAudio();
     setChatPeerId(peerId);
@@ -1708,6 +1739,7 @@ export default function App() {
         onHome={goHome}
         project={currentProject}
         onProjectsClick={() => setIsProjectsOpen(true)}
+        features={features}
         teamCount={allProfiles.length}
         memberFilter={memberFilter}
         onClearMemberFilter={() => setMemberFilter(null)}
@@ -1976,6 +2008,8 @@ export default function App() {
         archivedTasks={archivedTasks}
         statusEvents={statusEvents}
         columns={columns}
+        features={features}
+        onFeatureChange={handleFeatureChange}
         onOpenChat={(member) => {
           setIsTeamOpen(false);
           openChat(member.id);
