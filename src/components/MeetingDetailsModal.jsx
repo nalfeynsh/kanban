@@ -68,6 +68,7 @@ export default function MeetingDetailsModal({
   const myParticipation = participants.find((item) => item.user_id === currentUserId);
   const isOrganizer = meeting.organizer_id === currentUserId;
   const organizer = memberById.get(meeting.organizer_id);
+  const host = memberById.get(meeting.host_id || meeting.organizer_id);
   const joinUrl = `${window.location.origin}/meet/${meeting.room_token}`;
   const isCancelled = meeting.status === 'cancelled';
   const calendarOrganizer = {
@@ -200,6 +201,11 @@ export default function MeetingDetailsModal({
                 />
                 <span className="truncate text-xs font-medium text-slate-800 dark:text-slate-100">
                   {organizer?.full_name || 'Сотрудник'}
+                  {host && host.id !== meeting.organizer_id && (
+                    <span className="mt-0.5 block text-[0.6rem] font-normal text-indigo-500 dark:text-indigo-300">
+                      Ведущий: {host.full_name || 'сотрудник'}
+                    </span>
+                  )}
                 </span>
               </div>
             </div>
@@ -339,6 +345,10 @@ export default function MeetingDetailsModal({
                       {participant.user_id === meeting.organizer_id && (
                         <span className="ml-1 text-[0.6rem] text-indigo-500 dark:text-indigo-300">организатор</span>
                       )}
+                      {participant.user_id === meeting.host_id &&
+                        meeting.host_id !== meeting.organizer_id && (
+                          <span className="ml-1 text-[0.6rem] text-sky-500 dark:text-sky-300">ведущий</span>
+                        )}
                       <span
                         className={`mt-0.5 block text-[0.6rem] font-medium ${
                           attendanceRecord

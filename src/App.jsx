@@ -649,8 +649,17 @@ export default function App() {
     ).length;
   }, [meetings, meetingParticipants, userId]);
 
-  const handleCreateMeeting = async ({ title, description, start_at, end_at, participantIds = [] }) => {    if (!userId) return false;
+  const handleCreateMeeting = async ({
+    title,
+    description,
+    start_at,
+    end_at,
+    participantIds = [],
+    host_id,
+  }) => {
+    if (!userId) return false;
     const meetingId = crypto.randomUUID();
+    const hostId = host_id || userId;
     const { error } = await supabase
       .from('meetings')
       .insert({
@@ -660,6 +669,7 @@ export default function App() {
         start_at,
         end_at,
         organizer_id: userId,
+        host_id: hostId,
       });
 
     if (error) {
@@ -667,7 +677,7 @@ export default function App() {
       return false;
     }
 
-    const inviteIds = participantIds.filter((id) => id !== userId);
+    const inviteIds = [...new Set([...participantIds, hostId])].filter((id) => id !== userId);
     if (inviteIds.length > 0) {
       const { error: inviteError } = await supabase.from('meeting_participants').insert(
         inviteIds.map((id) => ({ meeting_id: meetingId, user_id: id, status: 'invited' })),
@@ -681,14 +691,23 @@ export default function App() {
     return true;
   };
 
-  const handleUpdateMeeting = async ({ meetingId, title, description, start_at, end_at, participantIds = [] }) => {
+  const handleUpdateMeeting = async ({
+    meetingId,
+    title,
+    description,
+    start_at,
+    end_at,
+    participantIds = [],
+    host_id,
+  }) => {
     if (!userId) return false;
     const meeting = meetings.find((item) => item.id === meetingId);
     if (!meeting || meeting.organizer_id !== userId) return false;
+    const hostId = host_id || meeting.host_id || meeting.organizer_id;
 
     const { error } = await supabase
       .from('meetings')
-      .update({ title, description, start_at, end_at })
+      .update({ title, description, start_at, end_at, host_id: hostId })
       .eq('id', meetingId);
     if (error) {
       setBanner(`Не удалось сохранить встречу: ${error.message}`);
@@ -698,7 +717,7 @@ export default function App() {
     const currentIds = meetingParticipants
       .filter((item) => item.meeting_id === meetingId && item.user_id !== userId)
       .map((item) => item.user_id);
-    const nextIds = participantIds.filter((id) => id !== userId);
+    const nextIds = [...new Set([...participantIds, hostId])].filter((id) => id !== userId);
     const removeIds = currentIds.filter((id) => !nextIds.includes(id));
     const addIds = nextIds.filter((id) => !currentIds.includes(id));
 

@@ -27,6 +27,7 @@ export default function MeetingModal({
   const [startAt, setStartAt] = useState(() => meeting?.start_at || defaultTimes().start);
   const [endAt, setEndAt] = useState(() => meeting?.end_at || defaultTimes().end);
   const [participantIds, setParticipantIds] = useState(initialParticipantIds);
+  const [hostId, setHostId] = useState(() => meeting?.host_id || currentUserId || '');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const maxInvitees = 9;
@@ -37,6 +38,14 @@ export default function MeetingModal({
         .filter((member) => member.id !== currentUserId && member.is_active !== false)
         .sort((a, b) => (a.full_name || '').localeCompare(b.full_name || '', 'ru')),
     [members, currentUserId],
+  );
+
+  const hostOptions = useMemo(
+    () =>
+      members
+        .filter((member) => member.is_active !== false)
+        .sort((a, b) => (a.full_name || '').localeCompare(b.full_name || '', 'ru')),
+    [members],
   );
 
   useEffect(() => {
@@ -71,13 +80,22 @@ export default function MeetingModal({
     }
 
     setError('');
+    const finalParticipantIds =
+      hostId && hostId !== currentUserId && !participantIds.includes(hostId)
+        ? [...participantIds, hostId]
+        : participantIds;
+    if (finalParticipantIds.length > maxInvitees) {
+      setError('Ведущий должен быть участником. Освободите место в списке приглашённых.');
+      return;
+    }
     setSaving(true);
     const ok = await onSave({
       title: title.trim(),
       description: description.trim(),
       start_at: startAt,
       end_at: endAt,
-      participantIds,
+      participantIds: finalParticipantIds,
+      host_id: hostId || currentUserId,
     });
     setSaving(false);
     if (ok) onClose();
@@ -146,6 +164,27 @@ export default function MeetingModal({
               placeholder="Повестка или ссылка на материалы"
               className="glass-input resize-none !py-1.5 !text-xs"
             />
+          </label>
+
+          <label className="block">
+            <span className="mb-1 block text-[0.68rem] font-semibold tracking-[0.1em] text-slate-500 uppercase dark:text-slate-400">
+              Ведущий встречи
+            </span>
+            <select
+              value={hostId}
+              onChange={(event) => setHostId(event.target.value)}
+              className="glass-input !py-1.5 !text-xs"
+            >
+              {hostOptions.map((member) => (
+                <option key={member.id} value={member.id}>
+                  {member.full_name || 'Сотрудник'}
+                  {member.id === currentUserId ? ' (вы)' : ''}
+                </option>
+              ))}
+            </select>
+            <p className="mt-1 text-[0.62rem] text-slate-500 dark:text-slate-400">
+              Ведущий может отключать микрофоны всем или отдельным участникам.
+            </p>
           </label>
 
           <div>

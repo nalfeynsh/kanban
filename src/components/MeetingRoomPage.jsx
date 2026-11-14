@@ -1,5 +1,16 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowLeft, Circle, Loader2, MessageCircle, ShieldAlert, Square, Video } from 'lucide-react';
+import {
+  ArrowLeft,
+  Circle,
+  Loader2,
+  MessageCircle,
+  MicOff,
+  ShieldAlert,
+  Square,
+  Users,
+  Video,
+  X,
+} from 'lucide-react';
 import { supabase } from '../supabaseClient';
 import { formatDue } from '../lib/format';
 import MeetingChatModal from './MeetingChatModal';
@@ -53,6 +64,10 @@ export default function MeetingRoomPage({ token, profile, userEmail, currentUser
   const [recordingSeconds, setRecordingSeconds] = useState(0);
   const [recordingBusy, setRecordingBusy] = useState(false);
   const [recordingNotice, setRecordingNotice] = useState('');
+  const [jitsiParticipants, setJitsiParticipants] = useState([]);
+  const [isParticipantsOpen, setIsParticipantsOpen] = useState(false);
+  const [isJitsiModerator, setIsJitsiModerator] = useState(false);
+  const [moderationNotice, setModerationNotice] = useState('');
   const recorderRef = useRef(null);
   const recordStreamRef = useRef(null);
   const recordChunksRef = useRef([]);
@@ -61,6 +76,36 @@ export default function MeetingRoomPage({ token, profile, userEmail, currentUser
 
   const displayName = profile?.full_name || userEmail?.split('@')[0] || 'Сотрудник';
   const roomName = useMemo(() => `kanban-${token}`, [token]);
+  const canModerate = Boolean(
+    meeting &&
+      currentUserId &&
+      (meeting.organizer_id === currentUserId || meeting.host_id === currentUserId),
+  );
+  const otherParticipants = jitsiParticipants.filter(
+    (participant) => !(participant.local || participant.isLocal),
+  );
+
+  const muteAll = () => {
+    const api = apiRef.current;
+    if (!api) return;
+    try {
+      api.executeCommand('muteEveryone', 'audio');
+      setModerationNotice('Команда «выключить микрофоны всем» отправлена');
+    } catch {
+      setModerationNotice('Не удалось отправить команду. Нужны права модератора Jitsi.');
+    }
+  };
+
+  const muteParticipant = (participantId, participantName) => {
+    const api = apiRef.current;
+    if (!api) return;
+    try {
+      api.executeCommand('muteRemoteParticipant', participantId, 'audio');
+      setModerationNotice(`Микрофон ${participantName || 'участника'} выключен`);
+    } catch {
+      setModerationNotice('Не удалось выключить микрофон. Нужны права модератора Jitsi.');
+    }
+  };
 
   const startRecording = async () => {
     if (recording || recordingBusy) return;
@@ -256,6 +301,22 @@ export default function MeetingRoomPage({ token, profile, userEmail, currentUser
           },
         });
         apiRef.current = api;
+        const refreshParticipants = () => {
+          if (disposed || !apiRef.current) return;
+          try {
+            const list = api.getParticipantsInfo?.() || [];
+            setJitsiParticipants(list);
+            const local =
+              list.find((participant) => participant.local || participant.isLocal) ||
+              (api.getMyParticipantId
+                ? list.find((participant) => participant.participantId === api.getMyParticipantId())
+                : null);
+            if (local?.role) setIsJitsiModerator(local.role === 'moderator');
+          } catch {
+            // список участников может быть недоступен до входа в комнату
+          }
+        };
+        refreshParticipants();
         const leaveRoom = () => {
           if (attendanceTimerRef.current) {
             window.clearInterval(attendanceTimerRef.current);
@@ -268,6 +329,7 @@ export default function MeetingRoomPage({ token, profile, userEmail, currentUser
           }
         };
         api.addListener('videoConferenceJoined', () => {
+          refreshParticipants();
           if (!currentUserId) return;
           void supabase
             .rpc('meeting_join', { p_meeting_id: meeting.id })
@@ -284,6 +346,12 @@ export default function MeetingRoomPage({ token, profile, userEmail, currentUser
                 void supabase.rpc('meeting_heartbeat', { p_meeting_id: meeting.id });
               }, 30_000);
             });
+        });
+        api.addListener('participantJoined', refreshParticipants);
+        api.addListener('participantLeft', refreshParticipants);
+        api.addListener('participantRoleChanged', (event) => {
+          if (event.role) setIsJitsiModerator(event.role === 'moderator');
+          refreshParticipants();
         });
         api.addListener('readyToClose', () => {
           leaveRoom();
@@ -344,7 +412,7 @@ export default function MeetingRoomPage({ token, profile, userEmail, currentUser
 
   return (
     <div className="app-bg flex h-screen flex-col overflow-hidden">
-      <header className="flex shrink-0 items-center gap-3 border-b border-slate-300/50 bg-white/55 px-4 py-2.5 backdrop-blur-2xl dark:border-white/10 dark:bg-slate-950/55">
+      <header className="relative flex shrink-0 items-center gap-3 border-b border-slate-300/50 bg-white/55 px-4 py-2.5 backdrop-blur-2xl dark:border-white/10 dark:bg-slate-950/55">
         <button
           type="button"
           onClick={onExit}
@@ -369,6 +437,23 @@ export default function MeetingRoomPage({ token, profile, userEmail, currentUser
           <span className="rounded-full bg-emerald-500/12 px-2 py-0.5 text-[0.6rem] font-semibold text-emerald-700 dark:text-emerald-300">
             Вы в комнате
           </span>
+        )}
+        {canModerate && (
+          <button
+            type="button"
+            onClick={() => setIsParticipantsOpen((prev) => !prev)}
+            className="glass-btn !px-2.5 !py-1.5 !text-xs"
+            title="Участники и управление микрофонами"
+            aria-expanded={isParticipantsOpen}
+          >
+            <Users size={15} />
+            <span className="hidden sm:inline">Участники</span>
+            {otherParticipants.length > 0 && (
+              <span className="rounded-full bg-indigo-500/15 px-1.5 text-[0.6rem] font-semibold text-indigo-700 dark:text-indigo-200">
+                {otherParticipants.length}
+              </span>
+            )}
+          </button>
         )}
         <button
           type="button"
@@ -400,6 +485,93 @@ export default function MeetingRoomPage({ token, profile, userEmail, currentUser
           <span className="hidden sm:inline">Чат</span>
         </button>
       </header>
+
+      {canModerate && isParticipantsOpen && (
+        <div className="absolute top-[3.25rem] right-4 z-40 w-80 overflow-hidden rounded-2xl border border-slate-300/70 bg-white/95 shadow-2xl backdrop-blur dark:border-white/10 dark:bg-slate-900/95">
+          <div className="flex items-center justify-between border-b border-slate-300/60 px-3 py-2 dark:border-white/10">
+            <p className="flex items-center gap-1.5 text-xs font-semibold text-slate-800 dark:text-slate-100">
+              <Users size={14} className="text-indigo-500" /> Участники
+            </p>
+            <button
+              type="button"
+              onClick={() => setIsParticipantsOpen(false)}
+              className="rounded-md p-1 text-slate-400 hover:bg-white/70 hover:text-slate-700 dark:hover:bg-white/10 dark:hover:text-white"
+              aria-label="Закрыть список участников"
+            >
+              <X size={14} />
+            </button>
+          </div>
+
+          <div className="space-y-2 p-2.5">
+            <button
+              type="button"
+              onClick={muteAll}
+              className="glass-btn glass-btn-danger w-full !justify-center !px-2.5 !py-1.5 !text-xs"
+              title="Выключить микрофоны всех участников"
+            >
+              <MicOff size={13} /> Выключить всем микрофоны
+            </button>
+
+            {!isJitsiModerator && (
+              <p className="rounded-lg border border-amber-400/40 bg-amber-400/10 px-2 py-1.5 text-[0.64rem] leading-relaxed text-amber-800 dark:text-amber-200">
+                Jitsi ещё не выдал права модератора. Если команда не сработала, назначьте ведущего
+                модератором в панели участников Jitsi.
+              </p>
+            )}
+
+            <div className="scrollbar-slim max-h-64 space-y-1 overflow-y-auto">
+              {otherParticipants.length === 0 ? (
+                <p className="px-2 py-3 text-center text-[0.68rem] text-slate-500 dark:text-slate-400">
+                  Других участников в комнате пока нет.
+                </p>
+              ) : (
+                otherParticipants.map((participant) => (
+                  <div
+                    key={participant.participantId || participant.displayName}
+                    className="flex items-center gap-2 rounded-lg px-2 py-1.5 hover:bg-white/70 dark:hover:bg-white/5"
+                  >
+                    <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-indigo-500/15 text-[0.6rem] font-bold text-indigo-700 dark:text-indigo-200">
+                      {(participant.displayName || '?').slice(0, 1).toUpperCase()}
+                    </span>
+                    <span className="min-w-0 flex-1 truncate text-xs text-slate-700 dark:text-slate-200">
+                      {participant.displayName || 'Участник'}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        muteParticipant(
+                          participant.participantId,
+                          participant.displayName,
+                        )
+                      }
+                      className="rounded-lg p-1.5 text-rose-500 transition hover:bg-rose-500/10"
+                      title={`Выключить микрофон ${participant.displayName || 'участника'}`}
+                      aria-label={`Выключить микрофон ${participant.displayName || 'участника'}`}
+                    >
+                      <MicOff size={14} />
+                    </button>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {moderationNotice && (
+        <div className="flex shrink-0 items-center gap-2 border-b border-indigo-400/30 bg-indigo-400/10 px-4 py-1.5 text-[0.68rem] text-indigo-800 dark:text-indigo-200">
+          <MicOff size={12} className="shrink-0" />
+          <span className="min-w-0 flex-1">{moderationNotice}</span>
+          <button
+            type="button"
+            onClick={() => setModerationNotice('')}
+            className="shrink-0 text-xs font-semibold opacity-70 hover:opacity-100"
+            aria-label="Скрыть сообщение"
+          >
+            ×
+          </button>
+        </div>
+      )}
 
       {recordingNotice && (
         <div className="flex shrink-0 items-center gap-2 border-b border-amber-400/30 bg-amber-400/10 px-4 py-1.5 text-[0.68rem] text-amber-800 dark:text-amber-200">
