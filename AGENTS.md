@@ -48,6 +48,7 @@ components/
   MeetingModal.jsx          — создание встречи и выбор участников
   MeetingsModal.jsx         — список встреч, приглашения
   MeetingDetailsModal.jsx   — детали встречи, ответ, отмена, ссылка
+  MeetingChatModal.jsx      — постоянный чат встречи: текст, файлы, картинки
   MeetingRoomPage.jsx       — комната /meet/<token> (Jitsi, временный провайдер)
   Toasts.jsx                — всплывающие уведомления о новых сообщениях
   LoginPage.jsx             — вход/регистрация (invite-only)
@@ -237,8 +238,8 @@ docs/vks-scope.md           — скоуп ВКС: встречи, звонки,
   напоминания за 30 и 5 минут (тост + звук), чат встречи с файлами и изображениями.
   Сделано: кнопка «Встречи», создание/список/детали, приглашения и ответы, слой встреч в календаре,
   напоминания 30/5, комната `/meet/<token>` на Jitsi (устройства, mic/cam, screen share, фоны —
-  средствами Jitsi). Осталось: SFU/self-host, запись, постоянный чат встречи, Google/Outlook,
-  кастомные фоны/блюр, гости, 50.
+  средствами Jitsi), постоянный чат встречи с текстом, файлами и изображениями (история сохраняется).
+  Осталось: SFU/self-host, запись, Google/Outlook, кастомные фоны/блюр, гости, 50.
   Ориентир — Teams и Яндекс Телемост. Зафиксировано: гости без аккаунта — не в MVP;
   жёсткий лимит 10 участников в первом релизе с архитектурным запасом до 50; запись встреч — нужна; чат сохраняется
   после встречи; интеграция и с Google Calendar, и с Outlook — нужна. Предварительно:
@@ -332,6 +333,8 @@ docs/vks-scope.md           — скоуп ВКС: встречи, звонки,
   RPC `find_similar_tasks()` с мягким порогом и top-3.
 - `015_meetings.sql` — встречи ВКС: `meetings`, `meeting_participants`, RLS, организатор
   автоматически участник; ссылка `/meet/<room_token>`.
+- `016_meeting_chat.sql` — постоянный чат встречи: `meeting_messages`, RLS, приватный
+  bucket `meeting-files` (файлы и изображения).
 - `README.md` — пошаговая инструкция: New query → Run, проверочные SQL,
   типовые ошибки и порядок действий после миграции.
 
@@ -392,6 +395,7 @@ values ('you@example.com', 'admin', 'bootstrap');
 | 2026-11-14 | Проверка дублей: RPC `find_similar_tasks` на pg_trgm + русский FTS, мягкое предупреждение с top-3, миграция 014 применена. |
 | 2026-11-14 | Зафиксирован скоуп ВКС: без гостей в MVP, жёсткий лимит 10 с запасом до 50, запись, сохранение чата, Google/Outlook; предварительно self-hosted LiveKit; работы не начаты. |
 | 2026-11-14 | ВКС Phase 1: миграция 015, встречи/приглашения/календарь/напоминания, комната `/meet/<token>` на Jitsi (временный провайдер). SFU, запись, чат встречи и Google/Outlook — следующие шаги. |
+| 2026-11-14 | Чат встречи: миграция 016, постоянная история, файлы/картинки в приватном bucket, доступ только участникам. SFU, запись и Google/Outlook остаются. |
 
 ---
 
@@ -426,6 +430,12 @@ personal_email, telegram, role, position_title, is_active`
 RLS: видит организатор/участник; приглашать может только организатор; ответ — свой.
 Организатор автоматически становится участником (`accepted`) через триггер.
 Проверено двумя тестовыми пользователями: приглашение, ответ, запрет самозаписи (403).
+
+### `public.meeting_messages` — создана 14.11.2026
+`id, meeting_id, author_id, body, attachment_path/name/type/size, created_at`.
+RLS: читать/писать только участники; удалять — автор или организатор. Приватный bucket
+`meeting-files` (25 МБ), чтение только участникам встречи. Проверено: файл загружен, участник
+получил сообщение и скачал файл по signed URL, посторонний получил 0 сообщений и отказ 400.
 
 ### `public.invites` — создана
 Плюс функции `verify_invite`, `is_admin`, `current_role`, `handle_new_user`,
@@ -476,6 +486,9 @@ RLS: видит организатор/участник; приглашать м
 15. ~~Применить `015_meetings.sql`~~ — **выполнено 14.11.2026** через Management API:
     таблицы `meetings`, `meeting_participants`, RLS, триггер организатора; проверено двумя
     тестовыми пользователями (создание, приглашение, ответ, запрет самостоятельной записи).
+16. ~~Применить `016_meeting_chat.sql`~~ — **выполнено 14.11.2026** через Management API:
+    `meeting_messages`, RLS, приватный bucket `meeting-files`; проверены загрузка/скачивание
+    участником и отказ постороннему.
 
 ### Яндекс-вход: что проверено 11.11.2026
 - `GET /auth/v1/settings` → `external.email: true`, `disable_signup: false`, custom-провайдер не
@@ -505,7 +518,8 @@ RLS: видит организатор/участник; приглашать м
   chat-authors-team, chat-authors-private, chat-employees-light,
   team-chat-icon-light, member-chat-button-light, chat-toasts-light, access-member-lock-light, calendar-light, access-admin-dark, team-access-dark,
   header-light, header-dark, prod-login, analytics-dashboard, task-recurrence, task-duplicate-warning,
-  meetings-list, meeting-create, meeting-details, meeting-calendar, meeting-reminder, meeting-room). Временный стенд удалён.
+  meetings-list, meeting-create, meeting-details, meeting-calendar, meeting-reminder, meeting-room,
+  meeting-chat, meeting-chat-sent). Временный стенд удалён.
 - Чат: отправка проверена в headless Chrome — ввод в composer, Enter, сообщение появилось
   в переписке, поле очистилось (PASS); выбор сотрудника через «+» проверен кликом (открывается
   список команды с поиском).
@@ -627,6 +641,9 @@ RLS: видит организатор/участник; приглашать м
   за 30 минут показало тост и звук. Комната `/meet/<token>` открылась на Jitsi: prejoin, камера/микрофон,
   устройства, screen share и настройки доступны. Скриншоты: `meetings-list.png`, `meeting-create.png`,
   `meeting-details.png`, `meeting-calendar.png`, `meeting-reminder.png`, `meeting-room.png`.
+  Чат встречи: миграция 016, участник загрузил файл, второй участник увидел сообщение и скачал файл
+  по signed URL, посторонний получил 0 сообщений и отказ 400; UI отправки сообщения проверен.
+  Скриншоты `meeting-chat.png`, `meeting-chat-sent.png`.
   `npm run lint` и `npm run build` — чисто. Тестовые пользователи и встречи удалены.
 - **Телефон (12.11.2026):** `formatPhone` проверен на вариантах `8…`, `+7…`, `999…`, с пробелами и на пустом
   значении; в профиле на стенде поля показывают `+7 (999) 123-45-67` и `+7 (900) 000-00-00`,

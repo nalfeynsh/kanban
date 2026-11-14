@@ -28,6 +28,7 @@ import Toasts from './components/Toasts';
 import MeetingModal from './components/MeetingModal';
 import MeetingsModal from './components/MeetingsModal';
 import MeetingDetailsModal from './components/MeetingDetailsModal';
+import MeetingChatModal from './components/MeetingChatModal';
 import MeetingRoomPage from './components/MeetingRoomPage';
 import {
   notificationPermission,
@@ -96,6 +97,7 @@ export default function App() {
   const [isMeetingsOpen, setIsMeetingsOpen] = useState(false);
   const [isMeetingModalOpen, setIsMeetingModalOpen] = useState(false);
   const [selectedMeeting, setSelectedMeeting] = useState(null);
+  const [meetingChat, setMeetingChat] = useState(null);
   const [meetings, setMeetings] = useState([]);
   const [meetingParticipants, setMeetingParticipants] = useState([]);
   const [meetingsSupported, setMeetingsSupported] = useState(true);
@@ -170,6 +172,7 @@ export default function App() {
         setMeetings([]);
         setMeetingParticipants([]);
         setSelectedMeeting(null);
+        setMeetingChat(null);
         setMemberFilter(null);
         setLoading(false);
       }
@@ -1345,6 +1348,8 @@ export default function App() {
         token={roomToken}
         profile={profile}
         userEmail={userEmail}
+        currentUserId={userId}
+        members={allProfiles}
         onExit={() => window.location.assign('/')}
       />
     );
@@ -1707,6 +1712,16 @@ export default function App() {
           onRespond={handleRespondMeeting}
           onCancel={handleCancelMeeting}
           onJoin={(meeting) => window.location.assign(`/meet/${meeting.room_token}`)}
+          onOpenChat={setMeetingChat}
+        />
+      )}
+
+      {meetingChat && (
+        <MeetingChatModal
+          meeting={meetingChat}
+          currentUserId={userId}
+          members={allProfiles}
+          onClose={() => setMeetingChat(null)}
         />
       )}
 

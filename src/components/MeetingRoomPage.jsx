@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowLeft, Loader2, ShieldAlert, Video } from 'lucide-react';
+import { ArrowLeft, Loader2, MessageCircle, ShieldAlert, Video } from 'lucide-react';
 import { supabase } from '../supabaseClient';
 import { formatDue } from '../lib/format';
+import MeetingChatModal from './MeetingChatModal';
 
 const JITSI_DOMAIN = String(import.meta.env.VITE_JITSI_DOMAIN || 'meet.jit.si')
   .replace(/^https?:\/\//, '')
@@ -31,13 +32,14 @@ function loadJitsiApi(domain) {
   });
 }
 
-export default function MeetingRoomPage({ token, profile, userEmail, onExit }) {
+export default function MeetingRoomPage({ token, profile, userEmail, currentUserId, members = [], onExit }) {
   const containerRef = useRef(null);
   const apiRef = useRef(null);
   const [meeting, setMeeting] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [roomError, setRoomError] = useState('');
+  const [isChatOpen, setIsChatOpen] = useState(false);
 
   const displayName = profile?.full_name || userEmail?.split('@')[0] || 'Сотрудник';
   const roomName = useMemo(() => `kanban-${token}`, [token]);
@@ -173,6 +175,15 @@ export default function MeetingRoomPage({ token, profile, userEmail, onExit }) {
         <span className="hidden rounded-full bg-sky-500/10 px-2 py-0.5 text-[0.6rem] font-semibold text-sky-700 sm:inline dark:text-sky-300">
           до 10 участников
         </span>
+        <button
+          type="button"
+          onClick={() => setIsChatOpen(true)}
+          className="glass-btn !px-2.5 !py-1.5 !text-xs"
+          title="Чат встречи"
+        >
+          <MessageCircle size={15} />
+          <span className="hidden sm:inline">Чат</span>
+        </button>
       </header>
 
       <div className="relative min-h-0 flex-1">
@@ -189,6 +200,15 @@ export default function MeetingRoomPage({ token, profile, userEmail, onExit }) {
           </div>
         )}
       </div>
+
+      {isChatOpen && (
+        <MeetingChatModal
+          meeting={meeting}
+          currentUserId={currentUserId}
+          members={members}
+          onClose={() => setIsChatOpen(false)}
+        />
+      )}
     </div>
   );
 }

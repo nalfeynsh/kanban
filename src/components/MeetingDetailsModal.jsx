@@ -9,6 +9,7 @@ import {
   Loader,
   Mail,
   MapPin,
+  MessageCircle,
   Video,
   X,
   XCircle,
@@ -37,6 +38,7 @@ export default function MeetingDetailsModal({
   onRespond,
   onCancel,
   onJoin,
+  onOpenChat,
 }) {
   const [busy, setBusy] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -245,7 +247,16 @@ export default function MeetingDetailsModal({
           <span className="inline-flex items-center gap-1 text-[0.65rem] text-slate-400 dark:text-slate-500">
             <MapPin size={11} /> Комната по ссылке
           </span>
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2">
+            {onOpenChat && (
+              <button
+                type="button"
+                onClick={() => onOpenChat(meeting)}
+                className="glass-btn !px-3 !py-1.5 !text-xs"
+              >
+                <MessageCircle size={13} /> Чат встречи
+              </button>
+            )}
             {!isCancelled && onJoin && (
               <button
                 type="button"
