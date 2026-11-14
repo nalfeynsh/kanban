@@ -49,7 +49,10 @@ export default function GuestMeetingPage({ token }) {
       if (!alive) return;
       if (loadError) setError(loadError.message);
       else if (!data || data.length === 0) setError('Ссылка недействительна или встреча отменена.');
-      else setMeeting(data[0]);
+      else if (data[0].external_join_url) {
+        window.location.replace(data[0].external_join_url);
+        return;
+      } else setMeeting(data[0]);
       setLoading(false);
     })();
     return () => {
