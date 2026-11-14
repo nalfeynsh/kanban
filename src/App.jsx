@@ -410,6 +410,57 @@ export default function App() {
     // handleOpenMeeting стабилен (useCallback), meetings обновляют замыкание
   }, [meetings, meetingParticipants, userId, notificationsEnabled, handleOpenMeeting]);
 
+  // Приглашение на встречу приходит в реальном времени.
+  useEffect(() => {
+    if (!userId) return undefined;
+    const channel = supabase
+      .channel(`meeting-invites-${userId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'meeting_participants',
+          filter: `user_id=eq.${userId}`,
+        },
+        async (payload) => {
+          await loadMeetings();
+          const { data } = await supabase
+            .from('meetings')
+            .select('*')
+            .eq('id', payload.new.meeting_id)
+            .maybeSingle();
+          if (!data || data.organizer_id === userId) return;
+
+          const toast = {
+            id: `meeting-invite-${data.id}`,
+            meetingId: data.id,
+            title: 'Приглашение на встречу',
+            body: data.title,
+            color: '#0ea5e9',
+          };
+          setToasts((prev) => [...prev.filter((item) => item.id !== toast.id), toast].slice(-3));
+          playChime();
+          window.setTimeout(() => {
+            setToasts((prev) => prev.filter((item) => item.id !== toast.id));
+          }, 12_000);
+
+          if (notificationsEnabled) {
+            showSystemNotification({
+              title: toast.title,
+              body: toast.body,
+              tag: toast.id,
+              onClick: () => handleOpenMeeting(data),
+            });
+          }
+        },
+      )
+      .subscribe();
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [userId, loadMeetings, notificationsEnabled, handleOpenMeeting]);
+
   // Автоочистка «Готово»: задачи, пробывшие там дольше 3 дней, уходят в архив.
   // Основная проверка живёт в pg_cron (миграция 011); это дублирующий запуск
   // при входе администратора/менеджера на случай, если cron не установлен.
