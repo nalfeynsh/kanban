@@ -296,7 +296,7 @@ export default function ProfileModal({
         if (event.target === event.currentTarget) onClose();
       }}
     >
-      <div className="modal-panel glass-panel w-full max-w-xl overflow-hidden rounded-3xl">
+      <div className="modal-panel glass-panel flex max-h-[calc(100dvh-2rem)] w-full max-w-xl flex-col overflow-hidden rounded-3xl">
         <div className="flex items-start justify-between gap-4 border-b border-slate-300/50 px-6 py-4 dark:border-white/10">
           <div className="flex items-center gap-3">
             <Avatar
@@ -323,7 +323,7 @@ export default function ProfileModal({
           </button>
         </div>
 
-        <div className="scrollbar-slim max-h-[70vh] space-y-6 overflow-y-auto px-6 py-5">
+        <div className="scrollbar-slim min-h-0 flex-1 space-y-6 overflow-y-auto px-6 py-5">
           <section className="space-y-3">
             <h3 className="flex items-center gap-1.5 text-[0.68rem] font-semibold tracking-[0.12em] text-slate-500 uppercase dark:text-slate-400">
               <BadgeCheck size={13} /> Основное
@@ -614,7 +614,7 @@ export default function ProfileModal({
           )}
         </div>
 
-        <div className="flex items-center justify-end gap-2 border-t border-slate-300/50 px-6 py-4 dark:border-white/10">
+        <div className="flex shrink-0 items-center justify-end gap-2 border-t border-slate-300/50 px-6 py-4 dark:border-white/10">
           <button type="button" onClick={onClose} className="glass-btn">
             Отмена
           </button>

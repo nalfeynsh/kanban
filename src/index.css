@@ -649,6 +649,7 @@ textarea.glass-input {
    КОЛОНКИ КАНБАНА
    ============================================================ */
 .column-shell {
+	width: clamp(14.5rem, 23vw, 19rem);
 	background: var(--glass-bg);
 	backdrop-filter: blur(22px) saturate(165%);
 	-webkit-backdrop-filter: blur(22px) saturate(165%);

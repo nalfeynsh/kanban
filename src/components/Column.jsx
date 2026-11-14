@@ -46,7 +46,7 @@ export default function Column({
   return (
     <section
       ref={setNodeRef}
-      className={`column-shell flex h-[calc(100vh-200px)] max-h-[calc(100vh-150px)] w-[19rem] shrink-0 flex-col overflow-hidden rounded-3xl transition-all ${
+      className={`column-shell flex h-[calc(100vh-200px)] max-h-[calc(100vh-150px)] shrink-0 flex-col overflow-hidden rounded-3xl transition-all ${
         isOver ? 'column-drop-active' : ''
       }`}
     >

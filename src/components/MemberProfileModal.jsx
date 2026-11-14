@@ -89,9 +89,9 @@ export default function MemberProfileModal({
         if (event.target === event.currentTarget) onClose();
       }}
     >
-      <div className="modal-panel glass-panel w-full max-w-md overflow-hidden rounded-3xl">
+      <div className="modal-panel glass-panel flex max-h-[calc(100dvh-2rem)] w-full max-w-md flex-col overflow-hidden rounded-3xl">
         <div
-          className="relative h-28"
+          className="relative h-28 shrink-0"
           style={{
             background: `linear-gradient(135deg, ${member.color || '#6366f1'}cc, #0ea5e988, ${member.color || '#6366f1'}55)`,
           }}
@@ -118,7 +118,7 @@ export default function MemberProfileModal({
           </button>
         </div>
 
-        <div className="-mt-10 px-6 pt-1 pb-5">
+        <div className="scrollbar-slim -mt-10 min-h-0 flex-1 overflow-y-auto px-6 pt-1 pb-5">
           <div className="flex items-end gap-3">
             <Avatar
               name={name}
@@ -248,7 +248,7 @@ export default function MemberProfileModal({
           )}
         </div>
 
-        <div className="flex flex-wrap gap-2 border-t border-slate-300/50 px-6 py-4 dark:border-white/10">
+        <div className="flex shrink-0 flex-wrap gap-2 border-t border-slate-300/50 px-6 py-4 dark:border-white/10">
           {!isSelf && (
             <button
               type="button"
