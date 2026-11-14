@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useState } from 'react';import { createPortal } from 'react-dom';
+import { useEffect, useMemo, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { CalendarPlus, Check, Loader, Users, X } from 'lucide-react';
 import Avatar from './Avatar';
 import DateTimeField from './DateTimeField';
@@ -12,14 +13,23 @@ function defaultTimes() {
   return { start: start.toISOString(), end: end.toISOString() };
 }
 
-export default function MeetingModal({ onClose, onSave, members = [], currentUserId }) {
-  const [title, setTitle] = useState('');
-  const [description, setDescription] = useState('');
-  const [startAt, setStartAt] = useState(() => defaultTimes().start);
-  const [endAt, setEndAt] = useState(() => defaultTimes().end);
-  const [participantIds, setParticipantIds] = useState([]);
+export default function MeetingModal({
+  onClose,
+  onSave,
+  members = [],
+  currentUserId,
+  meeting = null,
+  initialParticipantIds = [],
+}) {
+  const isEdit = Boolean(meeting);
+  const [title, setTitle] = useState(meeting?.title || '');
+  const [description, setDescription] = useState(meeting?.description || '');
+  const [startAt, setStartAt] = useState(() => meeting?.start_at || defaultTimes().start);
+  const [endAt, setEndAt] = useState(() => meeting?.end_at || defaultTimes().end);
+  const [participantIds, setParticipantIds] = useState(initialParticipantIds);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  const maxInvitees = 9;
 
   const candidates = useMemo(
     () =>
@@ -38,7 +48,12 @@ export default function MeetingModal({ onClose, onSave, members = [], currentUse
   }, [onClose]);
 
   const toggleParticipant = (id) => {
+    if (!participantIds.includes(id) && participantIds.length >= maxInvitees) {
+      setError('В встрече может быть не больше 10 участников, включая организатора');
+      return;
+    }
     setParticipantIds((prev) => (prev.includes(id) ? prev.filter((item) => item !== id) : [...prev, id]));
+    setError('');
   };
 
   const handleSave = async () => {
@@ -75,7 +90,7 @@ export default function MeetingModal({ onClose, onSave, members = [], currentUse
           <div>
             <h2 className="flex items-center gap-2 text-base font-bold text-slate-900 dark:text-white">
               <CalendarPlus size={18} className="text-indigo-500 dark:text-indigo-300" />
-              Новая встреча
+              {isEdit ? 'Редактировать встречу' : 'Новая встреча'}
             </h2>
             <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
               Участники увидят встречу в календаре
@@ -145,15 +160,19 @@ export default function MeetingModal({ onClose, onSave, members = [], currentUse
               <div className="scrollbar-slim max-h-44 space-y-1 overflow-y-auto rounded-xl border border-slate-300/60 p-1.5 dark:border-white/10">
                 {candidates.map((member) => {
                   const checked = participantIds.includes(member.id);
+                  const limitReached = !checked && participantIds.length >= maxInvitees;
                   return (
                     <button
                       key={member.id}
                       type="button"
                       onClick={() => toggleParticipant(member.id)}
+                      disabled={limitReached}
                       className={`flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left transition ${
-                        checked
-                          ? 'bg-indigo-500/12 text-indigo-800 dark:text-indigo-200'
-                          : 'hover:bg-white/60 dark:hover:bg-white/10'
+                        limitReached
+                          ? 'cursor-not-allowed opacity-45'
+                          : checked
+                            ? 'bg-indigo-500/12 text-indigo-800 dark:text-indigo-200'
+                            : 'hover:bg-white/60 dark:hover:bg-white/10'
                       }`}
                     >
                       <span
@@ -202,7 +221,7 @@ export default function MeetingModal({ onClose, onSave, members = [], currentUse
             className="glass-btn glass-btn-primary !px-3 !py-1.5 !text-xs"
           >
             {saving ? <Loader size={14} className="animate-spin" /> : <CalendarPlus size={14} />}
-            Создать встречу
+            {isEdit ? 'Сохранить' : 'Создать встречу'}
           </button>
         </div>
       </div>

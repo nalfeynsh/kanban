@@ -13,6 +13,7 @@ import {
   Mail,
   MapPin,
   MessageCircle,
+  Pencil,
   Video,
   X,
   XCircle,
@@ -43,6 +44,7 @@ export default function MeetingDetailsModal({
   onCancel,
   onJoin,
   onOpenChat,
+  onEdit,
 }) {
   const [busy, setBusy] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -326,6 +328,15 @@ export default function MeetingDetailsModal({
                 className="glass-btn glass-btn-primary !px-3 !py-1.5 !text-xs"
               >
                 <Video size={13} /> Подключиться
+              </button>
+            )}
+            {isOrganizer && !isCancelled && (
+              <button
+                type="button"
+                onClick={() => onEdit?.(meeting)}
+                className="glass-btn !px-3 !py-1.5 !text-xs"
+              >
+                <Pencil size={13} /> Редактировать
               </button>
             )}
             {isOrganizer && !isCancelled && (

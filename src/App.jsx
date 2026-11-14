@@ -97,6 +97,7 @@ export default function App() {
   const [isMeetingsOpen, setIsMeetingsOpen] = useState(false);
   const [isMeetingModalOpen, setIsMeetingModalOpen] = useState(false);
   const [selectedMeeting, setSelectedMeeting] = useState(null);
+  const [editingMeeting, setEditingMeeting] = useState(null);
   const [meetingChat, setMeetingChat] = useState(null);
   const [meetings, setMeetings] = useState([]);
   const [meetingParticipants, setMeetingParticipants] = useState([]);
@@ -172,6 +173,7 @@ export default function App() {
         setMeetings([]);
         setMeetingParticipants([]);
         setSelectedMeeting(null);
+        setEditingMeeting(null);
         setMeetingChat(null);
         setMemberFilter(null);
         setLoading(false);
@@ -455,6 +457,39 @@ export default function App() {
           }
         },
       )
+      .on(
+        'postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'meetings' },
+        async (payload) => {
+          const nextMeeting = payload.new;
+          setSelectedMeeting((prev) => (prev?.id === nextMeeting.id ? nextMeeting : prev));
+          if (nextMeeting.organizer_id === userId) return;
+
+          await loadMeetings();
+          const cancelled = nextMeeting.status === 'cancelled';
+          const toast = {
+            id: `meeting-update-${nextMeeting.id}-${nextMeeting.status}-${nextMeeting.start_at}`,
+            meetingId: nextMeeting.id,
+            title: cancelled ? 'Встреча отменена' : 'Встреча изменена',
+            body: nextMeeting.title,
+            color: cancelled ? '#f43f5e' : '#0ea5e9',
+          };
+          setToasts((prev) => [...prev.filter((item) => item.id !== toast.id), toast].slice(-3));
+          playChime();
+          window.setTimeout(() => {
+            setToasts((prev) => prev.filter((item) => item.id !== toast.id));
+          }, 12_000);
+
+          if (notificationsEnabled) {
+            showSystemNotification({
+              title: toast.title,
+              body: toast.body,
+              tag: toast.id,
+              onClick: () => handleOpenMeeting(nextMeeting),
+            });
+          }
+        },
+      )
       .subscribe();
     return () => {
       supabase.removeChannel(channel);
@@ -622,6 +657,51 @@ export default function App() {
       );
       if (inviteError) {
         setBanner(`Встреча создана, но приглашения не отправлены: ${inviteError.message}`);
+      }
+    }
+
+    await loadMeetings();
+    return true;
+  };
+
+  const handleUpdateMeeting = async ({ meetingId, title, description, start_at, end_at, participantIds = [] }) => {
+    if (!userId) return false;
+    const meeting = meetings.find((item) => item.id === meetingId);
+    if (!meeting || meeting.organizer_id !== userId) return false;
+
+    const { error } = await supabase
+      .from('meetings')
+      .update({ title, description, start_at, end_at })
+      .eq('id', meetingId);
+    if (error) {
+      setBanner(`Не удалось сохранить встречу: ${error.message}`);
+      return false;
+    }
+
+    const currentIds = meetingParticipants
+      .filter((item) => item.meeting_id === meetingId && item.user_id !== userId)
+      .map((item) => item.user_id);
+    const nextIds = participantIds.filter((id) => id !== userId);
+    const removeIds = currentIds.filter((id) => !nextIds.includes(id));
+    const addIds = nextIds.filter((id) => !currentIds.includes(id));
+
+    if (removeIds.length > 0) {
+      const { error: removeError } = await supabase
+        .from('meeting_participants')
+        .delete()
+        .eq('meeting_id', meetingId)
+        .in('user_id', removeIds);
+      if (removeError) {
+        setBanner(`Встреча сохранена, но участники не удалены: ${removeError.message}`);
+      }
+    }
+
+    if (addIds.length > 0) {
+      const { error: addError } = await supabase.from('meeting_participants').insert(
+        addIds.map((id) => ({ meeting_id: meetingId, user_id: id, status: 'invited' })),
+      );
+      if (addError) {
+        setBanner(`Встреча сохранена, но приглашения не отправлены: ${addError.message}`);
       }
     }
 
@@ -1739,17 +1819,36 @@ export default function App() {
           members={allProfiles}
           currentUserId={userId}
           onClose={() => setIsMeetingsOpen(false)}
-          onCreate={() => setIsMeetingModalOpen(true)}
+          onCreate={() => {
+            setEditingMeeting(null);
+            setIsMeetingModalOpen(true);
+          }}
           onMeetingClick={handleOpenMeeting}
         />
       )}
 
       {isMeetingModalOpen && meetingsSupported && (
         <MeetingModal
+          key={editingMeeting?.id || 'meeting-new'}
+          meeting={editingMeeting}
+          initialParticipantIds={
+            editingMeeting
+              ? meetingParticipants
+                  .filter((item) => item.meeting_id === editingMeeting.id && item.user_id !== userId)
+                  .map((item) => item.user_id)
+              : []
+          }
           members={allProfiles}
           currentUserId={userId}
-          onClose={() => setIsMeetingModalOpen(false)}
-          onSave={handleCreateMeeting}
+          onClose={() => {
+            setIsMeetingModalOpen(false);
+            setEditingMeeting(null);
+          }}
+          onSave={(payload) =>
+            editingMeeting
+              ? handleUpdateMeeting({ meetingId: editingMeeting.id, ...payload })
+              : handleCreateMeeting(payload)
+          }
         />
       )}
 
@@ -1764,6 +1863,11 @@ export default function App() {
           onCancel={handleCancelMeeting}
           onJoin={(meeting) => window.location.assign(`/meet/${meeting.room_token}`)}
           onOpenChat={setMeetingChat}
+          onEdit={(meeting) => {
+            setSelectedMeeting(null);
+            setEditingMeeting(meeting);
+            setIsMeetingModalOpen(true);
+          }}
         />
       )}
 
