@@ -29,7 +29,9 @@ const LIVEKIT_URL = String(process.env.LIVEKIT_URL || '').trim().replace(/\/+$/,
 const LIVEKIT_API_KEY = String(process.env.LIVEKIT_API_KEY || '').trim();
 const LIVEKIT_API_SECRET = String(process.env.LIVEKIT_API_SECRET || '').trim();
 const LIVEKIT_CONFIGURED = Boolean(LIVEKIT_URL && LIVEKIT_API_KEY && LIVEKIT_API_SECRET);
-const JITSI_DOMAIN = String(process.env.VITE_JITSI_DOMAIN || 'meet.jit.si')
+const JITSI_DOMAIN = String(
+  process.env.JITSI_DOMAIN || process.env.VITE_JITSI_DOMAIN || 'meet.jit.si',
+)
   .replace(/^https?:\/\//, '')
   .replace(/\/+$/, '');
 

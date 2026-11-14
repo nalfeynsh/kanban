@@ -20,7 +20,7 @@ const LiveKitMeetingRoom = lazy(() => import('./LiveKitMeetingRoom'));
 const JITSI_DOMAIN = String(import.meta.env.VITE_JITSI_DOMAIN || 'meet.jit.si')
   .replace(/^https?:\/\//, '')
   .replace(/\/+$/, '');
-const LIVEKIT_URL = String(import.meta.env.VITE_LIVEKIT_URL || '').trim();
+const LIVEKIT_BUILD_URL = String(import.meta.env.VITE_LIVEKIT_URL || '').trim();
 
 function formatClock(totalSeconds) {
   const seconds = Math.max(0, Math.floor(totalSeconds));
@@ -35,9 +35,12 @@ function loadJitsiApi(domain) {
   return new Promise((resolve, reject) => {
     const existing = document.querySelector('script[data-jitsi-api]');
     if (existing) {
-      existing.addEventListener('load', () => resolve(window.JitsiMeetExternalAPI));
-      existing.addEventListener('error', () => reject(new Error('Не удалось загрузить Jitsi')));
-      return;
+      if (window.JitsiMeetExternalAPI) {
+        resolve(window.JitsiMeetExternalAPI);
+        return;
+      }
+      // Неудачный script.onerror больше не должен блокировать повторную попытку.
+      existing.remove();
     }
     const script = document.createElement('script');
     script.src = `https://${domain}/external_api.js`;
@@ -56,9 +59,11 @@ export default function MeetingRoomPage({ token, profile, userEmail, currentUser
   const containerRef = useRef(null);
   const apiRef = useRef(null);
   const [meeting, setMeeting] = useState(null);
+  const [vksConfig, setVksConfig] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [roomError, setRoomError] = useState('');
+  const [jitsiRetry, setJitsiRetry] = useState(0);
   const [isChatOpen, setIsChatOpen] = useState(false);
   const [isPresent, setIsPresent] = useState(false);
   const attendanceTimerRef = useRef(null);
@@ -79,6 +84,11 @@ export default function MeetingRoomPage({ token, profile, userEmail, currentUser
 
   const displayName = profile?.full_name || userEmail?.split('@')[0] || 'Сотрудник';
   const roomName = useMemo(() => `kanban-${token}`, [token]);
+  const liveKitUrl =
+    vksConfig?.livekit?.configured && vksConfig.livekit.url
+      ? vksConfig.livekit.url
+      : LIVEKIT_BUILD_URL;
+  const jitsiDomain = vksConfig?.jitsiDomain || JITSI_DOMAIN;
   const canModerate = Boolean(
     meeting &&
       currentUserId &&
@@ -283,6 +293,19 @@ export default function MeetingRoomPage({ token, profile, userEmail, currentUser
 
   useEffect(() => {
     let alive = true;
+    fetch('/api/vks/status', { headers: { Accept: 'application/json' } })
+      .then((response) => (response.ok ? response.json() : {}))
+      .catch(() => ({}))
+      .then((config) => {
+        if (alive) setVksConfig(config && typeof config === 'object' ? config : {});
+      });
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    let alive = true;
     (async () => {
       const { data, error: loadError } = await supabase
         .from('meetings')
@@ -308,14 +331,14 @@ export default function MeetingRoomPage({ token, profile, userEmail, currentUser
 
   useEffect(() => {
     if (!meeting || !containerRef.current) return undefined;
-    if (LIVEKIT_URL) return undefined;
+    if (!vksConfig || liveKitUrl) return undefined;
     let disposed = false;
     let api = null;
 
-    loadJitsiApi(JITSI_DOMAIN)
+    loadJitsiApi(jitsiDomain)
       .then((JitsiMeetExternalAPI) => {
         if (disposed || !containerRef.current) return;
-        api = new JitsiMeetExternalAPI(JITSI_DOMAIN, {
+        api = new JitsiMeetExternalAPI(jitsiDomain, {
           roomName,
           parentNode: containerRef.current,
           userInfo: { displayName },
@@ -429,9 +452,9 @@ export default function MeetingRoomPage({ token, profile, userEmail, currentUser
       }
       apiRef.current = null;
     };
-  }, [meeting, roomName, displayName, onExit, currentUserId]);
+  }, [meeting, roomName, displayName, onExit, currentUserId, liveKitUrl, jitsiDomain, vksConfig, jitsiRetry]);
 
-  if (loading) {
+  if (loading || !vksConfig) {
     return (
       <div className="app-bg flex min-h-screen items-center justify-center">
         <div className="flex items-center gap-2 text-sm text-slate-600 dark:text-slate-300">
@@ -484,7 +507,7 @@ export default function MeetingRoomPage({ token, profile, userEmail, currentUser
             Вы в комнате
           </span>
         )}
-        {canModerate && !LIVEKIT_URL && (
+        {canModerate && !liveKitUrl && (
           <button
             type="button"
             onClick={() => setIsParticipantsOpen((prev) => !prev)}
@@ -635,7 +658,7 @@ export default function MeetingRoomPage({ token, profile, userEmail, currentUser
       )}
 
       <div className="relative min-h-0 flex-1">
-        {LIVEKIT_URL ? (
+        {liveKitUrl ? (
           <Suspense
             fallback={
               <div className="flex h-full min-h-64 items-center justify-center bg-slate-950">
@@ -654,14 +677,35 @@ export default function MeetingRoomPage({ token, profile, userEmail, currentUser
         ) : (
           <div ref={containerRef} className="h-full w-full" />
         )}
-        {!LIVEKIT_URL && roomError && (
+        {!liveKitUrl && roomError && (
           <div className="absolute inset-0 flex items-center justify-center bg-slate-950/80 p-4">
             <div className="glass-panel max-w-md rounded-2xl p-5 text-center">
               <p className="text-sm font-semibold text-white">Комната недоступна</p>
               <p className="mt-1 text-xs text-slate-300">{roomError}</p>
               <p className="mt-2 text-[0.65rem] text-slate-400">
-                Проверьте доступность {JITSI_DOMAIN} или задайте VITE_JITSI_DOMAIN.
+                Проверьте доступность {jitsiDomain} или задайте VITE_JITSI_DOMAIN.
               </p>
+              <div className="mt-3 flex flex-wrap justify-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setRoomError('');
+                    setJitsiRetry((value) => value + 1);
+                  }}
+                  className="glass-btn !px-3 !py-1.5 !text-xs"
+                >
+                  Повторить
+                </button>
+                <button
+                  type="button"
+                  onClick={() =>
+                    window.open(`https://${jitsiDomain}/${roomName}`, '_blank', 'noopener,noreferrer')
+                  }
+                  className="glass-btn !px-3 !py-1.5 !text-xs"
+                >
+                  Открыть Jitsi
+                </button>
+              </div>
             </div>
           </div>
         )}

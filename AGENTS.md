@@ -368,8 +368,9 @@ docs/feature-flags.md       — анализ функциональных фла
   `https://theybeeteusxwxboczhe.supabase.co`. Это обходит недоступность `*.supabase.co` из РФ.
 - Переменные Layero (`VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`) остаются как есть: в production
   клиент всё равно ходит на `window.location.origin` (см. `supabaseClient.js`).
-- ВКС: `VITE_JITSI_DOMAIN` — домен Jitsi (по умолчанию `meet.jit.si`). Для self-hosted указать
-  свой домен при сборке. Это временный провайдер Phase 1, не финальный SFU.
+- ВКС: `JITSI_DOMAIN` (или `VITE_JITSI_DOMAIN`) — домен Jitsi (по умолчанию `meet.jit.si`).
+  Домен отдаётся клиенту через `/api/vks/status`, поэтому смена домена не требует пересборки.
+  Для self-hosted указать свой домен. Это временный провайдер Phase 1, не финальный SFU.
 - LiveKit: серверные `LIVEKIT_URL` (wss://…), `LIVEKIT_API_KEY`, `LIVEKIT_API_SECRET`;
   сборка — `VITE_LIVEKIT_URL=wss://…`. Если `VITE_LIVEKIT_URL` не задан, комната
   автоматически остаётся на Jitsi. Проверка конфигурации: `GET /api/vks/status`.
