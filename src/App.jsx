@@ -78,6 +78,7 @@ export default function App() {
   const [columns, setColumns] = useState([]);
   const [tasks, setTasks] = useState([]);
   const [archivedTasks, setArchivedTasks] = useState([]);
+  const [statusEvents, setStatusEvents] = useState([]);
   const [allProfiles, setAllProfiles] = useState([]);
   const [loading, setLoading] = useState(true);
   const [banner, setBanner] = useState('');
@@ -179,6 +180,7 @@ export default function App() {
         setColumns([]);
         setTasks([]);
         setArchivedTasks([]);
+        setStatusEvents([]);
         setSelectedTask(null);
         setMeetings([]);
         setMeetingParticipants([]);
@@ -778,6 +780,16 @@ export default function App() {
     );
     await loadMeetings();
     return true;
+  };
+
+  const handleOpenTeam = async () => {
+    setIsTeamOpen(true);
+    const { data, error } = await supabase
+      .from('task_status_events')
+      .select('*')
+      .order('moved_at', { ascending: false })
+      .limit(20000);
+    setStatusEvents(error ? [] : data ?? []);
   };
 
   const handleOpenCalendarFeed = async () => {
@@ -1584,7 +1596,7 @@ export default function App() {
         filterMode={filterMode}
         onFilterChange={changeFilter}
         onArchiveClick={() => setIsArchiveOpen(true)}
-        onTeamClick={() => setIsTeamOpen(true)}
+        onTeamClick={handleOpenTeam}
         onChatClick={() => openChat()}
         onMeetingsClick={() => setIsMeetingsOpen(true)}
         meetingsCount={upcomingMeetingCount}
@@ -1848,6 +1860,7 @@ export default function App() {
         roleSaving={roleSaving}
         tasks={tasks}
         archivedTasks={archivedTasks}
+        statusEvents={statusEvents}
         columns={columns}
         onOpenChat={(member) => {
           setIsTeamOpen(false);

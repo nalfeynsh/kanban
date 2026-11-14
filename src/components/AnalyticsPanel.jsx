@@ -1,9 +1,12 @@
 import { useMemo, useState } from 'react';
 import {
   AlarmClock,
+  Archive,
+  ArrowRight,
   BarChart3,
   CheckCircle2,
   Clock3,
+  Inbox,
   ListChecks,
   SlidersHorizontal,
   TrendingUp,
@@ -53,13 +56,19 @@ function EmptyChart({ text }) {
   );
 }
 
-export default function AnalyticsPanel({ tasks = [], archivedTasks = [], columns = [], members = [] }) {
+export default function AnalyticsPanel({
+  tasks = [],
+  archivedTasks = [],
+  statusEvents = [],
+  columns = [],
+  members = [],
+}) {
   const [filters, setFilters] = useState(defaultAnalyticsFilters);
   const [isFilterOpen, setIsFilterOpen] = useState(false);
 
   const analytics = useMemo(
-    () => computeAnalytics({ tasks, archivedTasks, columns, members, filters }),
-    [tasks, archivedTasks, columns, members, filters],
+    () => computeAnalytics({ tasks, archivedTasks, columns, members, filters, statusEvents }),
+    [tasks, archivedTasks, columns, members, filters, statusEvents],
   );
 
   const employeeName =
@@ -69,12 +78,12 @@ export default function AnalyticsPanel({ tasks = [], archivedTasks = [], columns
 
   const statusItems = [
     {
-      key: 'done',
-      label: 'Выполнено',
-      count: analytics.completed,
-      color: 'bg-emerald-500',
-      dot: 'bg-emerald-500',
-      text: 'text-emerald-700 dark:text-emerald-300',
+      key: 'backlog',
+      label: 'Бэклог',
+      count: analytics.backlog,
+      color: 'bg-indigo-500',
+      dot: 'bg-indigo-500',
+      text: 'text-indigo-700 dark:text-indigo-300',
     },
     {
       key: 'progress',
@@ -85,13 +94,25 @@ export default function AnalyticsPanel({ tasks = [], archivedTasks = [], columns
       text: 'text-amber-700 dark:text-amber-300',
     },
     {
-      key: 'todo',
-      label: 'К выполнению',
-      count: analytics.todo,
-      color: 'bg-indigo-500',
-      dot: 'bg-indigo-500',
-      text: 'text-indigo-700 dark:text-indigo-300',
+      key: 'done',
+      label: 'Выполнено',
+      count: analytics.completed,
+      color: 'bg-emerald-500',
+      dot: 'bg-emerald-500',
+      text: 'text-emerald-700 dark:text-emerald-300',
     },
+    ...(analytics.other > 0
+      ? [
+          {
+            key: 'other',
+            label: 'Другое',
+            count: analytics.other,
+            color: 'bg-slate-400',
+            dot: 'bg-slate-400',
+            text: 'text-slate-600 dark:text-slate-300',
+          },
+        ]
+      : []),
   ];
 
   const donutBackground = analytics.scored
@@ -106,7 +127,7 @@ export default function AnalyticsPanel({ tasks = [], archivedTasks = [], columns
             <BarChart3 size={12} /> Аналитика задач
           </p>
           <p className="mt-0.5 text-[0.7rem] text-slate-500 dark:text-slate-400">
-            {formatRange(filters.from, filters.to)} · {employeeName} · по сроку задачи
+            {formatRange(filters.from, filters.to)} · {employeeName} · по дате создания
           </p>
         </div>
         <button
@@ -119,20 +140,20 @@ export default function AnalyticsPanel({ tasks = [], archivedTasks = [], columns
       </div>
 
       <div className="scrollbar-slim flex-1 overflow-y-auto px-6 py-4">
-        <div className="grid grid-cols-2 gap-2 lg:grid-cols-5">
+        <div className="grid grid-cols-2 gap-2 lg:grid-cols-6">
           <KpiCard
             icon={ListChecks}
-            label="Всего задач"
-            value={analytics.total}
-            hint="со сроком в периоде"
+            label="Создано"
+            value={analytics.createdPeriod}
+            hint="за выбранный период"
             tone="text-indigo-500"
           />
           <KpiCard
-            icon={CheckCircle2}
-            label="Выполнено"
-            value={analytics.completed}
-            hint={`${analytics.completionPct}% от всех`}
-            tone="text-emerald-500"
+            icon={Inbox}
+            label="Бэклог"
+            value={analytics.backlog}
+            hint="сейчас, включая без срока"
+            tone="text-indigo-500"
           />
           <KpiCard
             icon={Clock3}
@@ -142,10 +163,17 @@ export default function AnalyticsPanel({ tasks = [], archivedTasks = [], columns
             tone="text-amber-500"
           />
           <KpiCard
+            icon={CheckCircle2}
+            label="Выполнено"
+            value={analytics.completed}
+            hint="с учётом завершённых в архиве"
+            tone="text-emerald-500"
+          />
+          <KpiCard
             icon={AlarmClock}
             label="Просрочено"
             value={analytics.overdue}
-            hint={`${analytics.overduePct}% от всех`}
+            hint="активные сейчас"
             tone="text-rose-500"
           />
           <KpiCard
@@ -154,21 +182,21 @@ export default function AnalyticsPanel({ tasks = [], archivedTasks = [], columns
             value={analytics.onTimePct === null ? '—' : `${analytics.onTimePct}%`}
             hint={
               analytics.scored
-                ? `${analytics.onTime} из ${analytics.scored} с оценкой`
-                : 'нет завершённых с датой'
+                ? `${analytics.onTime} из ${analytics.scored} завершённых`
+                : 'нет завершённых в периоде'
             }
             tone="text-sky-500"
           />
         </div>
 
-        {analytics.total === 0 ? (
+        {analytics.total === 0 && analytics.createdPeriod === 0 ? (
           <div className="mt-4 rounded-2xl border border-dashed border-slate-300/80 px-4 py-10 text-center dark:border-white/15">
             <BarChart3 size={28} className="mx-auto mb-2 text-slate-400 opacity-60" />
             <p className="text-sm font-semibold text-slate-700 dark:text-slate-200">
-              За выбранный период задач нет
+              Задач пока нет
             </p>
             <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-              Измените период или сотрудника в настройках аналитики.
+              На доске нет командных задач, а за выбранный период ничего не создано.
             </p>
             <button
               type="button"
@@ -184,7 +212,9 @@ export default function AnalyticsPanel({ tasks = [], archivedTasks = [], columns
               <section className="glass-card rounded-2xl p-4">
                 <div className="flex items-center justify-between gap-2">
                   <h4 className="text-sm font-semibold text-slate-800 dark:text-slate-100">Структура задач</h4>
-                  <span className="text-[0.65rem] text-slate-500 dark:text-slate-400">{analytics.total} всего</span>
+                  <span className="text-[0.65rem] text-slate-500 dark:text-slate-400">
+                    {analytics.total} сейчас + архив
+                  </span>
                 </div>
 
                 <div className="mt-3 flex h-3 overflow-hidden rounded-full bg-slate-200/80 dark:bg-white/10">
@@ -217,7 +247,7 @@ export default function AnalyticsPanel({ tasks = [], archivedTasks = [], columns
                 {analytics.overdue > 0 && (
                   <p className="mt-3 rounded-xl border border-rose-400/35 bg-rose-500/10 px-2.5 py-2 text-[0.68rem] text-rose-700 dark:text-rose-300">
                     <AlarmClock size={11} className="mr-1 inline" />
-                    Просрочено: {analytics.overdue} — это {analytics.overduePct}% задач периода.
+                    Просрочено: {analytics.overdue} — это {analytics.overduePct}% активных задач.
                   </p>
                 )}
               </section>
@@ -253,7 +283,7 @@ export default function AnalyticsPanel({ tasks = [], archivedTasks = [], columns
                       С опозданием: <b>{analytics.late}</b>
                     </p>
                     <p className="text-[0.65rem] text-slate-500 dark:text-slate-400">
-                      Считается по задачам, у которых есть дата завершения.
+                      Считается по задачам, завершённым в выбранном периоде.
                     </p>
                   </div>
                 </div>
@@ -261,10 +291,63 @@ export default function AnalyticsPanel({ tasks = [], archivedTasks = [], columns
             </div>
 
             <section className="mt-3 glass-card rounded-2xl p-4">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <h4 className="flex items-center gap-1.5 text-sm font-semibold text-slate-800 dark:text-slate-100">
+                  <ArrowRight size={14} /> Движение за период
+                </h4>
+                <span className="text-[0.65rem] text-slate-500 dark:text-slate-400">
+                  создание и переходы по колонкам
+                </span>
+              </div>
+              <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+                <div className="rounded-xl border border-indigo-400/30 bg-indigo-400/10 px-2.5 py-2">
+                  <p className="flex items-center gap-1.5 text-[0.65rem] text-indigo-700 dark:text-indigo-300">
+                    <ListChecks size={11} /> Создано
+                  </p>
+                  <p className="mt-0.5 text-lg font-bold text-slate-900 dark:text-white">
+                    {analytics.createdPeriod}
+                  </p>
+                  <p className="text-[0.6rem] text-slate-500 dark:text-slate-400">за период</p>
+                </div>
+                <div className="rounded-xl border border-amber-400/30 bg-amber-400/10 px-2.5 py-2">
+                  <p className="flex items-center gap-1.5 text-[0.65rem] text-amber-700 dark:text-amber-300">
+                    <ArrowRight size={11} /> Сделать → В работе
+                  </p>
+                  <p className="mt-0.5 text-lg font-bold text-slate-900 dark:text-white">
+                    {analytics.movedToProgress}
+                  </p>
+                  <p className="text-[0.6rem] text-slate-500 dark:text-slate-400">переходов</p>
+                </div>
+                <div className="rounded-xl border border-emerald-400/30 bg-emerald-400/10 px-2.5 py-2">
+                  <p className="flex items-center gap-1.5 text-[0.65rem] text-emerald-700 dark:text-emerald-300">
+                    <ArrowRight size={11} /> Сделать → Выполнено
+                  </p>
+                  <p className="mt-0.5 text-lg font-bold text-slate-900 dark:text-white">
+                    {analytics.movedToDone}
+                  </p>
+                  <p className="text-[0.6rem] text-slate-500 dark:text-slate-400">переходов</p>
+                </div>
+                <div className="rounded-xl border border-slate-400/30 bg-slate-400/10 px-2.5 py-2">
+                  <p className="flex items-center gap-1.5 text-[0.65rem] text-slate-600 dark:text-slate-300">
+                    <Archive size={11} /> В архив
+                  </p>
+                  <p className="mt-0.5 text-lg font-bold text-slate-900 dark:text-white">
+                    {analytics.archivedPeriod}
+                  </p>
+                  <p className="text-[0.6rem] text-slate-500 dark:text-slate-400">за период</p>
+                </div>
+              </div>
+              <p className="mt-2 text-[0.62rem] text-slate-500 dark:text-slate-400">
+                История переходов ведётся с 14.11.2026. Задачи, удалённые навсегда, в счётчик
+                архива не попадают; завершённые в архиве учитываются в «Выполнено».
+              </p>
+            </section>
+
+            <section className="mt-3 glass-card rounded-2xl p-4">
               <div className="flex items-center justify-between gap-2">
                 <h4 className="text-sm font-semibold text-slate-800 dark:text-slate-100">По приоритетам</h4>
                 <span className="text-[0.65rem] text-slate-500 dark:text-slate-400">
-                  {analytics.overdue > 0 ? `просрочено: ${analytics.overdue}` : 'все задачи периода'}
+                  {analytics.overdue > 0 ? `просрочено: ${analytics.overdue}` : 'на доске и в завершённых'}
                 </span>
               </div>
               <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
@@ -301,7 +384,7 @@ export default function AnalyticsPanel({ tasks = [], archivedTasks = [], columns
               </div>
 
               {analytics.byEmployee.length === 0 ? (
-                <EmptyChart text="Нет задач с исполнителями за этот период" />
+                <EmptyChart text="Нет задач на доске" />
               ) : (
                 <div className="overflow-x-auto">
                   <table className="w-full min-w-[560px] text-left text-xs">
@@ -309,6 +392,7 @@ export default function AnalyticsPanel({ tasks = [], archivedTasks = [], columns
                       <tr>
                         <th className="px-4 py-2 font-semibold">Сотрудник</th>
                         <th className="px-2 py-2 text-right font-semibold">Всего</th>
+                        <th className="px-2 py-2 text-right font-semibold">Бэклог</th>
                         <th className="px-2 py-2 text-right font-semibold">В работе</th>
                         <th className="px-2 py-2 text-right font-semibold">Выполнено</th>
                         <th className="px-2 py-2 text-right font-semibold">Просрочено</th>
@@ -345,6 +429,7 @@ export default function AnalyticsPanel({ tasks = [], archivedTasks = [], columns
                               </span>
                             </td>
                             <td className="px-2 py-2 text-right text-slate-600 dark:text-slate-300">{employee.total}</td>
+                            <td className="px-2 py-2 text-right text-indigo-600 dark:text-indigo-300">{employee.backlog}</td>
                             <td className="px-2 py-2 text-right text-amber-600 dark:text-amber-300">{employee.inProgress}</td>
                             <td className="px-2 py-2 text-right text-emerald-600 dark:text-emerald-300">{employee.completed}</td>
                             <td className={`px-2 py-2 text-right ${employee.overdue ? 'font-semibold text-rose-600 dark:text-rose-300' : 'text-slate-400'}`}>
@@ -365,9 +450,10 @@ export default function AnalyticsPanel({ tasks = [], archivedTasks = [], columns
         )}
 
         <div className="mt-3 flex flex-wrap gap-x-3 gap-y-1 text-[0.62rem] text-slate-500 dark:text-slate-400">
-          <span>Период по сроку задачи</span>
+          <span>Период по дате создания</span>
           <span>· личные задачи не учитываются</span>
-          {analytics.noDue > 0 && <span>· без срока: {analytics.noDue} (вне периода)</span>}
+          {analytics.noDue > 0 && <span>· без срока: {analytics.noDue} (учитываются)</span>}
+          <span>· история переходов с 14.11.2026</span>
         </div>
       </div>
 

@@ -21,6 +21,7 @@ export default function TeamModal({
   roleSaving = false,
   tasks = [],
   archivedTasks = [],
+  statusEvents = [],
   columns = [],
 }) {
   const [query, setQuery] = useState('');
@@ -296,6 +297,7 @@ export default function TeamModal({
             <AnalyticsPanel
               tasks={tasks}
               archivedTasks={archivedTasks}
+              statusEvents={statusEvents}
               columns={columns}
               members={members}
             />

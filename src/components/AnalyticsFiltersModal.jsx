@@ -83,7 +83,7 @@ export default function AnalyticsFiltersModal({
               Настройка аналитики
             </h3>
             <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
-              Период считается по сроку задачи
+              Период считается по дате создания задачи
             </p>
           </div>
           <button
