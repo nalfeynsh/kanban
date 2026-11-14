@@ -19,7 +19,18 @@
 ## Быстрый старт
 
 ```bash
-# на VPS
+# на VPS (Ubuntu/Debian, Docker уже установлен)
+git clone https://github.com/nalfeynsh/kanban.git
+cd kanban/deploy/livekit
+sudo bash install.sh meet.example.ru
+```
+
+Скрипт создаст `.env`, сгенерирует ключи, откроет порты в UFW (если он активен),
+запустит контейнеры и выведет значения для Layero.
+
+Либо вручную:
+
+```bash
 git clone https://github.com/nalfeynsh/kanban.git
 cd kanban/deploy/livekit
 cp .env.example .env
