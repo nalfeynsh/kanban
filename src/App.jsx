@@ -21,6 +21,7 @@ import ProfileModal from './components/ProfileModal';
 import ArchiveModal from './components/ArchiveModal';
 import TeamModal from './components/TeamModal';
 import ProjectsModal from './components/ProjectsModal';
+import ProjectWorkflowModal from './components/ProjectWorkflowModal';
 import MemberProfileModal from './components/MemberProfileModal';
 import BulkActions from './components/BulkActions';
 import ChatModal from './components/ChatModal';
@@ -86,6 +87,7 @@ export default function App() {
   const [projects, setProjects] = useState([]);
   const [currentProjectId, setCurrentProjectId] = useState(null);
   const [isProjectsOpen, setIsProjectsOpen] = useState(false);
+  const [workflowProject, setWorkflowProject] = useState(null);
   const [features, setFeatures] = useState(DEFAULT_FEATURES);
   const [loading, setLoading] = useState(true);
   const [banner, setBanner] = useState('');
@@ -694,6 +696,7 @@ export default function App() {
 
   const handleSelectProject = (projectId) => {
     setIsProjectsOpen(false);
+    setWorkflowProject(null);
     if (!projectId || projectId === currentProjectId) return;
     localStorage.setItem(PROJECT_STORAGE_KEY, projectId);
     setCurrentProjectId(projectId);
@@ -722,6 +725,11 @@ export default function App() {
       setColumns([]);
       setLoading(true);
     }
+  };
+
+  const handleManageWorkflow = (project) => {
+    setIsProjectsOpen(false);
+    setWorkflowProject(project);
   };
 
 
@@ -1250,7 +1258,19 @@ export default function App() {
 
   const handleRestoreTask = async (taskId) => {
     const archived = archivedTasks.find((task) => task.id === taskId);
-    const payload = { deleted_at: null };
+    const fallbackColumn =
+      columns.find((column) =>
+        /^(сделать|к выполнению|todo|to do|бэклог|backlog)$/i.test(String(column.title || '').trim()),
+      ) || columns[0];
+
+    if (!fallbackColumn) {
+      setBanner('Нельзя восстановить задачу: в проекте нет ни одного этапа.');
+      return;
+    }
+
+    const targetColumn =
+      columns.find((column) => column.id === archived?.column_id) || fallbackColumn;
+    const payload = { deleted_at: null, column_id: targetColumn.id };
     if (supports(taskSchema, 'deleted_by')) payload.deleted_by = null;
     if (supports(taskSchema, 'done_at')) payload.done_at = new Date().toISOString();
 
@@ -1261,9 +1281,12 @@ export default function App() {
     }
 
     if (archived) {
-      const position = tasks.filter((task) => task.column_id === archived.column_id).length;
+      const position = tasks.filter((task) => task.column_id === targetColumn.id).length;
       await supabase.from('tasks').update({ position }).eq('id', taskId);
-      setTasks((prev) => [...prev, { ...archived, ...payload, position }]);
+      setTasks((prev) => [
+        ...prev,
+        { ...archived, ...payload, column_id: targetColumn.id, position },
+      ]);
       setArchivedTasks((prev) => prev.filter((task) => task.id !== taskId));
     }
   };
@@ -1991,6 +2014,16 @@ export default function App() {
           onClose={() => setIsProjectsOpen(false)}
           onSelect={handleSelectProject}
           onCreated={handleProjectCreated}
+          onManageWorkflow={handleManageWorkflow}
+        />
+      )}
+
+      {workflowProject && (
+        <ProjectWorkflowModal
+          project={workflowProject}
+          members={allProfiles}
+          onClose={() => setWorkflowProject(null)}
+          onChanged={loadData}
         />
       )}
 

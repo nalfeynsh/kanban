@@ -51,3 +51,37 @@ export async function updateProject(projectId, patch) {
   const { error } = await supabase.from('projects').update(patch).eq('id', projectId);
   return { error };
 }
+
+export async function fetchProjectColumns(projectId) {
+  const { data, error } = await supabase
+    .from('columns')
+    .select('*')
+    .eq('project_id', projectId)
+    .order('position', { ascending: true });
+  return { columns: Array.isArray(data) ? data : [], error };
+}
+
+export async function fetchProjectMembers(projectId) {
+  const { data, error } = await supabase
+    .from('project_members')
+    .select('profile_id,role')
+    .eq('project_id', projectId);
+  return { members: Array.isArray(data) ? data : [], error };
+}
+
+export async function saveProjectColumn({ projectId, columnId = null, title, responsibleId = null }) {
+  const { data, error } = await supabase.rpc('save_project_column', {
+    p_project_id: projectId,
+    p_column_id: columnId,
+    p_title: title,
+    p_responsible_id: responsibleId || null,
+  });
+  return { column: data, error };
+}
+
+export async function deleteProjectColumn(columnId) {
+  const { data, error } = await supabase.rpc('delete_project_column', {
+    p_column_id: columnId,
+  });
+  return { result: data, error };
+}

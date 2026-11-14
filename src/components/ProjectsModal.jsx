@@ -10,6 +10,7 @@ import {
   Trash2,
   Users,
   X,
+  Settings2,
 } from 'lucide-react';
 import Avatar from './Avatar';
 import { WORKFLOW_PRESETS, createProject } from '../lib/projects';
@@ -26,6 +27,7 @@ export default function ProjectsModal({
   onClose,
   onSelect,
   onCreated,
+  onManageWorkflow,
 }) {
   const [mode, setMode] = useState('list');
   const [name, setName] = useState('');
@@ -42,6 +44,8 @@ export default function ProjectsModal({
   const [error, setError] = useState('');
 
   const canCreate = CREATE_ROLES.includes(roleOf(currentRole));
+  const currentProject = projects.find((project) => project.id === currentProjectId) || null;
+  const canManageWorkflow = Boolean(currentProject) && CREATE_ROLES.includes(roleOf(currentRole));
   const me = members.find((member) => member.id === currentUserId);
   const candidates = useMemo(
     () =>
@@ -218,6 +222,16 @@ export default function ProjectsModal({
                 <p className="rounded-xl border border-dashed border-slate-300/70 px-3 py-6 text-center text-xs text-slate-500 dark:border-white/15 dark:text-slate-400">
                   Проектов пока нет
                 </p>
+              )}
+
+              {currentProject && canManageWorkflow && (
+                <button
+                  type="button"
+                  onClick={() => onManageWorkflow?.(currentProject)}
+                  className="glass-btn w-full !justify-center !px-3 !py-2 !text-xs"
+                >
+                  <Settings2 size={14} /> Настроить этапы проекта
+                </button>
               )}
 
               {canCreate && (
