@@ -204,6 +204,7 @@ export default function MeetingDetailsModal({
             </p>
           </div>
 
+          {!isCancelled && (
           <div>
             <p className="mb-1.5 flex items-center gap-1.5 text-[0.65rem] font-semibold tracking-[0.1em] text-slate-500 uppercase dark:text-slate-400">
               <CalendarPlus size={12} /> Добавить в календарь
@@ -237,9 +238,10 @@ export default function MeetingDetailsModal({
               </button>
             </div>
             <p className="mt-1 text-[0.62rem] text-slate-500 dark:text-slate-400">
-              Событие добавится в ваш календарь; участники получат ссылку на встречу.
+              Событие добавится в ваш календарь; ссылка на встречу будет в описании.
             </p>
           </div>
+          )}
 
           <div>
             <p className="mb-1.5 flex items-center justify-between text-[0.65rem] font-semibold tracking-[0.1em] text-slate-500 uppercase dark:text-slate-400">
