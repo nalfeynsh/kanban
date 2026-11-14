@@ -40,6 +40,9 @@ export default function MeetingRoomPage({ token, profile, userEmail, currentUser
   const [error, setError] = useState('');
   const [roomError, setRoomError] = useState('');
   const [isChatOpen, setIsChatOpen] = useState(false);
+  const [isPresent, setIsPresent] = useState(false);
+  const attendanceTimerRef = useRef(null);
+  const attendanceJoinedRef = useRef(false);
 
   const displayName = profile?.full_name || userEmail?.split('@')[0] || 'Сотрудник';
   const roomName = useMemo(() => `kanban-${token}`, [token]);
@@ -109,8 +112,43 @@ export default function MeetingRoomPage({ token, profile, userEmail, currentUser
           },
         });
         apiRef.current = api;
-        api.addListener('readyToClose', () => onExit?.());
-        api.addListener('videoConferenceLeft', () => onExit?.());
+        const leaveRoom = () => {
+          if (attendanceTimerRef.current) {
+            window.clearInterval(attendanceTimerRef.current);
+            attendanceTimerRef.current = null;
+          }
+          if (attendanceJoinedRef.current) {
+            attendanceJoinedRef.current = false;
+            setIsPresent(false);
+            void supabase.rpc('meeting_leave', { p_meeting_id: meeting.id });
+          }
+        };
+        api.addListener('videoConferenceJoined', () => {
+          if (!currentUserId) return;
+          void supabase
+            .rpc('meeting_join', { p_meeting_id: meeting.id })
+            .then(({ error: joinError }) => {
+              if (disposed) return;
+              if (joinError) {
+                console.warn('meeting attendance join:', joinError.message);
+                return;
+              }
+              attendanceJoinedRef.current = true;
+              setIsPresent(true);
+              if (attendanceTimerRef.current) window.clearInterval(attendanceTimerRef.current);
+              attendanceTimerRef.current = window.setInterval(() => {
+                void supabase.rpc('meeting_heartbeat', { p_meeting_id: meeting.id });
+              }, 30_000);
+            });
+        });
+        api.addListener('readyToClose', () => {
+          leaveRoom();
+          onExit?.();
+        });
+        api.addListener('videoConferenceLeft', () => {
+          leaveRoom();
+          onExit?.();
+        });
       })
       .catch((loadError) => {
         if (!disposed) setRoomError(loadError.message || 'Не удалось открыть комнату');
@@ -118,6 +156,14 @@ export default function MeetingRoomPage({ token, profile, userEmail, currentUser
 
     return () => {
       disposed = true;
+      if (attendanceTimerRef.current) {
+        window.clearInterval(attendanceTimerRef.current);
+        attendanceTimerRef.current = null;
+      }
+      if (attendanceJoinedRef.current) {
+        attendanceJoinedRef.current = false;
+        void supabase.rpc('meeting_leave', { p_meeting_id: meeting.id });
+      }
       try {
         api?.dispose();
       } catch {
@@ -125,7 +171,7 @@ export default function MeetingRoomPage({ token, profile, userEmail, currentUser
       }
       apiRef.current = null;
     };
-  }, [meeting, roomName, displayName, onExit]);
+  }, [meeting, roomName, displayName, onExit, currentUserId]);
 
   if (loading) {
     return (
@@ -175,6 +221,11 @@ export default function MeetingRoomPage({ token, profile, userEmail, currentUser
         <span className="hidden rounded-full bg-sky-500/10 px-2 py-0.5 text-[0.6rem] font-semibold text-sky-700 sm:inline dark:text-sky-300">
           до 10 участников
         </span>
+        {isPresent && (
+          <span className="rounded-full bg-emerald-500/12 px-2 py-0.5 text-[0.6rem] font-semibold text-emerald-700 dark:text-emerald-300">
+            Вы в комнате
+          </span>
+        )}
         <button
           type="button"
           onClick={() => setIsChatOpen(true)}

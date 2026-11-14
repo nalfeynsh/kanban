@@ -247,6 +247,8 @@ docs/vks-scope.md           — скоуп ВКС: встречи, звонки,
   Персональная ICS-подписка `/calendar/<token>.ics` для автообновления в Google/Outlook.
   Редактирование/перенос встречи организатором, пересборка участников, уведомления об изменении
   и отмене в Realtime; жёсткий лимит 10 участников в БД и UI.
+  Фактическое посещение: подключение/пульс/выход из комнаты, в деталях — «Был(а) на встрече»
+  или «Не подключался».
   Осталось: SFU/self-host, запись, OAuth-синхронизация Google/Outlook, кастомные фоны/блюр, гости, 50.
   Ориентир — Teams и Яндекс Телемост. Зафиксировано: гости без аккаунта — не в MVP;
   жёсткий лимит 10 участников в первом релизе с архитектурным запасом до 50; запись встреч — нужна; чат сохраняется
@@ -348,6 +350,8 @@ docs/vks-scope.md           — скоуп ВКС: встречи, звонки,
 - `017_meeting_lifecycle.sql` — лимит 10 участников на уровне БД и Realtime для изменений встречи.
 - `018_calendar_feeds.sql` — персональный ICS-фид: `calendar_feeds`, `get_or_create_calendar_feed`,
   `calendar_feed(token)`; подписка Google/Outlook по URL.
+- `019_meeting_attendance.sql` — фактическое участие: `meeting_attendance`, RPC `meeting_join`,
+  `meeting_heartbeat`, `meeting_leave`; отметка «Был(а) на встрече».
 - `README.md` — пошаговая инструкция: New query → Run, проверочные SQL,
   типовые ошибки и порядок действий после миграции.
 
@@ -415,6 +419,7 @@ values ('you@example.com', 'admin', 'bootstrap');
 | 2026-11-14 | В «Помощь → Инструкция» добавлены 6 пунктов по ВКС: создание, подключение, редактирование, чат, календарь, доступ по ссылке. |
 | 2026-11-14 | ICS-подписка: `calendar_feeds` + RPC + `/calendar/<token>.ics`; Google/Outlook обновляют встречи без OAuth. |
 | 2026-11-14 | Поиск по инструкции: подсказки по вводу, выбор темы, Enter/«Найти», пустой результат с поддержкой и предложением темы. |
+| 2026-11-14 | Посещение встреч: `meeting_attendance` + join/heartbeat/leave; в деталях «Был(а)/Не подключался». |
 
 ---
 
@@ -512,6 +517,8 @@ RLS: читать/писать только участники; удалять �
     10 участников и публикация `meetings` в Realtime.
 18. ~~Применить `018_calendar_feeds.sql`~~ — **выполнено 14.11.2026**: `calendar_feeds`,
     `get_or_create_calendar_feed`, `calendar_feed(token)`; ICS-фид проверен через `server.js`.
+19. ~~Применить `019_meeting_attendance.sql`~~ — **выполнено 14.11.2026**: `meeting_attendance`,
+    RPC join/heartbeat/leave; проверены 204, строка посещения и отказ анониму 401.
 
 ### Яндекс-вход: что проверено 11.11.2026
 - `GET /auth/v1/settings` → `external.email: true`, `disable_signup: false`, custom-провайдер не
@@ -543,7 +550,7 @@ RLS: читать/писать только участники; удалять �
   header-light, header-dark, prod-login, analytics-dashboard, task-recurrence, task-duplicate-warning,
   meetings-list, meeting-create, meeting-details, meeting-calendar, meeting-reminder, meeting-room,
   meeting-chat, meeting-chat-sent, meeting-calendar-links, meeting-edit, calendar-feed,
-  faq-search-suggestions, faq-search-topic, faq-search-results, faq-search-empty). Временный стенд удалён.
+  faq-search-suggestions, faq-search-topic, faq-search-results, faq-search-empty, meeting-attendance). Временный стенд удалён.
 - Чат: отправка проверена в headless Chrome — ввод в composer, Enter, сообщение появилось
   в переписке, поле очистилось (PASS); выбор сотрудника через «+» проверен кликом (открывается
   список команды с поиском).
@@ -681,6 +688,8 @@ RLS: читать/писать только участники; удалять �
   кнопка «Найти» по «календарь» даёт 5 тем, Enter по «экспорт в марс» — пустой результат с действиями.
   Скриншоты `faq-search-suggestions.png`, `faq-search-topic.png`, `faq-search-results.png`,
   `faq-search-empty.png`.
+  Посещение: RPC join/heartbeat/leave вернули 204, строка attendance создана и закрыта,
+  анонимный вызов join — 401; в деталях видно «Был(а) на встрече». Скриншот `meeting-attendance.png`.
   `npm run lint` и `npm run build` — чисто. Тестовые пользователи и встречи удалены.
 - **Телефон (12.11.2026):** `formatPhone` проверен на вариантах `8…`, `+7…`, `999…`, с пробелами и на пустом
   значении; в профиле на стенде поля показывают `+7 (999) 123-45-67` и `+7 (900) 000-00-00`,

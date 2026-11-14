@@ -37,6 +37,7 @@ function statusClass(status) {
 export default function MeetingDetailsModal({
   meeting,
   participants = [],
+  attendance = [],
   members = [],
   currentUserId,
   onClose,
@@ -51,6 +52,10 @@ export default function MeetingDetailsModal({
   const [error, setError] = useState('');
 
   const memberById = useMemo(() => new Map(members.map((member) => [member.id, member])), [members]);
+  const attendanceByUser = useMemo(
+    () => new Map(attendance.map((record) => [record.user_id, record])),
+    [attendance],
+  );
   const myParticipation = participants.find((item) => item.user_id === currentUserId);
   const isOrganizer = meeting.organizer_id === currentUserId;
   const organizer = memberById.get(meeting.organizer_id);
@@ -253,6 +258,7 @@ export default function MeetingDetailsModal({
             <div className="space-y-1">
               {participants.map((participant) => {
                 const member = memberById.get(participant.user_id);
+                const attendanceRecord = attendanceByUser.get(participant.user_id);
                 return (
                   <div
                     key={participant.user_id}
@@ -269,6 +275,20 @@ export default function MeetingDetailsModal({
                       {participant.user_id === meeting.organizer_id && (
                         <span className="ml-1 text-[0.6rem] text-indigo-500 dark:text-indigo-300">организатор</span>
                       )}
+                      <span
+                        className={`mt-0.5 block text-[0.6rem] font-medium ${
+                          attendanceRecord
+                            ? 'text-emerald-600 dark:text-emerald-300'
+                            : 'text-slate-400 dark:text-slate-500'
+                        }`}
+                        title={
+                          attendanceRecord
+                            ? `Подключений: ${attendanceRecord.join_count}`
+                            : 'Ещё не подключался к комнате'
+                        }
+                      >
+                        {attendanceRecord ? 'Был(а) на встрече' : 'Не подключался'}
+                      </span>
                     </span>
                     <span className={`shrink-0 rounded-full px-2 py-0.5 text-[0.62rem] font-semibold ${statusClass(participant.status)}`}>
                       {statusLabel(participant.status)}

@@ -104,6 +104,7 @@ export default function App() {
   const [isCalendarFeedOpen, setIsCalendarFeedOpen] = useState(false);
   const [meetings, setMeetings] = useState([]);
   const [meetingParticipants, setMeetingParticipants] = useState([]);
+  const [meetingAttendance, setMeetingAttendance] = useState([]);
   const [meetingsSupported, setMeetingsSupported] = useState(true);
   const [chatPeerId, setChatPeerId] = useState(null);
   const [chatConversationId, setChatConversationId] = useState(null);
@@ -180,6 +181,7 @@ export default function App() {
         setMeetingChat(null);
         setCalendarFeedToken('');
         setIsCalendarFeedOpen(false);
+        setMeetingAttendance([]);
         setMemberFilter(null);
         setLoading(false);
       }
@@ -356,9 +358,15 @@ export default function App() {
     loadMeetings();
   }, [userId, loadMeetings]);
 
-  const handleOpenMeeting = useCallback((meeting) => {
+  const handleOpenMeeting = useCallback(async (meeting) => {
     setIsMeetingsOpen(false);
     setSelectedMeeting(meeting);
+    setMeetingAttendance([]);
+    const { data } = await supabase
+      .from('meeting_attendance')
+      .select('*')
+      .eq('meeting_id', meeting.id);
+    setMeetingAttendance(data || []);
   }, []);
 
   // Напоминания о встречах: 30 и 5 минут. Работают, пока открыта вкладка.
@@ -1873,9 +1881,13 @@ export default function App() {
         <MeetingDetailsModal
           meeting={selectedMeeting}
           participants={meetingParticipants.filter((item) => item.meeting_id === selectedMeeting.id)}
+          attendance={meetingAttendance}
           members={allProfiles}
           currentUserId={userId}
-          onClose={() => setSelectedMeeting(null)}
+          onClose={() => {
+            setSelectedMeeting(null);
+            setMeetingAttendance([]);
+          }}
           onRespond={handleRespondMeeting}
           onCancel={handleCancelMeeting}
           onJoin={(meeting) => window.location.assign(`/meet/${meeting.room_token}`)}
