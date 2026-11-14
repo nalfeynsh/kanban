@@ -1130,6 +1130,32 @@ export default function App() {
     return true;
   };
 
+  /** Перенос встречи из календаря: разрешён только организатору (RLS встречи). */
+  const handleCalendarMeetingDateChange = async (meetingId, startAt, endAt) => {
+    const meeting = meetings.find((item) => item.id === meetingId);
+    if (!meeting || !userId || meeting.organizer_id !== userId) return false;
+    if (!startAt || !endAt || new Date(endAt) <= new Date(startAt)) return false;
+
+    const { data, error } = await supabase
+      .from('meetings')
+      .update({ start_at: startAt, end_at: endAt })
+      .eq('id', meetingId)
+      .select()
+      .maybeSingle();
+
+    if (error) {
+      setBanner(`Не удалось перенести встречу: ${error.message}`);
+      return false;
+    }
+
+    const updated = data || { ...meeting, start_at: startAt, end_at: endAt };
+    setMeetings((prev) => prev.map((item) => (item.id === meetingId ? { ...item, ...updated } : item)));
+    setSelectedMeeting((prev) =>
+      prev?.id === meetingId ? { ...prev, ...updated } : prev,
+    );
+    return true;
+  };
+
   /** Клик по слоту календаря: создаём задачу/встречу на выбранное время */
   const handleCalendarSlot = ({ start, due }) => {
     setDraftKey((key) => key + 1);
@@ -1954,6 +1980,8 @@ export default function App() {
             onMeetingClick={handleOpenMeeting}
             onSlotSelect={handleCalendarSlot}
             onTaskDateChange={handleCalendarTaskDateChange}
+            onMeetingDateChange={handleCalendarMeetingDateChange}
+            currentUserId={userId}
           />
         )}
 

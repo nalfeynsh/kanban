@@ -517,7 +517,7 @@ export default function MeetingDetailsModal({
                 onClick={() => onEdit?.(meeting)}
                 className="glass-btn !px-3 !py-1.5 !text-xs"
               >
-                <Pencil size={13} /> Редактировать
+                <Pencil size={13} /> Изменить / перенести
               </button>
             )}
             {isOrganizer && !isCancelled && (

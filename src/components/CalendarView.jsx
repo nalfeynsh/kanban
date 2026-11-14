@@ -55,6 +55,8 @@ export default function CalendarView({
   onMeetingClick,
   onSlotSelect,
   onTaskDateChange,
+  onMeetingDateChange,
+  currentUserId,
 }) {
   const [currentDate, setCurrentDate] = useState(new Date());
   const [periodTitle, setPeriodTitle] = useState('');
@@ -118,20 +120,23 @@ export default function CalendarView({
 
   const meetingEvents = meetings
     .filter((meeting) => meeting.status === 'scheduled')
-    .map((meeting) => ({
-      id: `meeting-${meeting.id}`,
-      title: `Встреча · ${meeting.title}`,
-      start: toInputValue(parseDateValue(meeting.start_at)),
-      end: toInputValue(parseDateValue(meeting.end_at)),
-      allDay: false,
-      backgroundColor: '#0ea5e9',
-      borderColor: '#0284c7',
-      eventOrder: '00-meeting',
-      editable: false,
-      startEditable: false,
-      durationEditable: false,
-      extendedProps: { isMeeting: true, meetingId: meeting.id },
-    }));
+    .map((meeting) => {
+      const canEdit = Boolean(currentUserId && meeting.organizer_id === currentUserId);
+      return {
+        id: `meeting-${meeting.id}`,
+        title: `Встреча · ${meeting.title}`,
+        start: toInputValue(parseDateValue(meeting.start_at)),
+        end: toInputValue(parseDateValue(meeting.end_at)),
+        allDay: false,
+        backgroundColor: '#0ea5e9',
+        borderColor: '#0284c7',
+        eventOrder: '00-meeting',
+        editable: canEdit,
+        startEditable: canEdit,
+        durationEditable: false,
+        extendedProps: { isMeeting: true, meetingId: meeting.id, canEdit },
+      };
+    });
 
   const events = [...taskEvents, ...meetingEvents];
 
@@ -159,6 +164,38 @@ export default function CalendarView({
 
   /** Перетаскивание задачи на другой день/время: сдвигаем сроки и сохраняем */
   const handleEventDrop = async (info) => {
+    if (info.event.extendedProps?.isMeeting) {
+      const meeting = meetings.find((item) => item.id === info.event.extendedProps.meetingId);
+      if (
+        !meeting ||
+        meeting.organizer_id !== currentUserId ||
+        !info.event.start ||
+        !onMeetingDateChange
+      ) {
+        info.revert();
+        return;
+      }
+
+      const newStart = info.event.start;
+      const newEnd =
+        info.event.end ||
+        new Date(newStart.getTime() + (meeting.end_at && meeting.start_at
+          ? new Date(meeting.end_at).getTime() - new Date(meeting.start_at).getTime()
+          : 60 * 60 * 1000));
+
+      try {
+        const saved = await onMeetingDateChange(
+          meeting.id,
+          newStart.toISOString(),
+          newEnd.toISOString(),
+        );
+        if (saved === false) info.revert();
+      } catch {
+        info.revert();
+      }
+      return;
+    }
+
     const task = tasks.find((item) => item.id === info.event.id);
     const oldStart = info.oldEvent.start;
     const newStart = info.event.start;
