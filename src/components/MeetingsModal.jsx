@@ -26,6 +26,7 @@ export default function MeetingsModal({
   onClose,
   onCreate,
   onMeetingClick,
+  onCalendarFeed,
 }) {
   const memberById = useMemo(() => new Map(members.map((member) => [member.id, member])), [members]);
   const [now, setNow] = useState(0);
@@ -135,6 +136,15 @@ export default function MeetingsModal({
             </p>
           </div>
           <div className="flex items-center gap-1.5">
+            <button
+              type="button"
+              onClick={onCalendarFeed}
+              className="glass-btn !px-2.5 !py-1.5 !text-xs"
+              title="Календарь по ссылке для Google/Outlook"
+            >
+              <CalendarPlus size={14} />
+              <span className="hidden sm:inline">Подписка</span>
+            </button>
             <button
               type="button"
               onClick={onCreate}

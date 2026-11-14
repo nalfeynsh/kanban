@@ -29,6 +29,7 @@ import MeetingModal from './components/MeetingModal';
 import MeetingsModal from './components/MeetingsModal';
 import MeetingDetailsModal from './components/MeetingDetailsModal';
 import MeetingChatModal from './components/MeetingChatModal';
+import CalendarFeedModal from './components/CalendarFeedModal';
 import MeetingRoomPage from './components/MeetingRoomPage';
 import {
   notificationPermission,
@@ -99,6 +100,8 @@ export default function App() {
   const [selectedMeeting, setSelectedMeeting] = useState(null);
   const [editingMeeting, setEditingMeeting] = useState(null);
   const [meetingChat, setMeetingChat] = useState(null);
+  const [calendarFeedToken, setCalendarFeedToken] = useState('');
+  const [isCalendarFeedOpen, setIsCalendarFeedOpen] = useState(false);
   const [meetings, setMeetings] = useState([]);
   const [meetingParticipants, setMeetingParticipants] = useState([]);
   const [meetingsSupported, setMeetingsSupported] = useState(true);
@@ -175,6 +178,8 @@ export default function App() {
         setSelectedMeeting(null);
         setEditingMeeting(null);
         setMeetingChat(null);
+        setCalendarFeedToken('');
+        setIsCalendarFeedOpen(false);
         setMemberFilter(null);
         setLoading(false);
       }
@@ -707,6 +712,17 @@ export default function App() {
 
     await loadMeetings();
     return true;
+  };
+
+  const handleOpenCalendarFeed = async () => {
+    const { data, error } = await supabase.rpc('get_or_create_calendar_feed');
+    if (error) {
+      setBanner(`Не удалось получить ссылку календаря: ${error.message}`);
+      return;
+    }
+    setCalendarFeedToken(data);
+    setIsMeetingsOpen(false);
+    setIsCalendarFeedOpen(true);
   };
 
   const handleRespondMeeting = async (meetingId, status) => {
@@ -1824,6 +1840,7 @@ export default function App() {
             setIsMeetingModalOpen(true);
           }}
           onMeetingClick={handleOpenMeeting}
+          onCalendarFeed={handleOpenCalendarFeed}
         />
       )}
 
@@ -1877,6 +1894,13 @@ export default function App() {
           currentUserId={userId}
           members={allProfiles}
           onClose={() => setMeetingChat(null)}
+        />
+      )}
+
+      {isCalendarFeedOpen && calendarFeedToken && (
+        <CalendarFeedModal
+          token={calendarFeedToken}
+          onClose={() => setIsCalendarFeedOpen(false)}
         />
       )}
 

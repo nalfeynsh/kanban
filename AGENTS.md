@@ -49,6 +49,7 @@ components/
   MeetingsModal.jsx         — список встреч, приглашения
   MeetingDetailsModal.jsx   — детали встречи, ответ, отмена, ссылка
   MeetingChatModal.jsx      — постоянный чат встречи: текст, файлы, картинки
+  CalendarFeedModal.jsx     — ссылка ICS-подписки для Google/Outlook
   MeetingRoomPage.jsx       — комната /meet/<token> (Jitsi, временный провайдер)
   Toasts.jsx                — всплывающие уведомления о новых сообщениях
   LoginPage.jsx             — вход/регистрация (invite-only)
@@ -241,6 +242,7 @@ docs/vks-scope.md           — скоуп ВКС: встречи, звонки,
   напоминания 30/5, комната `/meet/<token>` на Jitsi (устройства, mic/cam, screen share, фоны —
   средствами Jitsi), постоянный чат встречи с текстом, файлами и изображениями (история сохраняется).
   Добавление в календарь: ссылки Google/Outlook и `.ics` с напоминаниями.
+  Персональная ICS-подписка `/calendar/<token>.ics` для автообновления в Google/Outlook.
   Редактирование/перенос встречи организатором, пересборка участников, уведомления об изменении
   и отмене в Realtime; жёсткий лимит 10 участников в БД и UI.
   Осталось: SFU/self-host, запись, OAuth-синхронизация Google/Outlook, кастомные фоны/блюр, гости, 50.
@@ -302,6 +304,8 @@ docs/vks-scope.md           — скоуп ВКС: встречи, звонки,
   клиент всё равно ходит на `window.location.origin` (см. `supabaseClient.js`).
 - ВКС: `VITE_JITSI_DOMAIN` — домен Jitsi (по умолчанию `meet.jit.si`). Для self-hosted указать
   свой домен при сборке. Это временный провайдер Phase 1, не финальный SFU.
+- ICS-подписка: `GET /calendar/<token>.ics` на `server.js`; токен создаётся RPC
+  `get_or_create_calendar_feed`, фид содержит только встречи владельца.
 - Проверка живости: `GET /health` → `{"ok":true,"upstream":"…","root":"/app/dist"}`.
 - Preview ветки: `https://kanban-<branch>.layero.app` (слэши в имени заменяются на `-`).
 - Откат: `npx layero deploys list` → `npx layero promote <commit_sha>`.
@@ -340,6 +344,8 @@ docs/vks-scope.md           — скоуп ВКС: встречи, звонки,
 - `016_meeting_chat.sql` — постоянный чат встречи: `meeting_messages`, RLS, приватный
   bucket `meeting-files` (файлы и изображения), Realtime для сообщений и приглашений.
 - `017_meeting_lifecycle.sql` — лимит 10 участников на уровне БД и Realtime для изменений встречи.
+- `018_calendar_feeds.sql` — персональный ICS-фид: `calendar_feeds`, `get_or_create_calendar_feed`,
+  `calendar_feed(token)`; подписка Google/Outlook по URL.
 - `README.md` — пошаговая инструкция: New query → Run, проверочные SQL,
   типовые ошибки и порядок действий после миграции.
 
@@ -405,6 +411,7 @@ values ('you@example.com', 'admin', 'bootstrap');
 | 2026-11-14 | Добавление встречи в Google/Outlook и `.ics` с двумя напоминаниями; OAuth-синхронизация — следующий этап. |
 | 2026-11-14 | Редактирование/перенос встречи, пересборка участников, Realtime-уведомления об изменении/отмене; жёсткий лимит 10 в БД и UI. |
 | 2026-11-14 | В «Помощь → Инструкция» добавлены 6 пунктов по ВКС: создание, подключение, редактирование, чат, календарь, доступ по ссылке. |
+| 2026-11-14 | ICS-подписка: `calendar_feeds` + RPC + `/calendar/<token>.ics`; Google/Outlook обновляют встречи без OAuth. |
 
 ---
 
@@ -500,6 +507,8 @@ RLS: читать/писать только участники; удалять �
     участником и отказ постороннему.
 17. ~~Применить `017_meeting_lifecycle.sql`~~ — **выполнено 14.11.2026**: триггер лимита
     10 участников и публикация `meetings` в Realtime.
+18. ~~Применить `018_calendar_feeds.sql`~~ — **выполнено 14.11.2026**: `calendar_feeds`,
+    `get_or_create_calendar_feed`, `calendar_feed(token)`; ICS-фид проверен через `server.js`.
 
 ### Яндекс-вход: что проверено 11.11.2026
 - `GET /auth/v1/settings` → `external.email: true`, `disable_signup: false`, custom-провайдер не
@@ -530,7 +539,7 @@ RLS: читать/писать только участники; удалять �
   team-chat-icon-light, member-chat-button-light, chat-toasts-light, access-member-lock-light, calendar-light, access-admin-dark, team-access-dark,
   header-light, header-dark, prod-login, analytics-dashboard, task-recurrence, task-duplicate-warning,
   meetings-list, meeting-create, meeting-details, meeting-calendar, meeting-reminder, meeting-room,
-  meeting-chat, meeting-chat-sent, meeting-calendar-links, meeting-edit). Временный стенд удалён.
+  meeting-chat, meeting-chat-sent, meeting-calendar-links, meeting-edit, calendar-feed). Временный стенд удалён.
 - Чат: отправка проверена в headless Chrome — ввод в composer, Enter, сообщение появилось
   в переписке, поле очистилось (PASS); выбор сотрудника через «+» проверен кликом (открывается
   список команды с поиском).
@@ -661,6 +670,9 @@ RLS: читать/писать только участники; удалять �
   Редактирование встречи: UI открыл форму с текущими данными, сохранение изменило `title` в БД;
   скриншот `meeting-edit.png`. Лимит 10 участников закреплён триггером БД, UI не даёт выбрать
   больше 9 приглашённых (организатор входит в лимит). Realtime-обновление встречи опубликовано.
+  ICS-подписка: RPC выдал токен, локальный `server.js` отдал `/calendar/<token>.ics` с
+  `text/calendar`, CRLF, встречей и ссылкой на комнату; модалка «Календарь по ссылке» проверена
+  в headless Chrome. Скриншот `calendar-feed.png`.
   `npm run lint` и `npm run build` — чисто. Тестовые пользователи и встречи удалены.
 - **Телефон (12.11.2026):** `formatPhone` проверен на вариантах `8…`, `+7…`, `999…`, с пробелами и на пустом
   значении; в профиле на стенде поля показывают `+7 (999) 123-45-67` и `+7 (900) 000-00-00`,

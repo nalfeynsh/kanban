@@ -446,6 +446,82 @@ function serveStatic(req, res) {
   stream.pipe(res);
 }
 
+function icsStamp(value) {
+  return new Date(value).toISOString().replace(/[-:]/g, '').replace(/\.\d{3}Z$/, 'Z');
+}
+
+function icsEscape(value) {
+  return String(value ?? '')
+    .replace(/\\/g, '\\\\')
+    .replace(/\r?\n/g, '\\n')
+    .replace(/,/g, '\\,')
+    .replace(/;/g, '\\;');
+}
+
+function icsFold(line) {
+  return (String(line).match(/.{1,70}/g) || ['']).join('\r\n ');
+}
+
+async function serveCalendarFeed(req, res, token) {
+  if (req.method !== 'GET') {
+    res.writeHead(405, { Allow: 'GET' });
+    res.end();
+    return;
+  }
+
+  let events;
+  try {
+    events = (await callRpc('calendar_feed', { p_token: token })) || [];
+  } catch (error) {
+    console.error(`[calendar] ${token.slice(0, 8)}…: ${error?.message || error}`);
+    res.writeHead(503, { 'Content-Type': 'text/plain; charset=utf-8' });
+    res.end('Calendar feed is temporarily unavailable');
+    return;
+  }
+
+  const origin = `https://${req.headers.host || 'kanban.layero.app'}`;
+  const stamp = icsStamp(new Date());
+  const lines = [
+    'BEGIN:VCALENDAR',
+    'VERSION:2.0',
+    'PRODID:-//Moy Kanban//Meeting Feed//RU',
+    'CALSCALE:GREGORIAN',
+    'METHOD:PUBLISH',
+    'X-WR-CALNAME:Мой Канбан — встречи',
+    'REFRESH-INTERVAL;VALUE=DURATION:PT15M',
+    'X-PUBLISHED-TTL:PT15M',
+  ];
+
+  events.forEach((event) => {
+    const joinUrl = `${origin}/meet/${event.room_token}`;
+    lines.push(
+      'BEGIN:VEVENT',
+      `UID:${event.id}@kanban.layero.app`,
+      `DTSTAMP:${stamp}`,
+      `DTSTART:${icsStamp(event.start_at)}`,
+      `DTEND:${icsStamp(event.end_at)}`,
+      `SUMMARY:${icsEscape(event.title)}`,
+      `DESCRIPTION:${icsEscape([event.description, `Подключиться: ${joinUrl}`].filter(Boolean).join('\n'))}`,
+      `LOCATION:${icsEscape(joinUrl)}`,
+      `URL:${joinUrl}`,
+      'STATUS:CONFIRMED',
+      'TRANSP:OPAQUE',
+      'SEQUENCE:0',
+      'END:VEVENT',
+    );
+  });
+
+  lines.push('END:VCALENDAR');
+  const body = `${lines.map(icsFold).join('\r\n')}\r\n`;
+  res.writeHead(200, {
+    'Content-Type': 'text/calendar; charset=utf-8',
+    'Content-Disposition': 'inline; filename="kanban-meetings.ics"',
+    'Cache-Control': 'public, max-age=300',
+    'Content-Length': Buffer.byteLength(body),
+  });
+  res.end(body);
+}
+
 const server = http.createServer((req, res) => {
   const urlPath = (req.url || '/').split('?')[0];
 
@@ -461,6 +537,12 @@ const server = http.createServer((req, res) => {
       root: ROOT,
       uptime: Math.round(process.uptime()),
     });
+    return;
+  }
+
+  const calendarFeedMatch = urlPath.match(/^\/calendar\/([a-f0-9]{48})\.ics$/);
+  if (calendarFeedMatch) {
+    serveCalendarFeed(req, res, calendarFeedMatch[1]);
     return;
   }
 
