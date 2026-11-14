@@ -109,7 +109,7 @@ export default function Header({
         {/* Группа навигации: виды и фильтры могут переноситься вместе */}
         <div className="header-nav">
           {/* Вид */}
-          <div className="glass-segment sm:ml-3">
+          <div className="glass-segment">
             <button
               type="button"
               className="glass-segment-btn"
