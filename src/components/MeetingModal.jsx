@@ -193,6 +193,33 @@ export default function MeetingModal({
             <p className="mt-1 text-[0.62rem] text-slate-500 dark:text-slate-400">
               Если указана, кнопка «Подключиться» откроет эту комнату. Если пусто — встроенная комната.
             </p>
+            <p className="mt-1 flex flex-wrap gap-x-2 gap-y-0.5 text-[0.62rem] text-slate-500 dark:text-slate-400">
+              <span>Где взять ссылку:</span>
+              <a
+                href="https://vk.com/calls"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="font-medium text-sky-700 hover:underline dark:text-sky-300"
+              >
+                VK Звонки
+              </a>
+              <a
+                href="https://sberjazz.ru"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="font-medium text-sky-700 hover:underline dark:text-sky-300"
+              >
+                SberJazz
+              </a>
+              <a
+                href="https://telemost.yandex.ru"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="font-medium text-sky-700 hover:underline dark:text-sky-300"
+              >
+                Телемост
+              </a>
+            </p>
           </label>
 
           <label className="block">
