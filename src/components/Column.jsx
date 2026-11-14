@@ -1,3 +1,4 @@
+import { Fragment } from 'react';
 import { useDroppable } from '@dnd-kit/core';
 import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { Plus, Inbox, CheckSquare } from 'lucide-react';
@@ -24,6 +25,7 @@ export default function Column({
   onDeleteTask,
   onToggleSelect,
   onSelectColumn,
+  dropPreview = null,
 }) {
   const { setNodeRef, isOver } = useDroppable({
     id: column.id,
@@ -34,6 +36,12 @@ export default function Column({
   const accent = ACCENTS[index % ACCENTS.length];
   const allSelected = tasks.length > 0 && tasks.every((task) => selectedIds?.has(task.id));
   const responsible = column.responsible_id ? authorById?.get?.(column.responsible_id) : null;
+  const previewInColumn = dropPreview?.columnId === column.id;
+  const dropSlot = (
+    <div className="mb-2.5 flex h-14 items-center justify-center rounded-2xl border-2 border-dashed border-indigo-400/70 bg-indigo-400/10 px-2 text-center text-[0.65rem] font-medium text-indigo-600 dark:text-indigo-300">
+      Переместить сюда
+    </div>
+  );
 
   return (
     <section
@@ -96,19 +104,24 @@ export default function Column({
       <div className="scrollbar-slim flex-1 overflow-y-auto px-3 pt-1 pb-2">
         <SortableContext items={taskIds} strategy={verticalListSortingStrategy}>
           {tasks.map((task) => (
-            <TaskCard
-              key={task.id}
-              task={task}
-              number={numberById?.get(task.id)}
-              author={authorById?.get(task.created_by)}
-              assignee={task.assignee_id ? authorById?.get(task.assignee_id) : null}
-              onClick={() => onTaskClick(task)}
-              onDelete={onDeleteTask}
-              selectionMode={selectionMode}
-              selected={Boolean(selectedIds?.has(task.id))}
-              onToggleSelect={onToggleSelect}
-            />
+            <Fragment key={task.id}>
+              {previewInColumn && dropPreview.overTaskId === task.id && !dropPreview.after && dropSlot}
+              <TaskCard
+                task={task}
+                number={numberById?.get(task.id)}
+                author={authorById?.get(task.created_by)}
+                assignee={task.assignee_id ? authorById?.get(task.assignee_id) : null}
+                onClick={() => onTaskClick(task)}
+                onDelete={onDeleteTask}
+                selectionMode={selectionMode}
+                selected={Boolean(selectedIds?.has(task.id))}
+                onToggleSelect={onToggleSelect}
+                suppressSortableTransform={previewInColumn}
+              />
+              {previewInColumn && dropPreview.overTaskId === task.id && dropPreview.after && dropSlot}
+            </Fragment>
           ))}
+          {previewInColumn && !dropPreview.overTaskId && dropSlot}
         </SortableContext>
 
         {tasks.length === 0 && (

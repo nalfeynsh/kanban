@@ -21,6 +21,7 @@ export function planTaskMove({
   sourceColumnId,
   overColumnId,
   columnsToTaskIds,
+  insertAfter = false,
 }) {
   if (!activeId || !overId) return null;
   if (activeId === overId) return null;
@@ -37,18 +38,22 @@ export function planTaskMove({
     const oldIndex = sourceIds.indexOf(activeId);
     if (oldIndex === -1) return null;
 
-    // Бросок в пустую область своей колонки — в конец
-    const newIndex = isColumnTarget ? sourceIds.length - 1 : sourceIds.indexOf(overId);
-    if (newIndex === -1 || oldIndex === newIndex) return null;
+    const rest = sourceIds.filter((id) => id !== activeId);
+    const overIndex = isColumnTarget ? rest.length : rest.indexOf(overId);
+    if (!isColumnTarget && overIndex === -1) return null;
+    const newIndex = isColumnTarget ? rest.length : overIndex + (insertAfter ? 1 : 0);
+    if (newIndex === oldIndex && !isColumnTarget) return null;
 
-    const reordered = [...sourceIds];
-    reordered.splice(oldIndex, 1);
+    const reordered = [...rest];
     reordered.splice(newIndex, 0, activeId);
     groups.push({ column_id: destColumnId, ids: reordered });
   } else {
     const restOfSource = sourceIds.filter((id) => id !== activeId);
     const overIndex = isColumnTarget ? -1 : destIds.indexOf(overId);
-    const insertAt = overIndex === -1 ? destIds.length : overIndex;
+    if (!isColumnTarget && overIndex === -1) return null;
+    const insertAt = isColumnTarget
+      ? destIds.length
+      : overIndex + (insertAfter ? 1 : 0);
 
     const nextDest = [...destIds];
     nextDest.splice(insertAt, 0, activeId);

@@ -139,7 +139,8 @@ export default function App() {
   const [overdueOnly, setOverdueOnly] = useState(false);
   const [memberFilter, setMemberFilter] = useState(null);
   const [activeTask, setActiveTask] = useState(null);
-  const lastOverRef = useRef(null);
+  const [dropPreview, setDropPreview] = useState(null);
+  const lastDropRef = useRef(null);
   const doneCleanupRef = useRef(false);
   const meetingRemindedRef = useRef(new Set());
   const [selectionMode, setSelectionMode] = useState(false);
@@ -986,9 +987,39 @@ export default function App() {
   );
 
   const handleDragStart = (event) => {
-    lastOverRef.current = null;
+    lastDropRef.current = null;
+    setDropPreview(null);
     const task = tasks.find((item) => item.id === event.active.id);
     if (task) setActiveTask(task);
+  };
+
+  const resolveDropTarget = (event) => {
+    const over = event.over;
+    if (!over) return null;
+    const overId = String(over.id);
+    if (String(event.active.id) === overId) return null;
+
+    if (columnIdSet.has(overId)) {
+      return { columnId: overId, overTaskId: null, after: true };
+    }
+
+    const overTask = tasks.find((task) => task.id === overId);
+    if (!overTask) return null;
+
+    const activeRect = event.active.rect.current?.translated;
+    const overRect = over.rect;
+    const after =
+      activeRect && overRect
+        ? activeRect.top + activeRect.height / 2 > overRect.top + overRect.height / 2
+        : false;
+
+    return { columnId: overTask.column_id, overTaskId: overTask.id, after };
+  };
+
+  const handleDragOver = (event) => {
+    const next = resolveDropTarget(event);
+    setDropPreview(next);
+    lastDropRef.current = next;
   };
 
   const persistPositions = useCallback(async (updates) => {
@@ -1010,28 +1041,20 @@ export default function App() {
   }, []);
 
   const handleDragEnd = async (event) => {
-    const { active, over } = event;
+    const { active } = event;
     setActiveTask(null);
+    setDropPreview(null);
 
-    // Если отпустили за пределами droppable-зоны — берём последнюю цель под курсором
-    const overId = over ? String(over.id) : lastOverRef.current;
-    lastOverRef.current = null;
-    if (!overId) return;
+    const preview = resolveDropTarget(event) || lastDropRef.current;
+    lastDropRef.current = null;
+    if (!preview) return;
 
     const activeId = String(active.id);
-    if (activeId === overId) return;
+    const overId = preview.overTaskId || preview.columnId;
+    if (!overId || activeId === overId) return;
 
     const moving = tasks.find((task) => task.id === activeId);
     if (!moving) return;
-
-    const isColumnTarget = columnIdSet.has(overId);
-    let overColumnId = null;
-
-    if (!isColumnTarget) {
-      const overTask = tasks.find((task) => task.id === overId);
-      if (!overTask) return;
-      overColumnId = overTask.column_id;
-    }
 
     const columnsToTaskIds = {};
     boardColumns.forEach((column) => {
@@ -1041,10 +1064,11 @@ export default function App() {
     const plan = planTaskMove({
       activeId,
       overId,
-      isColumnTarget,
+      isColumnTarget: !preview.overTaskId,
       sourceColumnId: moving.column_id,
-      overColumnId,
+      overColumnId: preview.columnId,
       columnsToTaskIds,
+      insertAfter: preview.after,
     });
     if (!plan) return;
 
@@ -1810,11 +1834,13 @@ export default function App() {
             sensors={sensors}
             collisionDetection={collisionDetection}
             onDragStart={handleDragStart}
-            onDragOver={(event) => {
-              if (event.over) lastOverRef.current = String(event.over.id);
-            }}
+            onDragOver={handleDragOver}
             onDragEnd={handleDragEnd}
-            onDragCancel={() => setActiveTask(null)}
+            onDragCancel={() => {
+              setActiveTask(null);
+              setDropPreview(null);
+              lastDropRef.current = null;
+            }}
           >
             <div className="mx-auto flex max-w-[1800px] flex-col gap-3">
               <div className="flex flex-wrap items-center gap-2 text-[0.7rem] text-slate-500 dark:text-slate-400">
@@ -1895,6 +1921,7 @@ export default function App() {
                         onDeleteTask={handleDeleteTask}
                         onToggleSelect={toggleTaskSelection}
                         onSelectColumn={selectColumn}
+                        dropPreview={dropPreview}
                       />
                     ))}
                   </div>

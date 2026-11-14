@@ -210,6 +210,7 @@ export default function TaskCard({
   selectionMode = false,
   selected = false,
   onToggleSelect,
+  suppressSortableTransform = false,
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: task.id,
@@ -218,8 +219,8 @@ export default function TaskCard({
   });
 
   const style = {
-    transform: CSS.Transform.toString(transform),
-    transition,
+    transform: suppressSortableTransform ? undefined : CSS.Transform.toString(transform),
+    transition: suppressSortableTransform ? undefined : transition,
     opacity: isDragging ? 0.4 : 1,
     zIndex: isDragging ? 50 : 1,
     position: 'relative',
