@@ -73,6 +73,7 @@ lib/
   permissions.js            — матрица прав ролей и helper `can()`
   chat.js                   — RPC чата, сообщения, Realtime-подписка
   notifications.js          — звук (Web Audio), разрешения и браузерные уведомления
+  meetingCalendar.js        — ICS, ссылки Google Calendar и Outlook
   telegram.js               — нормализация Telegram-ника и ссылка
 supabaseClient.js           — клиент Supabase (env + fallback, в prod — same-origin)
 server.js                   — production-сервер Layero Runtime: статика + прокси Supabase
@@ -239,7 +240,8 @@ docs/vks-scope.md           — скоуп ВКС: встречи, звонки,
   Сделано: кнопка «Встречи», создание/список/детали, приглашения и ответы, слой встреч в календаре,
   напоминания 30/5, комната `/meet/<token>` на Jitsi (устройства, mic/cam, screen share, фоны —
   средствами Jitsi), постоянный чат встречи с текстом, файлами и изображениями (история сохраняется).
-  Осталось: SFU/self-host, запись, Google/Outlook, кастомные фоны/блюр, гости, 50.
+  Добавление в календарь: ссылки Google/Outlook и `.ics` с напоминаниями.
+  Осталось: SFU/self-host, запись, OAuth-синхронизация Google/Outlook, кастомные фоны/блюр, гости, 50.
   Ориентир — Teams и Яндекс Телемост. Зафиксировано: гости без аккаунта — не в MVP;
   жёсткий лимит 10 участников в первом релизе с архитектурным запасом до 50; запись встреч — нужна; чат сохраняется
   после встречи; интеграция и с Google Calendar, и с Outlook — нужна. Предварительно:
@@ -397,6 +399,7 @@ values ('you@example.com', 'admin', 'bootstrap');
 | 2026-11-14 | ВКС Phase 1: миграция 015, встречи/приглашения/календарь/напоминания, комната `/meet/<token>` на Jitsi (временный провайдер). SFU, запись, чат встречи и Google/Outlook — следующие шаги. |
 | 2026-11-14 | Чат встречи: миграция 016, постоянная история, файлы/картинки в приватном bucket, доступ только участникам. SFU, запись и Google/Outlook остаются. |
 | 2026-11-14 | Приглашение на встречу приходит в Realtime-тосте; клик открывает детали встречи. |
+| 2026-11-14 | Добавление встречи в Google/Outlook и `.ics` с двумя напоминаниями; OAuth-синхронизация — следующий этап. |
 
 ---
 
@@ -520,7 +523,7 @@ RLS: читать/писать только участники; удалять �
   team-chat-icon-light, member-chat-button-light, chat-toasts-light, access-member-lock-light, calendar-light, access-admin-dark, team-access-dark,
   header-light, header-dark, prod-login, analytics-dashboard, task-recurrence, task-duplicate-warning,
   meetings-list, meeting-create, meeting-details, meeting-calendar, meeting-reminder, meeting-room,
-  meeting-chat, meeting-chat-sent). Временный стенд удалён.
+  meeting-chat, meeting-chat-sent, meeting-calendar-links). Временный стенд удалён.
 - Чат: отправка проверена в headless Chrome — ввод в composer, Enter, сообщение появилось
   в переписке, поле очистилось (PASS); выбор сотрудника через «+» проверен кликом (открывается
   список команды с поиском).
@@ -645,6 +648,9 @@ RLS: читать/писать только участники; удалять �
   Чат встречи: миграция 016, участник загрузил файл, второй участник увидел сообщение и скачал файл
   по signed URL, посторонний получил 0 сообщений и отказ 400; UI отправки сообщения проверен.
   Скриншоты `meeting-chat.png`, `meeting-chat-sent.png`.
+  Добавление в календарь: ссылки Google, Outlook и `.ics` проверены на реальном коде (`buildMeetingIcs`,
+  CRLF, экранирование, 2 напоминания, attendee-статусы); на стенде блок виден в деталях встречи.
+  Скриншот `meeting-calendar-links.png`.
   `npm run lint` и `npm run build` — чисто. Тестовые пользователи и встречи удалены.
 - **Телефон (12.11.2026):** `formatPhone` проверен на вариантах `8…`, `+7…`, `999…`, с пробелами и на пустом
   значении; в профиле на стенде поля показывают `+7 (999) 123-45-67` и `+7 (900) 000-00-00`,

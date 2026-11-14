@@ -2,9 +2,12 @@ import { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import {
   CalendarDays,
+  CalendarPlus,
   Check,
   Clock,
   Copy,
+  Download,
+  ExternalLink,
   Link2,
   Loader,
   Mail,
@@ -16,6 +19,7 @@ import {
 } from 'lucide-react';
 import Avatar from './Avatar';
 import { formatDue } from '../lib/format';
+import { downloadMeetingIcs, googleCalendarUrl, outlookCalendarUrl } from '../lib/meetingCalendar';
 
 function statusLabel(status) {
   if (status === 'accepted') return 'Принял';
@@ -50,6 +54,25 @@ export default function MeetingDetailsModal({
   const organizer = memberById.get(meeting.organizer_id);
   const joinUrl = `${window.location.origin}/meet/${meeting.room_token}`;
   const isCancelled = meeting.status === 'cancelled';
+  const calendarOrganizer = {
+    name: organizer?.full_name,
+    email: organizer?.work_email || organizer?.personal_email || '',
+  };
+  const calendarAttendees = participants
+    .map((participant) => {
+      const member = memberById.get(participant.user_id);
+      return {
+        name: member?.full_name,
+        email: member?.work_email || member?.personal_email || '',
+        status: participant.status,
+      };
+    })
+    .filter((attendee) => attendee.email);
+  const calendarOptions = {
+    organizer: calendarOrganizer,
+    attendees: calendarAttendees,
+    joinUrl,
+  };
 
   useEffect(() => {
     const onKeyDown = (event) => {
@@ -178,6 +201,43 @@ export default function MeetingDetailsModal({
             </div>
             <p className="mt-1 flex items-center gap-1 text-[0.62rem] text-slate-500 dark:text-slate-400">
               <Mail size={10} /> Ссылка доступна только участникам встречи.
+            </p>
+          </div>
+
+          <div>
+            <p className="mb-1.5 flex items-center gap-1.5 text-[0.65rem] font-semibold tracking-[0.1em] text-slate-500 uppercase dark:text-slate-400">
+              <CalendarPlus size={12} /> Добавить в календарь
+            </p>
+            <div className="flex flex-wrap gap-1.5">
+              <a
+                href={googleCalendarUrl(meeting, { joinUrl })}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="glass-btn !px-2.5 !py-1.5 !text-[0.68rem]"
+                title="Открыть Google Calendar"
+              >
+                <ExternalLink size={12} /> Google
+              </a>
+              <a
+                href={outlookCalendarUrl(meeting, { joinUrl })}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="glass-btn !px-2.5 !py-1.5 !text-[0.68rem]"
+                title="Открыть Outlook"
+              >
+                <ExternalLink size={12} /> Outlook
+              </a>
+              <button
+                type="button"
+                onClick={() => downloadMeetingIcs(meeting, calendarOptions)}
+                className="glass-btn !px-2.5 !py-1.5 !text-[0.68rem]"
+                title="Скачать приглашение .ics"
+              >
+                <Download size={12} /> Скачать .ics
+              </button>
+            </div>
+            <p className="mt-1 text-[0.62rem] text-slate-500 dark:text-slate-400">
+              Событие добавится в ваш календарь; участники получат ссылку на встречу.
             </p>
           </div>
 
