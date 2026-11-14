@@ -311,7 +311,7 @@ export default function AnalyticsPanel({
                 </div>
                 <div className="rounded-xl border border-amber-400/30 bg-amber-400/10 px-2.5 py-2">
                   <p className="flex items-center gap-1.5 text-[0.65rem] text-amber-700 dark:text-amber-300">
-                    <ArrowRight size={11} /> Сделать → В работе
+                    <ArrowRight size={11} /> Сделать → В работе / разработке
                   </p>
                   <p className="mt-0.5 text-lg font-bold text-slate-900 dark:text-white">
                     {analytics.movedToProgress}

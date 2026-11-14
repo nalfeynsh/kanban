@@ -45,7 +45,9 @@ function isDoneColumn(column) {
 }
 
 function isInProgressColumn(column) {
-  return /^(в работе|in progress|doing)$/i.test(String(column?.title || '').trim());
+  return /^(в работе|в разработке|на тестировании|in progress|doing|in development|testing|qa)$/i.test(
+    String(column?.title || '').trim(),
+  );
 }
 
 function isTodoColumn(column) {
@@ -59,7 +61,9 @@ function isDoneTitle(title) {
 }
 
 function isInProgressTitle(title) {
-  return /^(в работе|in progress|doing)$/i.test(String(title || '').trim());
+  return /^(в работе|в разработке|на тестировании|in progress|doing|in development|testing|qa)$/i.test(
+    String(title || '').trim(),
+  );
 }
 
 function isTodoTitle(title) {
