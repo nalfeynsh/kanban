@@ -31,6 +31,7 @@ import MeetingDetailsModal from './components/MeetingDetailsModal';
 import MeetingChatModal from './components/MeetingChatModal';
 import CalendarFeedModal from './components/CalendarFeedModal';
 import MeetingRoomPage from './components/MeetingRoomPage';
+import GuestMeetingPage from './components/GuestMeetingPage';
 import {
   notificationPermission,
   playChime,
@@ -141,6 +142,10 @@ export default function App() {
   const userEmail = session?.user?.email ?? '';
   const roomToken = useMemo(() => {
     const match = window.location.pathname.match(/^\/meet\/([^/]+)\/?$/);
+    return match ? decodeURIComponent(match[1]) : null;
+  }, []);
+  const guestToken = useMemo(() => {
+    const match = window.location.pathname.match(/^\/g\/([^/]+)\/?$/);
     return match ? decodeURIComponent(match[1]) : null;
   }, []);
 
@@ -741,6 +746,36 @@ export default function App() {
       }
     }
 
+    await loadMeetings();
+    return true;
+  };
+
+  const handleEnableGuestAccess = async (meetingId) => {
+    const { data, error } = await supabase.rpc('enable_meeting_guest_access', {
+      p_meeting_id: meetingId,
+    });
+    if (error) {
+      setBanner(`Не удалось открыть гостевой доступ: ${error.message}`);
+      return false;
+    }
+    setSelectedMeeting((prev) =>
+      prev?.id === meetingId ? { ...prev, guest_access: true, guest_token: data } : prev,
+    );
+    await loadMeetings();
+    return true;
+  };
+
+  const handleDisableGuestAccess = async (meetingId) => {
+    const { error } = await supabase.rpc('disable_meeting_guest_access', {
+      p_meeting_id: meetingId,
+    });
+    if (error) {
+      setBanner(`Не удалось закрыть гостевой доступ: ${error.message}`);
+      return false;
+    }
+    setSelectedMeeting((prev) =>
+      prev?.id === meetingId ? { ...prev, guest_access: false, guest_token: null } : prev,
+    );
     await loadMeetings();
     return true;
   };
@@ -1509,6 +1544,8 @@ export default function App() {
     setRoleSaving(false);
   };
 
+  if (guestToken) return <GuestMeetingPage token={guestToken} />;
+
   if (!session) return <LoginPage />;
 
   if (loading) {
@@ -1917,6 +1954,8 @@ export default function App() {
           onCancel={handleCancelMeeting}
           onJoin={(meeting) => window.location.assign(`/meet/${meeting.room_token}`)}
           onOpenChat={setMeetingChat}
+          onEnableGuest={handleEnableGuestAccess}
+          onDisableGuest={handleDisableGuestAccess}
           onEdit={(meeting) => {
             setSelectedMeeting(null);
             setEditingMeeting(meeting);

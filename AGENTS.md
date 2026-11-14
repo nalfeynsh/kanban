@@ -50,6 +50,7 @@ components/
   MeetingDetailsModal.jsx   — детали встречи, ответ, отмена, ссылка
   MeetingChatModal.jsx      — постоянный чат встречи: текст, файлы, картинки
   CalendarFeedModal.jsx     — ссылка ICS-подписки для Google/Outlook
+  GuestMeetingPage.jsx      — гостевой вход /g/<token> без аккаунта
   MeetingRoomPage.jsx       — комната /meet/<token> (Jitsi, временный провайдер)
   Toasts.jsx                — всплывающие уведомления о новых сообщениях
   LoginPage.jsx             — вход/регистрация (invite-only)
@@ -256,6 +257,8 @@ docs/vks-scope.md           — скоуп ВКС: встречи, звонки,
   в приватный bucket, скачивается из деталей встречи. Серверная запись SFU/Egress — следующий этап.
   Ведущий (организатор или выбранный сотрудник) может выключить микрофоны всем или одному участнику
   из панели «Участники»; используются команды Jitsi `muteEveryone` и `muteRemoteParticipant`.
+  Гостевой доступ (beta): организатор включает секретную ссылку `/g/<token>`, гость без аккаунта
+  вводит имя и входит в комнату; чат и задачи ему недоступны. Лобби/ограничение по времени — позже.
   Осталось: SFU/self-host, серверная запись, OAuth-синхронизация Google/Outlook, кастомные фоны/блюр, гости, 50.
   Ориентир — Teams и Яндекс Телемост. Зафиксировано: гости без аккаунта — не в MVP;
   жёсткий лимит 10 участников в первом релизе с архитектурным запасом до 50; запись встреч — нужна; чат сохраняется
@@ -364,6 +367,8 @@ docs/vks-scope.md           — скоуп ВКС: встречи, звонки,
 - `021_meeting_host.sql` — ведущий встречи (`meetings.host_id`, по умолчанию организатор);
   управление микрофонами в комнате.
 - `022_api_private_tasks.sql` — API v1 не отдаёт и не изменяет личные задачи (`is_private`).
+- `023_meeting_guests.sql` — гостевой доступ: `guest_access`, `guest_token`, RPC
+  `enable/disable_meeting_guest_access`, `meeting_by_guest_token`; страница `/g/<token>`.
 - `README.md` — пошаговая инструкция: New query → Run, проверочные SQL,
   типовые ошибки и порядок действий после миграции.
 
@@ -435,6 +440,7 @@ values ('you@example.com', 'admin', 'bootstrap');
 | 2026-11-14 | Локальная запись встречи: запись вкладки через `getDisplayMedia`, приватный bucket, скачивание из деталей. |
 | 2026-11-14 | Ведущий встречи и управление микрофонами: `host_id`, Jitsi `muteEveryone` / `muteRemoteParticipant`. |
 | 2026-11-14 | API v1: личные задачи закрыты от интеграции (`022`); личные GET/POST/archive → 404. |
+| 2026-11-14 | Гостевой доступ (beta): секретная ссылка `/g/<token>`, вход без аккаунта, без чата и задач. |
 
 ---
 
@@ -540,6 +546,8 @@ RLS: читать/писать только участники; удалять �
     триггер назначения ведущего; старые встречи заполнены организатором.
 22. ~~Применить `022_api_private_tasks.sql`~~ — **выполнено 14.11.2026**: API v1
     отдаёт только командные задачи; личные `GET/POST/archive` → `404`. Проверено в production.
+23. ~~Применить `023_meeting_guests.sql`~~ — **выполнено 14.11.2026**: гостевая ссылка
+    `/g/<token>`, включение/отключение организатором; гостевой RPC проверен анонимно.
 
 ### Яндекс-вход: что проверено 11.11.2026
 - `GET /auth/v1/settings` → `external.email: true`, `disable_signup: false`, custom-провайдер не
@@ -571,7 +579,7 @@ RLS: читать/писать только участники; удалять �
   header-light, header-dark, prod-login, analytics-dashboard, task-recurrence, task-duplicate-warning,
   meetings-list, meeting-create, meeting-details, meeting-calendar, meeting-reminder, meeting-room,
   meeting-chat, meeting-chat-sent, meeting-calendar-links, meeting-edit, calendar-feed,
-  faq-search-suggestions, faq-search-topic, faq-search-results, faq-search-empty, meeting-attendance, meeting-recording, meeting-mute-controls). Временный стенд удалён.
+  faq-search-suggestions, faq-search-topic, faq-search-results, faq-search-empty, meeting-attendance, meeting-recording, meeting-mute-controls, meeting-guest). Временный стенд удалён.
 - Чат: отправка проверена в headless Chrome — ввод в composer, Enter, сообщение появилось
   в переписке, поле очистилось (PASS); выбор сотрудника через «+» проверен кликом (открывается
   список команды с поиском).
@@ -719,6 +727,9 @@ RLS: читать/писать только участники; удалять �
   `muteEveryone` / `muteRemoteParticipant`). UI панели проверен в headless Chrome; Jitsi
   в тестовой среде не загрузился, поэтому фактическое срабатывание команд проверяется в живой комнате.
   Скриншот `meeting-mute-controls.png`.
+  Гостевой доступ: RPC выдал токен 36 символов, анонимный `meeting_by_guest_token` вернул встречу,
+  после `disable` — 0 строк; страница `/g/<token>` открывается без сессии, гость вводит имя.
+  Скриншот `meeting-guest.png`.
   `npm run lint` и `npm run build` — чисто. Тестовые пользователи и встречи удалены.
 - **Телефон (12.11.2026):** `formatPhone` проверен на вариантах `8…`, `+7…`, `999…`, с пробелами и на пустом
   значении; в профиле на стенде поля показывают `+7 (999) 123-45-67` и `+7 (900) 000-00-00`,

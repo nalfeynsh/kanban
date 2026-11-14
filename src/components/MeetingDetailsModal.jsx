@@ -53,10 +53,14 @@ export default function MeetingDetailsModal({
   onCancel,
   onJoin,
   onOpenChat,
+  onEnableGuest,
+  onDisableGuest,
   onEdit,
 }) {
   const [busy, setBusy] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [guestCopied, setGuestCopied] = useState(false);
+  const [guestBusy, setGuestBusy] = useState(false);
   const [error, setError] = useState('');
   const [openingRecording, setOpeningRecording] = useState(null);
 
@@ -70,6 +74,7 @@ export default function MeetingDetailsModal({
   const organizer = memberById.get(meeting.organizer_id);
   const host = memberById.get(meeting.host_id || meeting.organizer_id);
   const joinUrl = `${window.location.origin}/meet/${meeting.room_token}`;
+  const guestUrl = meeting.guest_token ? `${window.location.origin}/g/${meeting.guest_token}` : '';
   const isCancelled = meeting.status === 'cancelled';
   const calendarOrganizer = {
     name: organizer?.full_name,
@@ -115,6 +120,33 @@ export default function MeetingDetailsModal({
     const ok = await onRespond(meeting.id, status);
     setBusy(false);
     if (!ok) setError('Не удалось сохранить ответ');
+  };
+
+  const handleEnableGuest = async () => {
+    setGuestBusy(true);
+    setError('');
+    const ok = await onEnableGuest(meeting.id);
+    setGuestBusy(false);
+    if (!ok) setError('Не удалось открыть гостевой доступ');
+  };
+
+  const handleDisableGuest = async () => {
+    if (!window.confirm('Закрыть гостевой доступ? Старая ссылка перестанет работать.')) return;
+    setGuestBusy(true);
+    setError('');
+    const ok = await onDisableGuest(meeting.id);
+    setGuestBusy(false);
+    if (!ok) setError('Не удалось закрыть гостевой доступ');
+  };
+
+  const handleCopyGuest = async () => {
+    try {
+      await navigator.clipboard.writeText(guestUrl);
+      setGuestCopied(true);
+      window.setTimeout(() => setGuestCopied(false), 1800);
+    } catch {
+      setError('Не удалось скопировать гостевую ссылку');
+    }
   };
 
   const handleCancel = async () => {
@@ -239,6 +271,61 @@ export default function MeetingDetailsModal({
               <Mail size={10} /> Ссылка доступна только участникам встречи.
             </p>
           </div>
+
+          {isOrganizer && !isCancelled && (
+            <div>
+              <p className="mb-1.5 text-[0.65rem] font-semibold tracking-[0.1em] text-slate-500 uppercase dark:text-slate-400">
+                Гостевой доступ
+              </p>
+              {meeting.guest_access && guestUrl ? (
+                <>
+                  <div className="flex items-center gap-2">
+                    <div className="flex min-w-0 flex-1 items-center gap-2 rounded-xl border border-amber-400/40 bg-amber-400/10 px-2.5 py-2">
+                      <Link2 size={13} className="shrink-0 text-amber-600" />
+                      <span className="truncate font-mono text-[0.68rem] text-amber-800 dark:text-amber-200">
+                        {guestUrl}
+                      </span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={handleCopyGuest}
+                      className="glass-btn shrink-0 !px-2.5 !py-1.5 !text-xs"
+                    >
+                      {guestCopied ? <Check size={13} /> : <Copy size={13} />}
+                      {guestCopied ? 'Скопировано' : 'Копировать'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleDisableGuest}
+                      disabled={guestBusy}
+                      className="glass-btn glass-btn-danger shrink-0 !px-2.5 !py-1.5 !text-xs"
+                    >
+                      {guestBusy ? <Loader size={13} className="animate-spin" /> : <X size={13} />}
+                      Закрыть
+                    </button>
+                  </div>
+                  <p className="mt-1 text-[0.62rem] text-amber-700 dark:text-amber-300">
+                    Ссылка секретная: любой, у кого она есть, сможет войти в комнату. Чат и задачи ему недоступны.
+                  </p>
+                </>
+              ) : (
+                <>
+                  <button
+                    type="button"
+                    onClick={handleEnableGuest}
+                    disabled={guestBusy}
+                    className="glass-btn !px-2.5 !py-1.5 !text-xs"
+                  >
+                    {guestBusy ? <Loader size={13} className="animate-spin" /> : <Link2 size={13} />}
+                    Разрешить гостям
+                  </button>
+                  <p className="mt-1 text-[0.62rem] text-slate-500 dark:text-slate-400">
+                    Создаст секретную ссылку для входа без аккаунта Канбана.
+                  </p>
+                </>
+              )}
+            </div>
+          )}
 
           {!isCancelled && (
           <div>
