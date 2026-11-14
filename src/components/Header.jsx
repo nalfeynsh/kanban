@@ -12,6 +12,8 @@ import {
   Layers,
   X,
   AlarmClock,
+  FolderKanban,
+  ChevronDown,
 
   MessageSquare,
   Bell,
@@ -48,6 +50,8 @@ export default function Header({
   overdueOnly = false,
   onClearOverdue,
   onHome,
+  project,
+  onProjectsClick,
 }) {
   const displayName = profile?.full_name || user?.email || 'Профиль';
 
@@ -83,6 +87,21 @@ export default function Header({
             </span>
           </span>
         </a>
+
+        {onProjectsClick && (
+          <button
+            type="button"
+            onClick={onProjectsClick}
+            className="glass-btn min-w-0 max-w-[13rem] !px-2.5 !py-1.5"
+            title="Проекты: выбрать или создать"
+          >
+            <FolderKanban size={15} className="shrink-0 text-indigo-500 dark:text-indigo-300" />
+            <span className="hidden max-w-[7.5rem] truncate text-xs font-semibold sm:inline">
+              {project?.name || 'Проекты'}
+            </span>
+            <ChevronDown size={12} className="shrink-0 text-slate-400" />
+          </button>
+        )}
 
         {/* Вид */}
         <div className="glass-segment ml-1 sm:ml-3">

@@ -2,6 +2,7 @@ import { useDroppable } from '@dnd-kit/core';
 import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { Plus, Inbox, CheckSquare } from 'lucide-react';
 import TaskCard from './TaskCard';
+import Avatar from './Avatar';
 
 const ACCENTS = [
   'from-indigo-500 via-violet-500 to-sky-400',
@@ -32,6 +33,7 @@ export default function Column({
   const taskIds = tasks.map((task) => task.id);
   const accent = ACCENTS[index % ACCENTS.length];
   const allSelected = tasks.length > 0 && tasks.every((task) => selectedIds?.has(task.id));
+  const responsible = column.responsible_id ? authorById?.get?.(column.responsible_id) : null;
 
   return (
     <section
@@ -51,6 +53,22 @@ export default function Column({
         </div>
 
         <div className="flex items-center gap-0.5">
+          {responsible && (
+            <span
+              className="flex items-center gap-1 rounded-full border border-indigo-400/30 bg-indigo-400/10 px-1 py-0.5 text-[0.58rem] text-indigo-700 dark:text-indigo-200"
+              title={`Ответственный за этап: ${responsible.full_name || 'сотрудник'}`}
+            >
+              <Avatar
+                name={responsible.full_name}
+                color={responsible.color}
+                src={responsible.avatar_url}
+                className="h-4 w-4 text-[0.45rem]"
+              />
+              <span className="hidden max-w-[4.5rem] truncate xl:inline">
+                {responsible.full_name || 'Ответственный'}
+              </span>
+            </span>
+          )}
           {selectionMode && (
             <button
               type="button"

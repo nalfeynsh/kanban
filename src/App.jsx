@@ -20,6 +20,7 @@ import LoginPage from './components/LoginPage';
 import ProfileModal from './components/ProfileModal';
 import ArchiveModal from './components/ArchiveModal';
 import TeamModal from './components/TeamModal';
+import ProjectsModal from './components/ProjectsModal';
 import MemberProfileModal from './components/MemberProfileModal';
 import BulkActions from './components/BulkActions';
 import ChatModal from './components/ChatModal';
@@ -43,6 +44,7 @@ import { TaskCardView } from './components/TaskCard';
 import { supabase } from './supabaseClient';
 import { collectFields, mergeFields, pickFields, profileFields, supports, taskFields } from './lib/schema';
 import { buildTaskQuote, stripTaskMarker } from './lib/quote';
+import { fetchProjects, PROJECT_STORAGE_KEY } from './lib/projects';
 import { readOAuthError, explainOAuthError, cleanOAuthUrl } from './lib/oauth';
 import { canSeeTask, matchesMode } from './lib/access';
 import { byPosition, isTaskOverdue } from './lib/format';
@@ -80,6 +82,9 @@ export default function App() {
   const [archivedTasks, setArchivedTasks] = useState([]);
   const [statusEvents, setStatusEvents] = useState([]);
   const [allProfiles, setAllProfiles] = useState([]);
+  const [projects, setProjects] = useState([]);
+  const [currentProjectId, setCurrentProjectId] = useState(null);
+  const [isProjectsOpen, setIsProjectsOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [banner, setBanner] = useState('');
   const [oauthNotice, setOauthNotice] = useState(() => {
@@ -181,6 +186,9 @@ export default function App() {
         setTasks([]);
         setArchivedTasks([]);
         setStatusEvents([]);
+        setProjects([]);
+        setCurrentProjectId(null);
+        localStorage.removeItem(PROJECT_STORAGE_KEY);
         setSelectedTask(null);
         setMeetings([]);
         setMeetingParticipants([]);
@@ -300,22 +308,73 @@ export default function App() {
     };
   }, [userId, userEmail]);
 
-  // --- Данные ---
+  // --- Проекты ---
+  useEffect(() => {
+    if (!userId) return undefined;
+
+    let alive = true;
+    (async () => {
+      const { projects: list, error } = await fetchProjects();
+      if (!alive) return;
+      if (error) {
+        setBanner(`Не удалось загрузить проекты: ${error.message}`);
+        setProjects([]);
+        setLoading(false);
+        return;
+      }
+
+      setProjects(list);
+      const saved = localStorage.getItem(PROJECT_STORAGE_KEY);
+      const next = list.find((project) => project.id === saved) || list[0] || null;
+      setCurrentProjectId(next?.id ?? null);
+      if (!next) setLoading(false);
+    })();
+
+    return () => {
+      alive = false;
+    };
+  }, [userId]);
+
+  // --- Данные текущего проекта ---
   const loadData = useCallback(async () => {
-    if (!userId) return;
+    if (!userId || !currentProjectId) return;
     try {
-      const [columnsResult, activeResult, archiveResult, profilesResult] = await Promise.all([
-        supabase.from('columns').select('*').order('position', { ascending: true }),
-        supabase.from('tasks').select('*').is('deleted_at', null).order('position', { ascending: true }),
-        supabase.from('tasks').select('*').not('deleted_at', 'is', null).order('deleted_at', { ascending: false }),
+      const [columnsResult, profilesResult] = await Promise.all([
+        supabase
+          .from('columns')
+          .select('*')
+          .eq('project_id', currentProjectId)
+          .order('position', { ascending: true }),
         supabase.from('profiles').select('*'),
       ]);
 
-      const firstError = [columnsResult.error, activeResult.error, archiveResult.error].find(Boolean);
-      if (firstError) throw firstError;
+      if (columnsResult.error) throw columnsResult.error;
 
-      const activeRows = (activeResult.data ?? []).map(sanitizeTask);
-      const archiveRows = (archiveResult.data ?? []).map(sanitizeTask);
+      const columnIds = (columnsResult.data ?? []).map((column) => column.id);
+      let activeRows = [];
+      let archiveRows = [];
+
+      if (columnIds.length > 0) {
+        const [activeResult, archiveResult] = await Promise.all([
+          supabase
+            .from('tasks')
+            .select('*')
+            .in('column_id', columnIds)
+            .is('deleted_at', null)
+            .order('position', { ascending: true }),
+          supabase
+            .from('tasks')
+            .select('*')
+            .in('column_id', columnIds)
+            .not('deleted_at', 'is', null)
+            .order('deleted_at', { ascending: false }),
+        ]);
+        if (activeResult.error) throw activeResult.error;
+        if (archiveResult.error) throw archiveResult.error;
+        activeRows = (activeResult.data ?? []).map(sanitizeTask);
+        archiveRows = (archiveResult.data ?? []).map(sanitizeTask);
+      }
+
       const profileRows = profilesResult.data ?? [];
 
       setColumns(columnsResult.data ?? []);
@@ -332,13 +391,14 @@ export default function App() {
     }
     // profile намеренно не в зависимостях: иначе цикл перезагрузок
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [userId]);
+  }, [userId, currentProjectId]);
 
   useEffect(() => {
     // Загрузка данных — внешний побочный эффект; setState происходит после await.
+    if (!userId || !currentProjectId) return;
     // eslint-disable-next-line react-hooks/set-state-in-effect
     loadData();
-  }, [loadData]);
+  }, [loadData, userId, currentProjectId]);
 
   // --- Встречи (Phase 1 ВКС) ---
   const loadMeetings = useCallback(async () => {
@@ -611,6 +671,45 @@ export default function App() {
       })),
     [columns, visibleTasks],
   );
+
+  const currentProject = useMemo(
+    () => projects.find((project) => project.id === currentProjectId) || null,
+    [projects, currentProjectId],
+  );
+
+  const handleSelectProject = (projectId) => {
+    setIsProjectsOpen(false);
+    if (!projectId || projectId === currentProjectId) return;
+    localStorage.setItem(PROJECT_STORAGE_KEY, projectId);
+    setCurrentProjectId(projectId);
+    setSelectedTask(null);
+    setTasks([]);
+    setArchivedTasks([]);
+    setColumns([]);
+    setSelectedIds(new Set());
+    setLoading(true);
+  };
+
+  const handleProjectCreated = async (projectId) => {
+    const { projects: list, error } = await fetchProjects();
+    if (error) {
+      setBanner(`Не удалось обновить проекты: ${error.message}`);
+      return;
+    }
+    setProjects(list);
+    setIsProjectsOpen(false);
+    if (projectId) {
+      localStorage.setItem(PROJECT_STORAGE_KEY, projectId);
+      setCurrentProjectId(projectId);
+      setSelectedTask(null);
+      setTasks([]);
+      setArchivedTasks([]);
+      setColumns([]);
+      setLoading(true);
+    }
+  };
+
+
 
   const archivedVisible = useMemo(
     () =>
@@ -1607,6 +1706,8 @@ export default function App() {
         notificationsPermission={notificationsPermission}
         onToggleNotifications={handleToggleNotifications}
         onHome={goHome}
+        project={currentProject}
+        onProjectsClick={() => setIsProjectsOpen(true)}
         teamCount={allProfiles.length}
         memberFilter={memberFilter}
         onClearMemberFilter={() => setMemberFilter(null)}
@@ -1847,6 +1948,19 @@ export default function App() {
         numberById={numberById}
         currentUserId={userId}
       />
+
+      {isProjectsOpen && (
+        <ProjectsModal
+          projects={projects}
+          currentProjectId={currentProjectId}
+          currentRole={profile?.role || 'member'}
+          currentUserId={userId}
+          members={allProfiles}
+          onClose={() => setIsProjectsOpen(false)}
+          onSelect={handleSelectProject}
+          onCreated={handleProjectCreated}
+        />
+      )}
 
       <TeamModal
         isOpen={isTeamOpen}

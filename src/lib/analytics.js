@@ -45,7 +45,7 @@ function isDoneColumn(column) {
 }
 
 function isInProgressColumn(column) {
-  return /^(в работе|в разработке|на тестировании|in progress|doing|in development|testing|qa)$/i.test(
+  return /^(в работе|в разработке|на тестировании|аналитика|на согласовании|in progress|doing|in development|testing|qa|review|approval)$/i.test(
     String(column?.title || '').trim(),
   );
 }
@@ -61,7 +61,7 @@ function isDoneTitle(title) {
 }
 
 function isInProgressTitle(title) {
-  return /^(в работе|в разработке|на тестировании|in progress|doing|in development|testing|qa)$/i.test(
+  return /^(в работе|в разработке|на тестировании|аналитика|на согласовании|in progress|doing|in development|testing|qa|review|approval)$/i.test(
     String(title || '').trim(),
   );
 }
