@@ -12,6 +12,7 @@
  *   остальное    → статика из dist/
  */
 import http from 'node:http';
+import { createHmac } from 'node:crypto';
 import { createReadStream, statSync } from 'node:fs';
 import { extname, join, normalize, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -24,6 +25,13 @@ const PORT = Number(process.env.PORT) || 3000;
 const ANON_KEY =
   process.env.VITE_SUPABASE_ANON_KEY ||
   'sb_publishable_kKouck2JRHJt04F0cMHk8g_alzlnidd';
+const LIVEKIT_URL = String(process.env.LIVEKIT_URL || '').trim().replace(/\/+$/, '');
+const LIVEKIT_API_KEY = String(process.env.LIVEKIT_API_KEY || '').trim();
+const LIVEKIT_API_SECRET = String(process.env.LIVEKIT_API_SECRET || '').trim();
+const LIVEKIT_CONFIGURED = Boolean(LIVEKIT_URL && LIVEKIT_API_KEY && LIVEKIT_API_SECRET);
+const JITSI_DOMAIN = String(process.env.VITE_JITSI_DOMAIN || 'meet.jit.si')
+  .replace(/^https?:\/\//, '')
+  .replace(/\/+$/, '');
 
 const PROXY_PATH = /^\/(auth|rest|storage|realtime)(\/|$)/;
 
@@ -253,6 +261,146 @@ async function callRpc(name, params) {
 function apiToken(req) {
   const header = String(req.headers.authorization || '');
   return header.replace(/^Bearer\s+/i, '').trim() || String(req.headers['x-api-key'] || '').trim();
+}
+
+function base64Url(value) {
+  return Buffer.from(value).toString('base64url');
+}
+
+/** LiveKit access token (HS256) без внешнего SDK: только серверный секрет. */
+function signLiveKitToken({ identity, name, room }) {
+  const now = Math.floor(Date.now() / 1000);
+  const header = base64Url(JSON.stringify({ alg: 'HS256', typ: 'JWT' }));
+  const payload = base64Url(
+    JSON.stringify({
+      iss: LIVEKIT_API_KEY,
+      sub: identity,
+      name,
+      iat: now,
+      nbf: now - 5,
+      exp: now + 2 * 60 * 60,
+      video: {
+        roomJoin: true,
+        room,
+        canPublish: true,
+        canSubscribe: true,
+        canPublishData: true,
+      },
+    }),
+  );
+  const signature = createHmac('sha256', LIVEKIT_API_SECRET)
+    .update(`${header}.${payload}`)
+    .digest('base64url');
+  return `${header}.${payload}.${signature}`;
+}
+
+/**
+ * Проверяет access token Supabase и доступ к встрече через RLS.
+ * Секреты LiveKit никогда не уходят в браузер.
+ */
+async function resolveMeetingAccess(userToken, roomToken) {
+  const userResponse = await fetch(`${UPSTREAM}/auth/v1/user`, {
+    headers: { apikey: ANON_KEY, Authorization: `Bearer ${userToken}` },
+  });
+  if (!userResponse.ok) {
+    return { status: 401, error: 'invalid_session' };
+  }
+  const user = await userResponse.json().catch(() => null);
+  if (!user?.id) return { status: 401, error: 'invalid_session' };
+
+  const meetingResponse = await fetch(
+    `${UPSTREAM}/rest/v1/meetings?room_token=eq.${encodeURIComponent(roomToken)}&select=id,room_token,title,status,organizer_id,host_id`,
+    {
+      headers: {
+        apikey: ANON_KEY,
+        Authorization: `Bearer ${userToken}`,
+        Accept: 'application/json',
+      },
+    },
+  );
+  if (!meetingResponse.ok) {
+    return { status: 403, error: 'meeting_forbidden' };
+  }
+  const meetings = await meetingResponse.json().catch(() => []);
+  const meeting = Array.isArray(meetings) ? meetings[0] : null;
+  if (!meeting) return { status: 403, error: 'meeting_forbidden' };
+  if (meeting.status === 'cancelled') return { status: 409, error: 'meeting_cancelled' };
+
+  const metadata = user.user_metadata || {};
+  const name =
+    String(metadata.full_name || metadata.name || user.email || 'Сотрудник').trim().slice(0, 80) ||
+    'Сотрудник';
+
+  return { status: 200, user, meeting, name };
+}
+
+async function handleVksStatus(req, res) {
+  if (req.method !== 'GET') {
+    sendJson(res, 405, { error: 'method_not_allowed' });
+    return;
+  }
+  sendJson(res, 200, {
+    jitsiDomain: JITSI_DOMAIN,
+    livekit: {
+      configured: LIVEKIT_CONFIGURED,
+      url: LIVEKIT_CONFIGURED ? LIVEKIT_URL : null,
+    },
+    recording: 'local-tab-beta',
+  });
+}
+
+async function handleLiveKitToken(req, res) {
+  if (req.method !== 'POST') {
+    sendJson(res, 405, { error: 'method_not_allowed' });
+    return;
+  }
+  if (!LIVEKIT_CONFIGURED) {
+    sendJson(res, 503, {
+      error: 'livekit_not_configured',
+      message: 'Задайте LIVEKIT_URL, LIVEKIT_API_KEY и LIVEKIT_API_SECRET на сервере.',
+    });
+    return;
+  }
+
+  const body = await readJsonBody(req, 8 * 1024);
+  const roomToken = String(body?.room_token || '').trim();
+  if (!/^[A-Za-z0-9-]{8,128}$/.test(roomToken)) {
+    sendJson(res, 400, { error: 'invalid_room_token' });
+    return;
+  }
+
+  const userToken = apiToken(req);
+  if (!userToken) {
+    sendJson(res, 401, { error: 'missing_token' });
+    return;
+  }
+
+  try {
+    const access = await resolveMeetingAccess(userToken, roomToken);
+    if (access.status !== 200) {
+      sendJson(res, access.status, { error: access.error });
+      return;
+    }
+
+    const room = `kanban-${access.meeting.room_token}`;
+    const token = signLiveKitToken({
+      identity: access.user.id,
+      name: access.name,
+      room,
+    });
+    sendJson(res, 200, {
+      url: LIVEKIT_URL,
+      room,
+      token,
+      identity: access.user.id,
+      can_moderate: Boolean(
+        access.meeting.organizer_id === access.user.id || access.meeting.host_id === access.user.id,
+      ),
+    });
+  } catch (error) {
+    console.error(`[livekit-token] ${error?.message || error}`);
+    sendJson(res, 502, { error: 'livekit_token_failed' });
+  }
 }
 
 function apiErrorStatus(error) {
@@ -536,7 +684,21 @@ const server = http.createServer((req, res) => {
       upstream: UPSTREAM_HOST,
       root: ROOT,
       uptime: Math.round(process.uptime()),
+      vks: {
+        livekit: LIVEKIT_CONFIGURED,
+        jitsi: JITSI_DOMAIN,
+      },
     });
+    return;
+  }
+
+  if (urlPath === '/api/vks/status') {
+    handleVksStatus(req, res);
+    return;
+  }
+
+  if (urlPath === '/api/meetings/livekit-token') {
+    handleLiveKitToken(req, res);
     return;
   }
 

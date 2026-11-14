@@ -1,0 +1,37 @@
+# Минимальный LiveKit SFU: один узел, 10–20 участников.
+# Перед запуском: cp .env.example .env и заполнить секреты.
+
+services:
+  livekit:
+    image: livekit/livekit-server:v1.8.4
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      LIVEKIT_KEYS: "${LIVEKIT_API_KEY}: ${LIVEKIT_API_SECRET}"
+    command: ["--config", "/etc/livekit/livekit.yaml"]
+    volumes:
+      - ./livekit.yaml:/etc/livekit/livekit.yaml:ro
+    ports:
+      - "7880:7880"
+      - "7881:7881"
+      - "50000-50100:50000-50100/udp"
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    env_file:
+      - .env
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    ports:
+      - "80:80"
+      - "443:443"
+    depends_on:
+      - livekit
+
+volumes:
+  caddy_data:
+  caddy_config:

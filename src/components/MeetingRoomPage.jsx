@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ArrowLeft,
   Circle,
@@ -15,9 +15,12 @@ import { supabase } from '../supabaseClient';
 import { formatDue } from '../lib/format';
 import MeetingChatModal from './MeetingChatModal';
 
+const LiveKitMeetingRoom = lazy(() => import('./LiveKitMeetingRoom'));
+
 const JITSI_DOMAIN = String(import.meta.env.VITE_JITSI_DOMAIN || 'meet.jit.si')
   .replace(/^https?:\/\//, '')
   .replace(/\/+$/, '');
+const LIVEKIT_URL = String(import.meta.env.VITE_LIVEKIT_URL || '').trim();
 
 function formatClock(totalSeconds) {
   const seconds = Math.max(0, Math.floor(totalSeconds));
@@ -83,6 +86,48 @@ export default function MeetingRoomPage({ token, profile, userEmail, currentUser
   );
   const otherParticipants = jitsiParticipants.filter(
     (participant) => !(participant.local || participant.isLocal),
+  );
+
+  const joinLiveKitAttendance = useCallback(() => {
+    if (!meeting?.id || !currentUserId || attendanceJoinedRef.current) return;
+    void supabase
+      .rpc('meeting_join', { p_meeting_id: meeting.id })
+      .then(({ error: joinError }) => {
+        if (joinError) {
+          console.warn('meeting attendance join:', joinError.message);
+          return;
+        }
+        attendanceJoinedRef.current = true;
+        setIsPresent(true);
+        if (attendanceTimerRef.current) window.clearInterval(attendanceTimerRef.current);
+        attendanceTimerRef.current = window.setInterval(() => {
+          void supabase.rpc('meeting_heartbeat', { p_meeting_id: meeting.id });
+        }, 30_000);
+      });
+  }, [meeting, currentUserId]);
+
+  const leaveLiveKitAttendance = useCallback(() => {
+    if (attendanceTimerRef.current) {
+      window.clearInterval(attendanceTimerRef.current);
+      attendanceTimerRef.current = null;
+    }
+    if (attendanceJoinedRef.current && meeting?.id) {
+      attendanceJoinedRef.current = false;
+      setIsPresent(false);
+      void supabase.rpc('meeting_leave', { p_meeting_id: meeting.id });
+    }
+  }, [meeting]);
+
+  useEffect(
+    () => () => {
+      if (attendanceTimerRef.current) {
+        window.clearInterval(attendanceTimerRef.current);
+      }
+      if (attendanceJoinedRef.current && meeting?.id) {
+        void supabase.rpc('meeting_leave', { p_meeting_id: meeting.id });
+      }
+    },
+    [meeting?.id],
   );
 
   const muteAll = () => {
@@ -263,6 +308,7 @@ export default function MeetingRoomPage({ token, profile, userEmail, currentUser
 
   useEffect(() => {
     if (!meeting || !containerRef.current) return undefined;
+    if (LIVEKIT_URL) return undefined;
     let disposed = false;
     let api = null;
 
@@ -438,7 +484,7 @@ export default function MeetingRoomPage({ token, profile, userEmail, currentUser
             Вы в комнате
           </span>
         )}
-        {canModerate && (
+        {canModerate && !LIVEKIT_URL && (
           <button
             type="button"
             onClick={() => setIsParticipantsOpen((prev) => !prev)}
@@ -589,8 +635,26 @@ export default function MeetingRoomPage({ token, profile, userEmail, currentUser
       )}
 
       <div className="relative min-h-0 flex-1">
-        <div ref={containerRef} className="h-full w-full" />
-        {roomError && (
+        {LIVEKIT_URL ? (
+          <Suspense
+            fallback={
+              <div className="flex h-full min-h-64 items-center justify-center bg-slate-950">
+                <div className="flex items-center gap-2 text-sm text-slate-300">
+                  <Loader2 size={18} className="animate-spin" /> Загружаем видеокомнату…
+                </div>
+              </div>
+            }
+          >
+            <LiveKitMeetingRoom
+              roomToken={token}
+              onConnected={joinLiveKitAttendance}
+              onDisconnected={leaveLiveKitAttendance}
+            />
+          </Suspense>
+        ) : (
+          <div ref={containerRef} className="h-full w-full" />
+        )}
+        {!LIVEKIT_URL && roomError && (
           <div className="absolute inset-0 flex items-center justify-center bg-slate-950/80 p-4">
             <div className="glass-panel max-w-md rounded-2xl p-5 text-center">
               <p className="text-sm font-semibold text-white">Комната недоступна</p>
