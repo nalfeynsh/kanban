@@ -190,6 +190,16 @@ export default function MeetingDetailsModal({
                 <Clock size={12} /> до {formatDue(meeting.end_at)}
               </span>
             </p>
+            {meeting.external_join_url && (
+              <a
+                href={meeting.external_join_url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="mt-1 inline-flex items-center gap-1 text-[0.68rem] font-medium text-sky-700 hover:underline dark:text-sky-300"
+              >
+                <ExternalLink size={11} /> Внешняя комната
+              </a>
+            )}
           </div>
           <button
             type="button"

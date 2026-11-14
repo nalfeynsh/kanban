@@ -24,6 +24,7 @@ export default function MeetingModal({
   const isEdit = Boolean(meeting);
   const [title, setTitle] = useState(meeting?.title || '');
   const [description, setDescription] = useState(meeting?.description || '');
+  const [externalJoinUrl, setExternalJoinUrl] = useState(meeting?.external_join_url || '');
   const [startAt, setStartAt] = useState(() => meeting?.start_at || defaultTimes().start);
   const [endAt, setEndAt] = useState(() => meeting?.end_at || defaultTimes().end);
   const [participantIds, setParticipantIds] = useState(initialParticipantIds);
@@ -79,6 +80,17 @@ export default function MeetingModal({
       return;
     }
 
+    const normalizedExternalUrl = externalJoinUrl.trim();
+    if (normalizedExternalUrl) {
+      try {
+        const parsed = new URL(normalizedExternalUrl);
+        if (!['http:', 'https:'].includes(parsed.protocol)) throw new Error('protocol');
+      } catch {
+        setError('Ссылка на внешнюю встречу должна начинаться с http:// или https://');
+        return;
+      }
+    }
+
     setError('');
     const finalParticipantIds =
       hostId && hostId !== currentUserId && !participantIds.includes(hostId)
@@ -92,6 +104,7 @@ export default function MeetingModal({
     const ok = await onSave({
       title: title.trim(),
       description: description.trim(),
+      external_join_url: normalizedExternalUrl || null,
       start_at: startAt,
       end_at: endAt,
       participantIds: finalParticipantIds,
@@ -164,6 +177,22 @@ export default function MeetingModal({
               placeholder="Повестка или ссылка на материалы"
               className="glass-input resize-none !py-1.5 !text-xs"
             />
+          </label>
+
+          <label className="block">
+            <span className="mb-1 block text-[0.68rem] font-semibold tracking-[0.1em] text-slate-500 uppercase dark:text-slate-400">
+              Ссылка на внешнюю встречу <span className="normal-case tracking-normal opacity-70">(необязательно)</span>
+            </span>
+            <input
+              type="url"
+              value={externalJoinUrl}
+              onChange={(event) => setExternalJoinUrl(event.target.value)}
+              placeholder="https://… (SberJazz, Телемост, Толк)"
+              className="glass-input !py-1.5 !text-xs"
+            />
+            <p className="mt-1 text-[0.62rem] text-slate-500 dark:text-slate-400">
+              Если указана, кнопка «Подключиться» откроет эту комнату. Если пусто — встроенная комната.
+            </p>
           </label>
 
           <label className="block">

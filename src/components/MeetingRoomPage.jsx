@@ -317,6 +317,9 @@ export default function MeetingRoomPage({ token, profile, userEmail, currentUser
         setError(loadError.message);
       } else if (!data) {
         setError('Встреча не найдена или у вас нет доступа.');
+      } else if (data.external_join_url) {
+        window.location.replace(data.external_join_url);
+        return;
       } else if (data.status === 'cancelled') {
         setError('Эта встреча отменена организатором.');
       } else {

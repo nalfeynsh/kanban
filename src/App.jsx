@@ -782,6 +782,7 @@ export default function App() {
   const handleCreateMeeting = async ({
     title,
     description,
+    external_join_url,
     start_at,
     end_at,
     participantIds = [],
@@ -796,6 +797,7 @@ export default function App() {
         id: meetingId,
         title,
         description,
+        external_join_url: external_join_url || null,
         start_at,
         end_at,
         organizer_id: userId,
@@ -825,6 +827,7 @@ export default function App() {
     meetingId,
     title,
     description,
+    external_join_url,
     start_at,
     end_at,
     participantIds = [],
@@ -837,7 +840,14 @@ export default function App() {
 
     const { error } = await supabase
       .from('meetings')
-      .update({ title, description, start_at, end_at, host_id: hostId })
+      .update({
+        title,
+        description,
+        external_join_url: external_join_url || null,
+        start_at,
+        end_at,
+        host_id: hostId,
+      })
       .eq('id', meetingId);
     if (error) {
       setBanner(`Не удалось сохранить встречу: ${error.message}`);
@@ -2202,7 +2212,13 @@ export default function App() {
           }}
           onRespond={handleRespondMeeting}
           onCancel={handleCancelMeeting}
-          onJoin={(meeting) => window.location.assign(`/meet/${meeting.room_token}`)}
+          onJoin={(meeting) => {
+            if (meeting.external_join_url) {
+              window.location.assign(meeting.external_join_url);
+              return;
+            }
+            window.location.assign(`/meet/${meeting.room_token}`);
+          }}
           onOpenChat={setMeetingChat}
           onEnableGuest={handleEnableGuestAccess}
           onDisableGuest={handleDisableGuestAccess}
