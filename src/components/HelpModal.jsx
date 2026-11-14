@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import {
   X,
@@ -13,6 +13,7 @@ import {
   Mail,
   Phone,
   ExternalLink,
+  Search,
 } from 'lucide-react';
 import Avatar from './Avatar';
 import { telegramUrl } from '../lib/telegram';
@@ -38,6 +39,47 @@ function formatDate(value) {
   return date.toLocaleDateString('ru-RU', { day: 'numeric', month: 'short', year: 'numeric' });
 }
 
+function normalizeFaqText(value) {
+  return String(value ?? '')
+    .toLowerCase()
+    .replace(/ё/g, 'е')
+    .replace(/[^\p{L}\p{N}]+/gu, ' ')
+    .trim();
+}
+
+function faqWordStem(word) {
+  return word.length > 4 ? word.slice(0, 4) : word;
+}
+
+/** Поиск по инструкции: сначала совпадения в вопросе, затем в ответе. */
+function searchFaq(query) {
+  const normalized = normalizeFaqText(query);
+  if (!normalized) return [];
+  const words = [...new Set(normalized.split(/\s+/).filter((word) => word.length >= 2))];
+
+  return FAQ.map((item, index) => {
+    const question = normalizeFaqText(item.q);
+    const answer = normalizeFaqText(item.a);
+    let score = 0;
+
+    if (question.includes(normalized)) score += 16;
+    if (question.startsWith(normalized)) score += 8;
+
+    words.forEach((word) => {
+      const stem = faqWordStem(word);
+      if (question.includes(word)) score += 5;
+      else if (question.includes(stem)) score += 2;
+      if (answer.includes(word)) score += 2;
+      else if (answer.includes(stem)) score += 1;
+    });
+
+    return { item, index, score };
+  })
+    .filter((entry) => entry.score > 0)
+    .sort((a, b) => b.score - a.score || a.index - b.index)
+    .map((entry) => entry.item);
+}
+
 /** Помощь: инструкция, история изменений, предложения, контакты поддержки */
 export default function HelpModal({
   isOpen,
@@ -53,6 +95,80 @@ export default function HelpModal({
   const [schemaMissing, setSchemaMissing] = useState(false);
   const [draft, setDraft] = useState('');
   const [sending, setSending] = useState(false);
+  const [faqQuery, setFaqQuery] = useState('');
+  const [faqSubmitted, setFaqSubmitted] = useState('');
+  const [faqSelected, setFaqSelected] = useState(null);
+  const [faqOpen, setFaqOpen] = useState(null);
+  const [faqFocused, setFaqFocused] = useState(false);
+  const [faqActive, setFaqActive] = useState(-1);
+  const faqSearchRef = useRef(null);
+
+  const faqSuggestions = useMemo(() => searchFaq(faqQuery).slice(0, 6), [faqQuery]);
+  const faqResults = useMemo(() => {
+    if (faqSelected) return FAQ.filter((item) => item.q === faqSelected);
+    return faqSubmitted ? searchFaq(faqSubmitted) : FAQ;
+  }, [faqSubmitted, faqSelected]);
+  const showFaqSuggestions = faqFocused && faqQuery.trim().length >= 2;
+
+  const runFaqSearch = (value = faqQuery) => {
+    const query = String(value ?? '').trim();
+    setFaqQuery(value);
+    setFaqSubmitted(query);
+    setFaqSelected(null);
+    setFaqOpen(null);
+    setFaqFocused(false);
+    setFaqActive(-1);
+    faqSearchRef.current?.blur();
+  };
+
+  const selectFaqSuggestion = (item) => {
+    setFaqQuery(item.q);
+    setFaqSubmitted(item.q);
+    setFaqSelected(item.q);
+    setFaqOpen(item.q);
+    setFaqFocused(false);
+    setFaqActive(-1);
+  };
+
+  const resetFaqSearch = () => {
+    setFaqQuery('');
+    setFaqSubmitted('');
+    setFaqSelected(null);
+    setFaqOpen(null);
+    setFaqFocused(false);
+    setFaqActive(-1);
+    faqSearchRef.current?.focus();
+  };
+
+  const handleFaqKeyDown = (event) => {
+    if (event.key === 'ArrowDown') {
+      event.preventDefault();
+      setFaqFocused(true);
+      setFaqActive((prev) => {
+        const next = Math.min(prev + 1, faqSuggestions.length - 1);
+        return next < 0 ? -1 : next;
+      });
+      return;
+    }
+    if (event.key === 'ArrowUp') {
+      event.preventDefault();
+      setFaqActive((prev) => Math.max(prev - 1, -1));
+      return;
+    }
+    if (event.key === 'Enter') {
+      event.preventDefault();
+      if (faqActive >= 0 && faqSuggestions[faqActive]) {
+        selectFaqSuggestion(faqSuggestions[faqActive]);
+      } else {
+        runFaqSearch();
+      }
+      return;
+    }
+    if (event.key === 'Escape') {
+      setFaqFocused(false);
+      setFaqActive(-1);
+    }
+  };
 
   const admins = useMemo(
     () => profiles.filter((profile) => profile.role === 'admin' && profile.is_active !== false),
@@ -190,21 +306,182 @@ export default function HelpModal({
 
         <div className="scrollbar-slim min-h-0 flex-1 overflow-y-auto px-5 py-4">
           {tab === 'faq' && (
-            <div className="space-y-2">
-              {FAQ.map((item) => (
-                <details
-                  key={item.q}
-                  className="group rounded-xl border border-slate-300/60 bg-white/70 px-3 py-2 dark:border-white/10 dark:bg-white/5"
-                >
-                  <summary className="flex cursor-pointer list-none items-center justify-between gap-2 text-[0.8rem] font-semibold text-slate-800 dark:text-slate-100">
-                    {item.q}
-                    <span className="text-slate-400 transition group-open:rotate-45">+</span>
-                  </summary>
-                  <p className="mt-2 text-[0.75rem] leading-relaxed text-slate-600 dark:text-slate-300">
-                    {item.a}
+            <div className="space-y-3">
+              <div className="relative">
+                <div className="flex gap-2">
+                  <div className="relative min-w-0 flex-1">
+                    <Search
+                      size={14}
+                      className="pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-slate-400"
+                    />
+                    <input
+                      ref={faqSearchRef}
+                      value={faqQuery}
+                      onChange={(event) => {
+                        const value = event.target.value;
+                        setFaqQuery(value);
+                        setFaqSelected(null);
+                        setFaqActive(-1);
+                        setFaqFocused(true);
+                        if (!value.trim()) {
+                          setFaqSubmitted('');
+                          setFaqOpen(null);
+                        }
+                      }}
+                      onFocus={() => setFaqFocused(true)}
+                      onBlur={() => window.setTimeout(() => setFaqFocused(false), 120)}
+                      onKeyDown={handleFaqKeyDown}
+                      placeholder="Найти тему: встречи, календарь, чат…"
+                      autoComplete="off"
+                      spellCheck={false}
+                      role="combobox"
+                      aria-label="Поиск по инструкции"
+                      aria-expanded={showFaqSuggestions}
+                      aria-controls="faq-suggestions"
+                      aria-autocomplete="list"
+                      className="glass-input w-full !py-2 !pr-8 !pl-8 !text-xs"
+                    />
+                    {faqQuery && (
+                      <button
+                        type="button"
+                        onClick={resetFaqSearch}
+                        className="absolute top-1/2 right-2 -translate-y-1/2 rounded-md p-1 text-slate-400 transition hover:bg-white/70 hover:text-slate-700 dark:hover:bg-white/10 dark:hover:text-white"
+                        title="Очистить поиск"
+                        aria-label="Очистить поиск"
+                      >
+                        <X size={13} />
+                      </button>
+                    )}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => runFaqSearch()}
+                    className="glass-btn glass-btn-primary shrink-0 !px-3 !py-2 !text-xs"
+                  >
+                    <Search size={13} /> Найти
+                  </button>
+                </div>
+
+                {showFaqSuggestions && (
+                  <div
+                    id="faq-suggestions"
+                    role="listbox"
+                    aria-label="Подходящие темы"
+                    className="absolute top-full right-0 left-0 z-30 mt-1 max-h-64 overflow-y-auto rounded-xl border border-slate-300/70 bg-white/95 shadow-xl backdrop-blur dark:border-white/10 dark:bg-slate-900/95"
+                  >
+                    {faqSuggestions.length > 0 ? (
+                      faqSuggestions.map((item, index) => (
+                        <button
+                          key={item.q}
+                          type="button"
+                          role="option"
+                          aria-selected={faqActive === index}
+                          onMouseDown={(event) => event.preventDefault()}
+                          onClick={() => selectFaqSuggestion(item)}
+                          className={`flex w-full items-start gap-2 px-3 py-2 text-left text-[0.72rem] leading-snug transition ${
+                            faqActive === index
+                              ? 'bg-indigo-500/15 text-indigo-900 dark:text-indigo-100'
+                              : 'text-slate-700 hover:bg-white/80 dark:text-slate-200 dark:hover:bg-white/10'
+                          }`}
+                        >
+                          <Search size={12} className="mt-0.5 shrink-0 text-indigo-500 dark:text-indigo-300" />
+                          <span>{item.q}</span>
+                        </button>
+                      ))
+                    ) : (
+                      <p className="px-3 py-2.5 text-[0.7rem] leading-relaxed text-slate-500 dark:text-slate-400">
+                        Совпадений нет. Нажмите «Найти» или Enter — покажем результат поиска.
+                      </p>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              <div className="flex items-center justify-between gap-2">
+                <p className="text-[0.68rem] text-slate-500 dark:text-slate-400">
+                  {faqSelected
+                    ? 'Выбранная тема'
+                    : faqSubmitted
+                      ? `Найдено: ${faqResults.length}`
+                      : `Все темы: ${FAQ.length}`}
+                </p>
+                {faqSubmitted && (
+                  <button
+                    type="button"
+                    onClick={resetFaqSearch}
+                    className="text-[0.68rem] font-medium text-indigo-600 hover:underline dark:text-indigo-300"
+                  >
+                    Сбросить
+                  </button>
+                )}
+              </div>
+
+              {faqResults.length > 0 ? (
+                <div className="space-y-2">
+                  {faqResults.map((item) => {
+                    const isOpen = faqOpen === item.q;
+                    return (
+                      <div
+                        key={item.q}
+                        className="rounded-xl border border-slate-300/60 bg-white/70 dark:border-white/10 dark:bg-white/5"
+                      >
+                        <button
+                          type="button"
+                          onClick={() => setFaqOpen(isOpen ? null : item.q)}
+                          aria-expanded={isOpen}
+                          className="flex w-full items-center justify-between gap-2 px-3 py-2 text-left text-[0.8rem] font-semibold text-slate-800 dark:text-slate-100"
+                        >
+                          <span>{item.q}</span>
+                          <span
+                            className={`shrink-0 text-slate-400 transition ${isOpen ? 'rotate-45' : ''}`}
+                            aria-hidden="true"
+                          >
+                            +
+                          </span>
+                        </button>
+                        {isOpen && (
+                          <p className="mt-1 px-3 pb-2.5 text-[0.75rem] leading-relaxed text-slate-600 dark:text-slate-300">
+                            {item.a}
+                          </p>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : (
+                <div className="rounded-xl border border-dashed border-slate-300/70 bg-white/50 px-4 py-6 text-center dark:border-white/15 dark:bg-white/5">
+                  <p className="text-sm font-semibold text-slate-800 dark:text-slate-100">
+                    Ничего не нашли
                   </p>
-                </details>
-              ))}
+                  <p className="mx-auto mt-1 max-w-sm text-[0.73rem] leading-relaxed text-slate-500 dark:text-slate-400">
+                    По запросу «{faqSubmitted}» нет подходящей темы. Можно спросить поддержку
+                    или предложить новую инструкцию.
+                  </p>
+                  <div className="mt-3 flex flex-wrap justify-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setTab('support')}
+                      className="glass-btn glass-btn-primary !px-3 !py-1.5 !text-xs"
+                    >
+                      <LifeBuoy size={13} /> Написать в поддержку
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setTab('ideas')}
+                      className="glass-btn !px-3 !py-1.5 !text-xs"
+                    >
+                      <Lightbulb size={13} /> Предложить тему
+                    </button>
+                    <button
+                      type="button"
+                      onClick={resetFaqSearch}
+                      className="glass-btn !px-3 !py-1.5 !text-xs"
+                    >
+                      Показать все вопросы
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           )}
 

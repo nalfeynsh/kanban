@@ -229,6 +229,8 @@ docs/vks-scope.md           — скоуп ВКС: встречи, звонки,
   с четырьмя вкладками: «Инструкция» (FAQ в сворачиваемых пунктах), «Что нового» (история изменений
   из `lib/changelog.js`), «Предложения» (поле ввода + список идей всех участников, удаление своей),
   «Поддержка» (контакты администраторов: Telegram, почта, телефон, переход в профиль).
+  В «Инструкции» есть интерактивный поиск: подсказки по мере ввода, выбор темы, Enter/кнопка «Найти»,
+  пустой результат с переходом в поддержку или предложения; стрелки и Escape работают с клавиатуры.
   Код: `HelpModal.jsx`, `lib/changelog.js`, `lib/suggestions.js`; таблица `suggestions` — миграция 010.
 - [x] **Уведомления в Канбане.** Новое сообщение (Realtime, RLS) → всплывающая карточка с автором и текстом (клик открывает этот диалог), мягкий звук через Web Audio (без аудиофайлов), браузерное уведомление, если вкладка скрыта, и счётчик на кнопке «Чат». Переключатель «Уведомления» в шапке (Bell/BellOff), состояние в `localStorage`, разрешение браузера запрашивается при включении; звук разблокируется после первого действия пользователя. Код: `lib/notifications.js`, `components/Toasts.jsx`, подписка в `App.jsx`.
 
@@ -412,6 +414,7 @@ values ('you@example.com', 'admin', 'bootstrap');
 | 2026-11-14 | Редактирование/перенос встречи, пересборка участников, Realtime-уведомления об изменении/отмене; жёсткий лимит 10 в БД и UI. |
 | 2026-11-14 | В «Помощь → Инструкция» добавлены 6 пунктов по ВКС: создание, подключение, редактирование, чат, календарь, доступ по ссылке. |
 | 2026-11-14 | ICS-подписка: `calendar_feeds` + RPC + `/calendar/<token>.ics`; Google/Outlook обновляют встречи без OAuth. |
+| 2026-11-14 | Поиск по инструкции: подсказки по вводу, выбор темы, Enter/«Найти», пустой результат с поддержкой и предложением темы. |
 
 ---
 
@@ -539,7 +542,8 @@ RLS: читать/писать только участники; удалять �
   team-chat-icon-light, member-chat-button-light, chat-toasts-light, access-member-lock-light, calendar-light, access-admin-dark, team-access-dark,
   header-light, header-dark, prod-login, analytics-dashboard, task-recurrence, task-duplicate-warning,
   meetings-list, meeting-create, meeting-details, meeting-calendar, meeting-reminder, meeting-room,
-  meeting-chat, meeting-chat-sent, meeting-calendar-links, meeting-edit, calendar-feed). Временный стенд удалён.
+  meeting-chat, meeting-chat-sent, meeting-calendar-links, meeting-edit, calendar-feed,
+  faq-search-suggestions, faq-search-topic, faq-search-results, faq-search-empty). Временный стенд удалён.
 - Чат: отправка проверена в headless Chrome — ввод в composer, Enter, сообщение появилось
   в переписке, поле очистилось (PASS); выбор сотрудника через «+» проверен кликом (открывается
   список команды с поиском).
@@ -673,6 +677,10 @@ RLS: читать/писать только участники; удалять �
   ICS-подписка: RPC выдал токен, локальный `server.js` отдал `/calendar/<token>.ics` с
   `text/calendar`, CRLF, встречей и ссылкой на комнату; модалка «Календарь по ссылке» проверена
   в headless Chrome. Скриншот `calendar-feed.png`.
+  Поиск по инструкции проверен в headless Chrome: 6 подсказок по «встреч», выбор темы открывает ответ,
+  кнопка «Найти» по «календарь» даёт 5 тем, Enter по «экспорт в марс» — пустой результат с действиями.
+  Скриншоты `faq-search-suggestions.png`, `faq-search-topic.png`, `faq-search-results.png`,
+  `faq-search-empty.png`.
   `npm run lint` и `npm run build` — чисто. Тестовые пользователи и встречи удалены.
 - **Телефон (12.11.2026):** `formatPhone` проверен на вариантах `8…`, `+7…`, `999…`, с пробелами и на пустом
   значении; в профиле на стенде поля показывают `+7 (999) 123-45-67` и `+7 (900) 000-00-00`,
