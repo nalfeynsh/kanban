@@ -347,10 +347,71 @@ textarea.glass-input {
 }
 
 /* Сегментированный переключатель */
+/* Шапка: на широких экранах одна строка, на средних — навигация под брендом. */
+.header-layout {
+	display: grid;
+	grid-template-columns: auto minmax(0, 1fr) auto;
+	grid-template-areas: "brand nav actions";
+	align-items: center;
+	gap: 0.75rem;
+}
+
+.header-brand {
+	grid-area: brand;
+	display: flex;
+	min-width: 0;
+	align-items: center;
+	gap: 0.75rem;
+}
+
+.header-nav {
+	grid-area: nav;
+	display: flex;
+	min-width: 0;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 0.625rem;
+}
+
+.header-actions {
+	grid-area: actions;
+	display: flex;
+	flex-wrap: nowrap;
+	align-items: center;
+	gap: 0.5rem;
+}
+
+@media (max-width: 1660px) {
+	.header-layout {
+		grid-template-columns: minmax(0, 1fr) auto;
+		grid-template-areas:
+			"brand actions"
+			"nav nav";
+	}
+
+	.header-nav {
+		width: 100%;
+	}
+}
+
+@media (max-width: 700px) {
+	.header-layout {
+		grid-template-columns: minmax(0, 1fr);
+		grid-template-areas:
+			"brand"
+			"actions"
+			"nav";
+	}
+
+	.header-actions {
+		flex-wrap: wrap;
+		justify-content: flex-start;
+	}
+}
+
 .glass-segment {
 	display: inline-flex;
-	align-items: center;
-	gap: 0.15rem;
+	align-items: center;	gap: 0.15rem;
 	padding: 0.2rem;
 	border-radius: 0.9rem;
 	border: 1px solid var(--glass-border-soft);

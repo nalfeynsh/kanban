@@ -58,7 +58,8 @@ export default function Header({
 
   return (
     <header className="sticky top-0 z-40 border-b border-slate-300/50 bg-white/55 backdrop-blur-2xl backdrop-saturate-150 dark:border-white/10 dark:bg-slate-950/55">
-      <div className="mx-auto flex max-w-[1800px] flex-wrap items-center gap-3 px-4 py-2.5 sm:px-6">
+      <div className="header-layout mx-auto max-w-[1800px] px-4 py-2.5 sm:px-6">
+        <div className="header-brand">
         {/* Логотип — всегда ведёт на главную */}
         <a
           href="/"
@@ -103,107 +104,111 @@ export default function Header({
             <ChevronDown size={12} className="shrink-0 text-slate-400" />
           </button>
         )}
+        </div>
 
-        {/* Вид */}
-        <div className="glass-segment ml-1 sm:ml-3">
-          <button
-            type="button"
-            className="glass-segment-btn"
-            data-active={currentView === 'board'}
-            onClick={() => onViewChange('board')}
-          >
-            <LayoutDashboard size={15} />
-            <span className="hidden sm:inline">Канбан</span>
-          </button>
-          {features.calendar !== false && (
+        {/* Группа навигации: виды и фильтры могут переноситься вместе */}
+        <div className="header-nav">
+          {/* Вид */}
+          <div className="glass-segment sm:ml-3">
             <button
               type="button"
               className="glass-segment-btn"
-              data-active={currentView === 'calendar'}
-              onClick={() => onViewChange('calendar')}
+              data-active={currentView === 'board'}
+              onClick={() => onViewChange('board')}
             >
-              <CalendarDays size={15} />
-              <span className="hidden sm:inline">Календарь</span>
+              <LayoutDashboard size={15} />
+              <span className="hidden sm:inline">Канбан</span>
+            </button>
+            {features.calendar !== false && (
+              <button
+                type="button"
+                className="glass-segment-btn"
+                data-active={currentView === 'calendar'}
+                onClick={() => onViewChange('calendar')}
+              >
+                <CalendarDays size={15} />
+                <span className="hidden sm:inline">Календарь</span>
+              </button>
+            )}
+            {features.gantt !== false && (
+              <button
+                type="button"
+                className="glass-segment-btn"
+                data-active={currentView === 'gantt'}
+                onClick={() => onViewChange('gantt')}
+                title="Диаграмма Ганта"
+              >
+                <BarChart3 size={15} />
+                <span className="hidden sm:inline">Гант</span>
+              </button>
+            )}
+          </div>
+
+          {/* Фильтр задач */}
+          <div className="glass-segment">
+            <button
+              type="button"
+              className="glass-segment-btn"
+              data-active={filterMode === 'all'}
+              onClick={() => onFilterChange('all')}
+              title="Все доступные задачи"
+            >
+              <Layers size={15} />
+              <span className="hidden md:inline">Все</span>
+            </button>
+            <button
+              type="button"
+              className="glass-segment-btn"
+              data-active={filterMode === 'team'}
+              onClick={() => onFilterChange('team')}
+              title="Командные задачи"
+            >
+              <Users size={15} />
+              <span className="hidden md:inline">Команда</span>
+            </button>
+            <button
+              type="button"
+              className="glass-segment-btn"
+              data-active={filterMode === 'personal'}
+              onClick={() => onFilterChange('personal')}
+              title="Мои личные задачи"
+            >
+              <Lock size={15} />
+              <span className="hidden md:inline">Личное</span>
+            </button>
+          </div>
+
+          {memberFilter && (
+            <button
+              type="button"
+              onClick={onClearMemberFilter}
+              className="glass-chip !py-1 !text-[0.7rem] hover:border-indigo-400/60"
+              title="Сбросить фильтр по сотруднику"
+            >
+              <Avatar
+                name={memberFilter.full_name}
+                color={memberFilter.color}
+                src={memberFilter.avatar_url}
+                className="h-4 w-4 text-[0.5rem]"
+              />
+              {memberFilter.full_name || 'Сотрудник'}
+              <X size={11} />
             </button>
           )}
-          {features.gantt !== false && (
+
+          {overdueOnly && (
             <button
               type="button"
-              className="glass-segment-btn"
-              data-active={currentView === 'gantt'}
-              onClick={() => onViewChange('gantt')}
-              title="Диаграмма Ганта"
+              onClick={onClearOverdue}
+              className="glass-chip cursor-pointer !border-rose-400/60 !bg-rose-500/10 !py-1 !text-[0.7rem] !text-rose-700 hover:!border-rose-400 dark:!text-rose-200"
+              title="Сбросить фильтр просроченных задач"
             >
-              <BarChart3 size={15} />
-              <span className="hidden sm:inline">Гант</span>
+              <AlarmClock size={11} /> Просроченные <X size={11} />
             </button>
           )}
         </div>
 
-        {/* Фильтр задач */}
-        <div className="glass-segment">
-          <button
-            type="button"
-            className="glass-segment-btn"
-            data-active={filterMode === 'all'}
-            onClick={() => onFilterChange('all')}
-            title="Все доступные задачи"
-          >
-            <Layers size={15} />
-            <span className="hidden md:inline">Все</span>
-          </button>
-          <button
-            type="button"
-            className="glass-segment-btn"
-            data-active={filterMode === 'team'}
-            onClick={() => onFilterChange('team')}
-            title="Командные задачи"
-          >
-            <Users size={15} />
-            <span className="hidden md:inline">Команда</span>
-          </button>
-          <button
-            type="button"
-            className="glass-segment-btn"
-            data-active={filterMode === 'personal'}
-            onClick={() => onFilterChange('personal')}
-            title="Мои личные задачи"
-          >
-            <Lock size={15} />
-            <span className="hidden md:inline">Личное</span>
-          </button>
-        </div>
-
-        {memberFilter && (
-          <button
-            type="button"
-            onClick={onClearMemberFilter}
-            className="glass-chip !py-1 !text-[0.7rem] hover:border-indigo-400/60"
-            title="Сбросить фильтр по сотруднику"
-          >
-            <Avatar
-              name={memberFilter.full_name}
-              color={memberFilter.color}
-              src={memberFilter.avatar_url}
-              className="h-4 w-4 text-[0.5rem]"
-            />
-            {memberFilter.full_name || 'Сотрудник'}
-            <X size={11} />
-          </button>
-        )}
-
-        {overdueOnly && (
-          <button
-            type="button"
-            onClick={onClearOverdue}
-            className="glass-chip cursor-pointer !border-rose-400/60 !bg-rose-500/10 !py-1 !text-[0.7rem] !text-rose-700 hover:!border-rose-400 dark:!text-rose-200"
-            title="Сбросить фильтр просроченных задач"
-          >
-            <AlarmClock size={11} /> Просроченные <X size={11} />
-          </button>
-        )}
-
-        <div className="ml-auto flex items-center gap-1.5 sm:gap-2">
+        <div className="header-actions">
           {features.notifications !== false && (
             <button
               type="button"
