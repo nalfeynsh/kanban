@@ -29,6 +29,9 @@ const LIVEKIT_URL = String(process.env.LIVEKIT_URL || '').trim().replace(/\/+$/,
 const LIVEKIT_API_KEY = String(process.env.LIVEKIT_API_KEY || '').trim();
 const LIVEKIT_API_SECRET = String(process.env.LIVEKIT_API_SECRET || '').trim();
 const LIVEKIT_CONFIGURED = Boolean(LIVEKIT_URL && LIVEKIT_API_KEY && LIVEKIT_API_SECRET);
+const VK_ACCESS_TOKEN = String(process.env.VK_ACCESS_TOKEN || '').trim();
+const VK_GROUP_ID = String(process.env.VK_GROUP_ID || '').trim();
+const VK_CONFIGURED = Boolean(VK_ACCESS_TOKEN);
 const JITSI_DOMAIN = String(
   process.env.JITSI_DOMAIN || process.env.VITE_JITSI_DOMAIN || 'meet.jit.si',
 )
@@ -347,8 +350,76 @@ async function handleVksStatus(req, res) {
       configured: LIVEKIT_CONFIGURED,
       url: LIVEKIT_CONFIGURED ? LIVEKIT_URL : null,
     },
+    vk: {
+      configured: VK_CONFIGURED,
+    },
     recording: 'local-tab-beta',
   });
+}
+
+async function resolveSupabaseUser(userToken) {
+  const response = await fetch(`${UPSTREAM}/auth/v1/user`, {
+    headers: { apikey: ANON_KEY, Authorization: `Bearer ${userToken}` },
+  });
+  if (!response.ok) return null;
+  const user = await response.json().catch(() => null);
+  return user?.id ? user : null;
+}
+
+/** Создаёт VK Звонок через calls.start. Токен VK остаётся только на сервере. */
+async function handleVkCall(req, res) {
+  if (req.method !== 'POST') {
+    sendJson(res, 405, { error: 'method_not_allowed' });
+    return;
+  }
+  if (!VK_CONFIGURED) {
+    sendJson(res, 503, {
+      error: 'vk_not_configured',
+      message: 'Задайте VK_ACCESS_TOKEN на сервере, чтобы создавать VK Звонки.',
+    });
+    return;
+  }
+
+  const userToken = apiToken(req);
+  if (!userToken) {
+    sendJson(res, 401, { error: 'missing_token' });
+    return;
+  }
+
+  try {
+    const user = await resolveSupabaseUser(userToken);
+    if (!user) {
+      sendJson(res, 401, { error: 'invalid_session' });
+      return;
+    }
+
+    const params = new URLSearchParams({
+      access_token: VK_ACCESS_TOKEN,
+      v: '5.199',
+    });
+    if (VK_GROUP_ID) params.set('group_id', VK_GROUP_ID);
+
+    const response = await fetch('https://api.vk.com/method/calls.start', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: params,
+    });
+    const payload = await response.json().catch(() => null);
+    if (!response.ok || payload?.error || !payload?.response?.join_link) {
+      const message = payload?.error?.error_msg || 'VK не вернул ссылку на звонок';
+      console.error(`[vk-call] ${message}`);
+      sendJson(res, 502, { error: 'vk_call_failed', message });
+      return;
+    }
+
+    sendJson(res, 200, {
+      join_url: payload.response.join_link,
+      call_id: payload.response.call_id,
+    });
+  } catch (error) {
+    console.error(`[vk-call] ${error?.message || error}`);
+    sendJson(res, 502, { error: 'vk_unreachable' });
+  }
 }
 
 async function handleLiveKitToken(req, res) {
@@ -688,6 +759,7 @@ const server = http.createServer((req, res) => {
       uptime: Math.round(process.uptime()),
       vks: {
         livekit: LIVEKIT_CONFIGURED,
+        vk: VK_CONFIGURED,
         jitsi: JITSI_DOMAIN,
       },
     });
@@ -701,6 +773,11 @@ const server = http.createServer((req, res) => {
 
   if (urlPath === '/api/meetings/livekit-token') {
     handleLiveKitToken(req, res);
+    return;
+  }
+
+  if (urlPath === '/api/meetings/vk-call') {
+    handleVkCall(req, res);
     return;
   }
 

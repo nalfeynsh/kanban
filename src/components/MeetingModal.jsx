@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { CalendarPlus, Check, Loader, Users, X } from 'lucide-react';
+import { CalendarPlus, Check, Loader, Users, Video, X } from 'lucide-react';
 import Avatar from './Avatar';
 import DateTimeField from './DateTimeField';
+import { supabase } from '../supabaseClient';
 
 function defaultTimes() {
   const start = new Date();
@@ -30,6 +31,8 @@ export default function MeetingModal({
   const [participantIds, setParticipantIds] = useState(initialParticipantIds);
   const [hostId, setHostId] = useState(() => meeting?.host_id || currentUserId || '');
   const [saving, setSaving] = useState(false);
+  const [vkBusy, setVkBusy] = useState(false);
+  const [vkError, setVkError] = useState('');
   const [error, setError] = useState('');
   const maxInvitees = 9;
 
@@ -112,6 +115,38 @@ export default function MeetingModal({
     });
     setSaving(false);
     if (ok) onClose();
+  };
+
+  const handleCreateVkCall = async () => {
+    if (vkBusy) return;
+    setVkBusy(true);
+    setVkError('');
+    try {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+      if (!session?.access_token) {
+        throw new Error('Нет активной сессии. Войдите снова.');
+      }
+
+      const response = await fetch('/api/meetings/vk-call', {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${session.access_token}`,
+          'Content-Type': 'application/json',
+        },
+        body: '{}',
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok || !payload.join_url) {
+        throw new Error(payload.message || 'Не удалось создать VK Звонок');
+      }
+      setExternalJoinUrl(payload.join_url);
+    } catch (vkCallError) {
+      setVkError(vkCallError?.message || 'Не удалось создать VK Звонок');
+    } finally {
+      setVkBusy(false);
+    }
   };
 
   return createPortal(
@@ -220,6 +255,19 @@ export default function MeetingModal({
                 Телемост
               </a>
             </p>
+            <button
+              type="button"
+              onClick={handleCreateVkCall}
+              disabled={vkBusy}
+              className="glass-btn mt-1.5 !px-2.5 !py-1 !text-[0.65rem]"
+              title="Создать ссылку на VK Звонок через API"
+            >
+              {vkBusy ? <Loader size={12} className="animate-spin" /> : <Video size={12} />}
+              {vkBusy ? 'Создаём…' : 'Создать VK Звонок'}
+            </button>
+            {vkError && (
+              <p className="mt-1 text-[0.62rem] text-rose-600 dark:text-rose-300">{vkError}</p>
+            )}
           </label>
 
           <label className="block">
