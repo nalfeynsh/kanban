@@ -19,6 +19,7 @@ import {
   XCircle,
 } from 'lucide-react';
 import Avatar from './Avatar';
+import { supabase } from '../supabaseClient';
 import { formatDue } from '../lib/format';
 import { downloadMeetingIcs, googleCalendarUrl, outlookCalendarUrl } from '../lib/meetingCalendar';
 
@@ -34,10 +35,17 @@ function statusClass(status) {
   return 'bg-amber-500/12 text-amber-700 dark:text-amber-300';
 }
 
+function formatBytes(value) {
+  const size = Number(value) || 0;
+  if (size < 1024 * 1024) return `${Math.max(1, Math.round(size / 1024))} КБ`;
+  return `${(size / (1024 * 1024)).toFixed(1)} МБ`;
+}
+
 export default function MeetingDetailsModal({
   meeting,
   participants = [],
   attendance = [],
+  recordings = [],
   members = [],
   currentUserId,
   onClose,
@@ -50,6 +58,7 @@ export default function MeetingDetailsModal({
   const [busy, setBusy] = useState(false);
   const [copied, setCopied] = useState(false);
   const [error, setError] = useState('');
+  const [openingRecording, setOpeningRecording] = useState(null);
 
   const memberById = useMemo(() => new Map(members.map((member) => [member.id, member])), [members]);
   const attendanceByUser = useMemo(
@@ -115,6 +124,20 @@ export default function MeetingDetailsModal({
     setBusy(false);
     if (!ok) setError('Не удалось отменить встречу');
     else onClose();
+  };
+
+  const handleRecording = async (recording) => {
+    setOpeningRecording(recording.id);
+    setError('');
+    const { data, error: urlError } = await supabase.storage
+      .from('meeting-recordings')
+      .createSignedUrl(recording.path, 3600);
+    setOpeningRecording(null);
+    if (urlError || !data?.signedUrl) {
+      setError(urlError?.message || 'Не удалось открыть запись');
+      return;
+    }
+    window.open(data.signedUrl, '_blank', 'noopener,noreferrer');
   };
 
   return createPortal(
@@ -248,6 +271,47 @@ export default function MeetingDetailsModal({
               Событие добавится в ваш календарь; ссылка на встречу будет в описании.
             </p>
           </div>
+          )}
+
+          {recordings.length > 0 && (
+            <div>
+              <p className="mb-1.5 flex items-center justify-between text-[0.65rem] font-semibold tracking-[0.1em] text-slate-500 uppercase dark:text-slate-400">
+                <span>Записи встречи</span>
+                <span className="font-normal normal-case tracking-normal">{recordings.length}</span>
+              </p>
+              <div className="space-y-1">
+                {recordings.map((recording) => (
+                  <div
+                    key={recording.id}
+                    className="flex items-center gap-2 rounded-xl border border-slate-300/50 bg-white/40 px-2.5 py-2 dark:border-white/10 dark:bg-white/5"
+                  >
+                    <Video size={15} className="shrink-0 text-indigo-500 dark:text-indigo-300" />
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-xs font-medium text-slate-800 dark:text-slate-100">
+                        {recording.file_name}
+                      </p>
+                      <p className="text-[0.6rem] text-slate-500 dark:text-slate-400">
+                        {formatDue(recording.created_at)} · {formatBytes(recording.size_bytes)}
+                        {recording.duration_seconds ? ` · ${Math.max(1, Math.round(recording.duration_seconds / 60))} мин` : ''}
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => handleRecording(recording)}
+                      disabled={openingRecording === recording.id}
+                      className="glass-btn shrink-0 !px-2.5 !py-1.5 !text-[0.68rem]"
+                    >
+                      {openingRecording === recording.id ? (
+                        <Loader size={12} className="animate-spin" />
+                      ) : (
+                        <Download size={12} />
+                      )}
+                      Скачать
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
           )}
 
           <div>

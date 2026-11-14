@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowLeft, Loader2, MessageCircle, ShieldAlert, Video } from 'lucide-react';
+import { ArrowLeft, Circle, Loader2, MessageCircle, ShieldAlert, Square, Video } from 'lucide-react';
 import { supabase } from '../supabaseClient';
 import { formatDue } from '../lib/format';
 import MeetingChatModal from './MeetingChatModal';
@@ -7,6 +7,12 @@ import MeetingChatModal from './MeetingChatModal';
 const JITSI_DOMAIN = String(import.meta.env.VITE_JITSI_DOMAIN || 'meet.jit.si')
   .replace(/^https?:\/\//, '')
   .replace(/\/+$/, '');
+
+function formatClock(totalSeconds) {
+  const seconds = Math.max(0, Math.floor(totalSeconds));
+  const minutes = Math.floor(seconds / 60);
+  return `${String(minutes).padStart(2, '0')}:${String(seconds % 60).padStart(2, '0')}`;
+}
 
 function loadJitsiApi(domain) {
   if (typeof window === 'undefined') return Promise.reject(new Error('Нет браузера'));
@@ -43,9 +49,147 @@ export default function MeetingRoomPage({ token, profile, userEmail, currentUser
   const [isPresent, setIsPresent] = useState(false);
   const attendanceTimerRef = useRef(null);
   const attendanceJoinedRef = useRef(false);
+  const [recording, setRecording] = useState(false);
+  const [recordingSeconds, setRecordingSeconds] = useState(0);
+  const [recordingBusy, setRecordingBusy] = useState(false);
+  const [recordingNotice, setRecordingNotice] = useState('');
+  const recorderRef = useRef(null);
+  const recordStreamRef = useRef(null);
+  const recordChunksRef = useRef([]);
+  const recordTimerRef = useRef(null);
+  const recordStartedAtRef = useRef(0);
 
   const displayName = profile?.full_name || userEmail?.split('@')[0] || 'Сотрудник';
   const roomName = useMemo(() => `kanban-${token}`, [token]);
+
+  const startRecording = async () => {
+    if (recording || recordingBusy) return;
+    if (!meeting || !currentUserId) {
+      setRecordingNotice('Не удалось определить встречу или пользователя');
+      return;
+    }
+    if (!navigator.mediaDevices?.getDisplayMedia || typeof MediaRecorder === 'undefined') {
+      setRecordingNotice('Браузер не поддерживает запись экрана');
+      return;
+    }
+
+    setRecordingNotice('');
+    try {
+      const stream = await navigator.mediaDevices.getDisplayMedia({
+        video: { frameRate: 30 },
+        audio: true,
+        preferCurrentTab: true,
+      });
+      const mimeCandidates = [
+        'video/webm;codecs=vp9,opus',
+        'video/webm;codecs=vp8,opus',
+        'video/webm',
+      ];
+      const mimeType = mimeCandidates.find((type) => MediaRecorder.isTypeSupported?.(type));
+      const recorder = mimeType ? new MediaRecorder(stream, { mimeType }) : new MediaRecorder(stream);
+
+      recordChunksRef.current = [];
+      recordStartedAtRef.current = Date.now();
+      recordStreamRef.current = stream;
+      recorderRef.current = recorder;
+
+      recorder.ondataavailable = (event) => {
+        if (event.data?.size) recordChunksRef.current.push(event.data);
+      };
+      recorder.onstop = async () => {
+        const duration = Math.max(1, Math.round((Date.now() - recordStartedAtRef.current) / 1000));
+        setRecording(false);
+        if (recordTimerRef.current) {
+          window.clearInterval(recordTimerRef.current);
+          recordTimerRef.current = null;
+        }
+        recordStreamRef.current?.getTracks().forEach((track) => track.stop());
+        recordStreamRef.current = null;
+        recorderRef.current = null;
+
+        const chunks = recordChunksRef.current;
+        recordChunksRef.current = [];
+        if (!chunks.length) {
+          setRecordingNotice('Запись пустая — сохранять нечего');
+          return;
+        }
+
+        setRecordingBusy(true);
+        try {
+          const blob = new Blob(chunks, { type: recorder.mimeType || 'video/webm' });
+          const mimeType = blob.type.split(';')[0] || 'video/webm';
+          const extension = mimeType.includes('mp4') ? 'mp4' : 'webm';
+          const path = `${meeting.id}/${currentUserId}/${crypto.randomUUID()}.${extension}`;
+          const fileName = `Запись встречи ${new Date().toLocaleString('ru-RU')}.${extension}`;
+          const { error: uploadError } = await supabase.storage
+            .from('meeting-recordings')
+            .upload(path, blob, { contentType: mimeType, upsert: false });
+          if (uploadError) {
+            setRecordingNotice(`Не удалось загрузить запись: ${uploadError.message}`);
+            return;
+          }
+
+          const { error: rowError } = await supabase.from('meeting_recordings').insert({
+            meeting_id: meeting.id,
+            author_id: currentUserId,
+            path,
+            file_name: fileName,
+            mime_type: mimeType,
+            size_bytes: blob.size,
+            duration_seconds: duration,
+          });
+          if (rowError) {
+            setRecordingNotice(`Файл загружен, но не привязан к встрече: ${rowError.message}`);
+            return;
+          }
+
+          setRecordingNotice(`Запись сохранена (${formatClock(duration)}). Скачать её можно в деталях встречи.`);
+        } finally {
+          setRecordingBusy(false);
+        }
+      };
+
+      stream.getVideoTracks()[0]?.addEventListener('ended', () => {
+        if (recorder.state !== 'inactive') recorder.stop();
+      });
+      recorder.start(1000);
+      setRecording(true);
+      setRecordingSeconds(0);
+      recordTimerRef.current = window.setInterval(() => {
+        setRecordingSeconds(Math.round((Date.now() - recordStartedAtRef.current) / 1000));
+      }, 1000);
+    } catch (recordError) {
+      recordStreamRef.current?.getTracks().forEach((track) => track.stop());
+      recordStreamRef.current = null;
+      if (recordError?.name === 'NotAllowedError') {
+        setRecordingNotice('Выбор вкладки отменён');
+      } else {
+        setRecordingNotice(recordError?.message || 'Не удалось начать запись');
+      }
+    }
+  };
+
+  const stopRecording = () => {
+    if (recorderRef.current && recorderRef.current.state !== 'inactive') {
+      recorderRef.current.stop();
+    }
+  };
+
+  useEffect(
+    () => () => {
+      if (recordTimerRef.current) window.clearInterval(recordTimerRef.current);
+      if (recorderRef.current && recorderRef.current.state !== 'inactive') {
+        try {
+          recorderRef.current.stop();
+        } catch {
+          // запись уже остановлена
+        }
+      }
+      recordStreamRef.current?.getTracks().forEach((track) => track.stop());
+      recordStreamRef.current = null;
+    },
+    [],
+  );
 
   useEffect(() => {
     let alive = true;
@@ -228,6 +372,26 @@ export default function MeetingRoomPage({ token, profile, userEmail, currentUser
         )}
         <button
           type="button"
+          onClick={recording ? stopRecording : startRecording}
+          disabled={recordingBusy}
+          className={`glass-btn !px-2.5 !py-1.5 !text-xs ${
+            recording ? '!border-rose-400/60 !bg-rose-500/12 !text-rose-700 dark:!text-rose-300' : ''
+          }`}
+          title="Записать вкладку с встречей (видео и звук вкладки)"
+        >
+          {recordingBusy ? (
+            <Loader2 size={13} className="animate-spin" />
+          ) : recording ? (
+            <Square size={13} className="fill-current" />
+          ) : (
+            <Circle size={13} className="fill-rose-500 text-rose-500" />
+          )}
+          <span className="hidden sm:inline">
+            {recording ? formatClock(recordingSeconds) : recordingBusy ? 'Сохраняем…' : 'Запись'}
+          </span>
+        </button>
+        <button
+          type="button"
           onClick={() => setIsChatOpen(true)}
           className="glass-btn !px-2.5 !py-1.5 !text-xs"
           title="Чат встречи"
@@ -236,6 +400,21 @@ export default function MeetingRoomPage({ token, profile, userEmail, currentUser
           <span className="hidden sm:inline">Чат</span>
         </button>
       </header>
+
+      {recordingNotice && (
+        <div className="flex shrink-0 items-center gap-2 border-b border-amber-400/30 bg-amber-400/10 px-4 py-1.5 text-[0.68rem] text-amber-800 dark:text-amber-200">
+          <ShieldAlert size={12} className="shrink-0" />
+          <span className="min-w-0 flex-1">{recordingNotice}</span>
+          <button
+            type="button"
+            onClick={() => setRecordingNotice('')}
+            className="shrink-0 text-xs font-semibold opacity-70 hover:opacity-100"
+            aria-label="Скрыть сообщение"
+          >
+            ×
+          </button>
+        </div>
+      )}
 
       <div className="relative min-h-0 flex-1">
         <div ref={containerRef} className="h-full w-full" />

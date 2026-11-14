@@ -105,6 +105,7 @@ export default function App() {
   const [meetings, setMeetings] = useState([]);
   const [meetingParticipants, setMeetingParticipants] = useState([]);
   const [meetingAttendance, setMeetingAttendance] = useState([]);
+  const [meetingRecordings, setMeetingRecordings] = useState([]);
   const [meetingsSupported, setMeetingsSupported] = useState(true);
   const [chatPeerId, setChatPeerId] = useState(null);
   const [chatConversationId, setChatConversationId] = useState(null);
@@ -182,6 +183,7 @@ export default function App() {
         setCalendarFeedToken('');
         setIsCalendarFeedOpen(false);
         setMeetingAttendance([]);
+        setMeetingRecordings([]);
         setMemberFilter(null);
         setLoading(false);
       }
@@ -362,11 +364,13 @@ export default function App() {
     setIsMeetingsOpen(false);
     setSelectedMeeting(meeting);
     setMeetingAttendance([]);
-    const { data } = await supabase
-      .from('meeting_attendance')
-      .select('*')
-      .eq('meeting_id', meeting.id);
-    setMeetingAttendance(data || []);
+    setMeetingRecordings([]);
+    const [{ data: attendance }, { data: recordings }] = await Promise.all([
+      supabase.from('meeting_attendance').select('*').eq('meeting_id', meeting.id),
+      supabase.from('meeting_recordings').select('*').eq('meeting_id', meeting.id).order('created_at', { ascending: false }),
+    ]);
+    setMeetingAttendance(attendance || []);
+    setMeetingRecordings(recordings || []);
   }, []);
 
   // Напоминания о встречах: 30 и 5 минут. Работают, пока открыта вкладка.
@@ -1882,11 +1886,13 @@ export default function App() {
           meeting={selectedMeeting}
           participants={meetingParticipants.filter((item) => item.meeting_id === selectedMeeting.id)}
           attendance={meetingAttendance}
+          recordings={meetingRecordings}
           members={allProfiles}
           currentUserId={userId}
           onClose={() => {
             setSelectedMeeting(null);
             setMeetingAttendance([]);
+            setMeetingRecordings([]);
           }}
           onRespond={handleRespondMeeting}
           onCancel={handleCancelMeeting}
