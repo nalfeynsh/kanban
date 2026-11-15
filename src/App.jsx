@@ -2087,6 +2087,10 @@ export default function App() {
         <ProjectWorkflowModal
           project={workflowProject}
           members={allProfiles}
+          onBack={() => {
+            setWorkflowProject(null);
+            setIsProjectsOpen(true);
+          }}
           onClose={() => setWorkflowProject(null)}
           onChanged={loadData}
         />

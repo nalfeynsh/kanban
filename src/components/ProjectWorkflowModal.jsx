@@ -13,6 +13,7 @@ import { supabase } from '../supabaseClient';
 export default function ProjectWorkflowModal({
   project,
   members = [],
+  onBack,
   onClose,
   onChanged,
 }) {
@@ -174,10 +175,20 @@ export default function ProjectWorkflowModal({
       <div className="modal-panel glass-panel flex max-h-[90vh] w-full max-w-2xl flex-col overflow-hidden rounded-3xl">
         <div className="flex items-start justify-between gap-3 border-b border-slate-300/50 px-5 py-4 dark:border-white/10">
           <div>
-            <h2 className="flex items-center gap-2 text-base font-bold text-slate-900 dark:text-white">
-              <ArrowLeft size={17} className="text-indigo-500 dark:text-indigo-300" />
-              Этапы проекта
-            </h2>
+            <div className="flex items-center gap-1.5">
+              <button
+                type="button"
+                onClick={() => (onBack ? onBack() : onClose?.())}
+                className="-ml-1 rounded-lg p-1 text-indigo-500 transition hover:bg-indigo-500/10 hover:text-indigo-700 dark:text-indigo-300 dark:hover:text-indigo-200"
+                title="Назад к проектам"
+                aria-label="Назад к проектам"
+              >
+                <ArrowLeft size={17} />
+              </button>
+              <h2 className="text-base font-bold text-slate-900 dark:text-white">
+                Этапы проекта
+              </h2>
+            </div>
             <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
               {project.name} · добавление, названия и ответственные
             </p>
