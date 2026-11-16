@@ -35,6 +35,7 @@ import CalendarFeedModal from './components/CalendarFeedModal';
 import MeetingRoomPage from './components/MeetingRoomPage';
 import GuestMeetingPage from './components/GuestMeetingPage';
 import VkAuthPage from './components/VkAuthPage';
+import MobilePrototype from './components/MobilePrototype';
 import {
   notificationPermission,
   playChime,
@@ -163,6 +164,8 @@ export default function App() {
   const isVkAuth =
     window.location.pathname.replace(/\/+$/, '') === '/vk-auth' ||
     /(?:^#|&)access_token=/.test(window.location.hash);
+  const isMobilePrototype =
+    window.location.pathname.replace(/\/+$/, '') === '/mobile-prototype';
 
   // --- Тема ---
   const [theme, setTheme] = useState(() => localStorage.getItem('theme') || 'light');
@@ -1775,6 +1778,8 @@ export default function App() {
   };
 
   if (isVkAuth) return <VkAuthPage />;
+
+  if (isMobilePrototype) return <MobilePrototype />;
 
   if (guestToken) return <GuestMeetingPage token={guestToken} />;
 

@@ -67,6 +67,7 @@ components/
   AnalyticsPanel.jsx        — дашборд аналитики для руководителей
   AnalyticsFiltersModal.jsx — период/сотрудник для дашборда
   ThemeToggle.jsx           — тема
+  MobilePrototype.jsx       — интерактивный прототип мобильной доски и задачи
 lib/
   analytics.js              — расчёт KPI, статусов, сроков и группировка по сотрудникам
   recurrence.js             — следующая дата повторяющейся задачи
