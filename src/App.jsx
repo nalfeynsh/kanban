@@ -160,7 +160,9 @@ export default function App() {
     const match = window.location.pathname.match(/^\/g\/([^/]+)\/?$/);
     return match ? decodeURIComponent(match[1]) : null;
   }, []);
-  const isVkAuth = window.location.pathname.replace(/\/+$/, '') === '/vk-auth';
+  const isVkAuth =
+    window.location.pathname.replace(/\/+$/, '') === '/vk-auth' ||
+    /(?:^#|&)access_token=/.test(window.location.hash);
 
   // --- Тема ---
   const [theme, setTheme] = useState(() => localStorage.getItem('theme') || 'light');
