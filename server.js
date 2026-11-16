@@ -32,6 +32,12 @@ const LIVEKIT_CONFIGURED = Boolean(LIVEKIT_URL && LIVEKIT_API_KEY && LIVEKIT_API
 const VK_ACCESS_TOKEN = String(process.env.VK_ACCESS_TOKEN || '').trim();
 const VK_GROUP_ID = String(process.env.VK_GROUP_ID || '').trim();
 const VK_CONFIGURED = Boolean(VK_ACCESS_TOKEN);
+const VK_CLIENT_ID = String(process.env.VK_CLIENT_ID || '54900725').trim();
+const VK_CLIENT_SECRET = String(process.env.VK_CLIENT_SECRET || '').trim();
+const VK_REDIRECT_URI = String(
+  process.env.VK_REDIRECT_URI || 'https://kanban.layero.app/vk-auth',
+).trim();
+const VK_OAUTH_CONFIGURED = Boolean(VK_CLIENT_ID && VK_CLIENT_SECRET && VK_REDIRECT_URI);
 const JITSI_DOMAIN = String(
   process.env.JITSI_DOMAIN || process.env.VITE_JITSI_DOMAIN || 'meet.jit.si',
 )
@@ -352,9 +358,59 @@ async function handleVksStatus(req, res) {
     },
     vk: {
       configured: VK_CONFIGURED,
+      oauth: VK_OAUTH_CONFIGURED,
     },
     recording: 'local-tab-beta',
   });
+}
+
+/** Обмен authorization code на user access token (client_secret только на сервере). */
+async function handleVkOAuthToken(req, res) {
+  if (req.method !== 'POST') {
+    sendJson(res, 405, { error: 'method_not_allowed' });
+    return;
+  }
+  if (!VK_OAUTH_CONFIGURED) {
+    sendJson(res, 503, {
+      error: 'vk_oauth_not_configured',
+      message: 'Задайте VK_CLIENT_ID, VK_CLIENT_SECRET и VK_REDIRECT_URI на сервере.',
+    });
+    return;
+  }
+
+  const body = await readJsonBody(req, 16 * 1024);
+  const code = String(body?.code || '').trim();
+  if (!code || code.length > 2048) {
+    sendJson(res, 400, { error: 'invalid_code' });
+    return;
+  }
+
+  try {
+    const params = new URLSearchParams({
+      client_id: VK_CLIENT_ID,
+      client_secret: VK_CLIENT_SECRET,
+      redirect_uri: VK_REDIRECT_URI,
+      code,
+    });
+    const response = await fetch(`https://oauth.vk.com/access_token?${params}`);
+    const payload = await response.json().catch(() => null);
+    if (!response.ok || payload?.error || !payload?.access_token) {
+      console.error(`[vk-oauth] ${payload?.error_description || 'no access token'}`);
+      sendJson(res, 502, {
+        error: 'vk_oauth_failed',
+        message: payload?.error_description || payload?.error || 'VK не выдал access token',
+      });
+      return;
+    }
+    sendJson(res, 200, {
+      access_token: payload.access_token,
+      expires_in: payload.expires_in,
+      user_id: payload.user_id,
+    });
+  } catch (error) {
+    console.error(`[vk-oauth] ${error?.message || error}`);
+    sendJson(res, 502, { error: 'vk_unreachable' });
+  }
 }
 
 async function resolveSupabaseUser(userToken) {
@@ -778,6 +834,11 @@ const server = http.createServer((req, res) => {
 
   if (urlPath === '/api/meetings/vk-call') {
     handleVkCall(req, res);
+    return;
+  }
+
+  if (urlPath === '/api/vk/token') {
+    handleVkOAuthToken(req, res);
     return;
   }
 

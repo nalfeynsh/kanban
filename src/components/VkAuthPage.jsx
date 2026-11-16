@@ -1,16 +1,48 @@
-import { useMemo, useState } from 'react';
-import { Check, Copy, KeyRound, ShieldAlert } from 'lucide-react';
+import { useEffect, useMemo, useState } from 'react';
+import { Check, Copy, KeyRound, Loader2, ShieldAlert } from 'lucide-react';
 
-function readHash() {
+function readParams() {
   if (typeof window === 'undefined') return new URLSearchParams();
-  return new URLSearchParams(window.location.hash.replace(/^#/, ''));
+  const search = new URLSearchParams(window.location.search);
+  const hash = new URLSearchParams(window.location.hash.replace(/^#/, ''));
+  for (const [key, value] of hash) search.set(key, value);
+  return search;
 }
 
 export default function VkAuthPage() {
-  const params = useMemo(() => readHash(), []);
-  const accessToken = params.get('access_token') || '';
-  const error = params.get('error_description') || params.get('error') || '';
+  const params = useMemo(() => readParams(), []);
+  const code = params.get('code') || '';
+  const initialError = params.get('error_description') || params.get('error') || '';
+  const [accessToken, setAccessToken] = useState(params.get('access_token') || '');
+  const [error, setError] = useState(initialError);
+  const [exchanging, setExchanging] = useState(Boolean(code && !params.get('access_token')));
   const [copied, setCopied] = useState(false);
+
+  useEffect(() => {
+    if (!code || accessToken) return undefined;
+    let alive = true;
+    fetch('/api/vk/token', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ code }),
+    })
+      .then(async (response) => {
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok || !payload.access_token) {
+          throw new Error(payload.message || 'Не удалось обменять код на токен');
+        }
+        if (alive) setAccessToken(payload.access_token);
+      })
+      .catch((exchangeError) => {
+        if (alive) setError(exchangeError?.message || 'Не удалось получить токен');
+      })
+      .finally(() => {
+        if (alive) setExchanging(false);
+      });
+    return () => {
+      alive = false;
+    };
+  }, [code, accessToken]);
 
   const copyToken = async () => {
     if (!accessToken) return;
@@ -31,7 +63,11 @@ export default function VkAuthPage() {
           <h1 className="text-lg font-bold text-slate-900 dark:text-white">Получение токена VK</h1>
         </div>
 
-        {error ? (
+        {exchanging ? (
+          <div className="mt-4 flex items-center gap-2 rounded-2xl border border-indigo-400/30 bg-indigo-400/10 p-4 text-xs text-indigo-700 dark:text-indigo-200">
+            <Loader2 size={16} className="animate-spin" /> Обмениваем код VK на токен…
+          </div>
+        ) : error ? (
           <div className="mt-4 rounded-2xl border border-rose-400/40 bg-rose-500/10 p-4">
             <p className="flex items-center gap-2 text-sm font-semibold text-rose-700 dark:text-rose-300">
               <ShieldAlert size={16} /> VK не выдал токен

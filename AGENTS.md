@@ -386,6 +386,8 @@ docs/feature-flags.md       — анализ функциональных фла
   токен VK в браузер не попадает. Доступность — `GET /api/vks/status` → `vk.configured`.
   Для веб-приложения VK токен можно получить через `/vk-auth`: redirect URI
   `https://kanban.layero.app/vk-auth` должен быть разрешён в настройках VK-приложения.
+  Authorization Code Flow: `VK_CLIENT_ID`, `VK_CLIENT_SECRET`, `VK_REDIRECT_URI`;
+  страница `/vk-auth?code=...` обменивает код через сервер (`POST /api/vk/token`).
 - ICS-подписка: `GET /calendar/<token>.ics` на `server.js`; токен создаётся RPC
   `get_or_create_calendar_feed`, фид содержит только встречи владельца.
 - Проверка живости: `GET /health` → `{"ok":true,"upstream":"…","root":"/app/dist"}`.
