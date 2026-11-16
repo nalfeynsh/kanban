@@ -464,7 +464,7 @@ export default function App() {
 
   // Напоминания о встречах: 30 и 5 минут. Работают, пока открыта вкладка.
   useEffect(() => {
-    if (!userId || meetings.length === 0) return undefined;
+    if (!userId || meetings.length === 0 || features.meetings === false) return undefined;
 
     const checkReminders = () => {
       const now = Date.now();
@@ -516,11 +516,11 @@ export default function App() {
     const timer = window.setInterval(checkReminders, 30_000);
     return () => window.clearInterval(timer);
     // handleOpenMeeting стабилен (useCallback), meetings обновляют замыкание
-  }, [meetings, meetingParticipants, userId, notificationsEnabled, handleOpenMeeting]);
+  }, [meetings, meetingParticipants, userId, notificationsEnabled, handleOpenMeeting, features.meetings]);
 
   // Приглашение на встречу приходит в реальном времени.
   useEffect(() => {
-    if (!userId) return undefined;
+    if (!userId || features.meetings === false) return undefined;
     const channel = supabase
       .channel(`meeting-invites-${userId}`)
       .on(
@@ -600,7 +600,7 @@ export default function App() {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [userId, loadMeetings, notificationsEnabled, handleOpenMeeting]);
+  }, [userId, loadMeetings, notificationsEnabled, handleOpenMeeting, features.meetings]);
 
   // Автоочистка «Готово»: задачи, пробывшие там дольше 3 дней, уходят в архив.
   // Основная проверка живёт в pg_cron (миграция 011); это дублирующий запуск
@@ -773,6 +773,7 @@ export default function App() {
   const canManageRoles = profile?.role === 'admin';
 
   const upcomingMeetingCount = useMemo(() => {
+    if (features.meetings === false) return 0;
     const declined = new Set(
       meetingParticipants
         .filter((item) => item.user_id === userId && item.status === 'declined')
@@ -781,7 +782,7 @@ export default function App() {
     return meetings.filter(
       (meeting) => meeting.status === 'scheduled' && !declined.has(meeting.id),
     ).length;
-  }, [meetings, meetingParticipants, userId]);
+  }, [meetings, meetingParticipants, userId, features.meetings]);
 
   const handleCreateMeeting = async ({
     title,
@@ -1990,7 +1991,7 @@ export default function App() {
         {currentView === 'calendar' && (
           <CalendarView
             tasks={visibleTasks}
-            meetings={meetings}
+            meetings={features.meetings === false ? [] : meetings}
             numberById={numberById}
             onTaskClick={setSelectedTask}
             onMeetingClick={handleOpenMeeting}
