@@ -34,6 +34,7 @@ import MeetingChatModal from './components/MeetingChatModal';
 import CalendarFeedModal from './components/CalendarFeedModal';
 import MeetingRoomPage from './components/MeetingRoomPage';
 import GuestMeetingPage from './components/GuestMeetingPage';
+import VkAuthPage from './components/VkAuthPage';
 import {
   notificationPermission,
   playChime,
@@ -159,6 +160,7 @@ export default function App() {
     const match = window.location.pathname.match(/^\/g\/([^/]+)\/?$/);
     return match ? decodeURIComponent(match[1]) : null;
   }, []);
+  const isVkAuth = window.location.pathname.replace(/\/+$/, '') === '/vk-auth';
 
   // --- Тема ---
   const [theme, setTheme] = useState(() => localStorage.getItem('theme') || 'light');
@@ -1768,6 +1770,8 @@ export default function App() {
 
     setRoleSaving(false);
   };
+
+  if (isVkAuth) return <VkAuthPage />;
 
   if (guestToken) return <GuestMeetingPage token={guestToken} />;
 

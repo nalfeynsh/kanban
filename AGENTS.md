@@ -384,6 +384,8 @@ docs/feature-flags.md       — анализ функциональных фла
 - VK Звонки: `VK_ACCESS_TOKEN` (user access token) и опционально `VK_GROUP_ID` на сервере.
   Кнопка «Создать VK Звонок» в форме встречи вызывает `calls.start` и подставляет ссылку;
   токен VK в браузер не попадает. Доступность — `GET /api/vks/status` → `vk.configured`.
+  Для веб-приложения VK токен можно получить через `/vk-auth`: redirect URI
+  `https://kanban.layero.app/vk-auth` должен быть разрешён в настройках VK-приложения.
 - ICS-подписка: `GET /calendar/<token>.ics` на `server.js`; токен создаётся RPC
   `get_or_create_calendar_feed`, фид содержит только встречи владельца.
 - Проверка живости: `GET /health` → `{"ok":true,"upstream":"…","root":"/app/dist"}`.
