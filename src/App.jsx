@@ -27,6 +27,7 @@ import BulkActions from './components/BulkActions';
 import ChatModal from './components/ChatModal';
 import HelpModal from './components/HelpModal';
 import Toasts from './components/Toasts';
+import NotificationsModal from './components/NotificationsModal';
 import MeetingModal from './components/MeetingModal';
 import MeetingsModal from './components/MeetingsModal';
 import MeetingDetailsModal from './components/MeetingDetailsModal';
@@ -37,7 +38,6 @@ import GuestMeetingPage from './components/GuestMeetingPage';
 import VkAuthPage from './components/VkAuthPage';
 import MobilePrototype from './components/MobilePrototype';
 import {
-  notificationPermission,
   playChime,
   requestNotifications,
   showSystemNotification,
@@ -56,6 +56,12 @@ import {
   restoreProject,
 } from './lib/projects';
 import { DEFAULT_FEATURES, fetchFeatureFlags, rowsToFeatures } from './lib/features';
+import {
+  createNotification,
+  fetchNotifications,
+  markAllNotificationsRead,
+  markNotificationRead,
+} from './lib/notificationCenter';
 import { readOAuthError, explainOAuthError, cleanOAuthUrl } from './lib/oauth';
 import { canSeeTask, matchesMode } from './lib/access';
 import { byPosition, isTaskOverdue } from './lib/format';
@@ -136,6 +142,8 @@ export default function App() {
   const [activeChatId, setActiveChatId] = useState(null);
   const [chatUnread, setChatUnread] = useState(0);
   const [toasts, setToasts] = useState([]);
+  const [notifications, setNotifications] = useState([]);
+  const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
   const [notificationsEnabled, setNotificationsEnabled] = useState(() => {
     try {
       return localStorage.getItem('kanban.notifications') !== 'off';
@@ -143,7 +151,6 @@ export default function App() {
       return true;
     }
   });
-  const [notificationsPermission, setNotificationsPermission] = useState(() => notificationPermission());
   const [roleSaving, setRoleSaving] = useState(false);
   const [roles, setRoles] = useState([]);
 
@@ -392,6 +399,49 @@ export default function App() {
     };
   }, [userId]);
 
+  useEffect(() => {
+    if (!userId) return undefined;
+    let alive = true;
+    fetchNotifications().then(({ notifications: rows }) => {
+      if (alive) setNotifications(rows);
+    });
+
+    const channel = supabase
+      .channel(`notification-center-${userId}`)
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'notifications', filter: `user_id=eq.${userId}` },
+        (payload) => {
+          if (!payload.new?.id) return;
+          setNotifications((prev) => [
+            payload.new,
+            ...prev.filter((item) => item.id !== payload.new.id),
+          ].slice(0, 100));
+        },
+      )
+      .on(
+        'postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'notifications', filter: `user_id=eq.${userId}` },
+        (payload) => {
+          if (!payload.new?.id) return;
+          setNotifications((prev) =>
+            prev.map((item) => (item.id === payload.new.id ? payload.new : item)),
+          );
+        },
+      )
+      .subscribe();
+
+    return () => {
+      alive = false;
+      supabase.removeChannel(channel);
+    };
+  }, [userId]);
+
+  const unreadNotificationCount = useMemo(
+    () => notifications.filter((notification) => !notification.read_at).length,
+    [notifications],
+  );
+
   // Функциональные флаги: при ошибке оставляем всё включённым.
   useEffect(() => {
     if (!userId) return undefined;
@@ -542,19 +592,40 @@ export default function App() {
             body: meeting.title,
             color: '#0ea5e9',
           };
-          setToasts((prev) => [...prev.filter((item) => item.id !== toast.id), toast].slice(-3));
-          playChime();
-          window.setTimeout(() => {
-            setToasts((prev) => prev.filter((item) => item.id !== toast.id));
-          }, 12_000);
+
+          void createNotification({
+            userId,
+            kind: 'meeting',
+            title: toast.title,
+            body: meeting.title,
+            entityType: 'meeting',
+            entityId: meeting.id,
+            meetingId: meeting.id,
+            dedupeKey: `meeting:${reminderKey}`,
+          }).then(({ notification }) => {
+            if (notification) {
+              setNotifications((prev) => [
+                notification,
+                ...prev.filter((item) => item.id !== notification.id),
+              ].slice(0, 100));
+            }
+          });
 
           if (notificationsEnabled) {
-            showSystemNotification({
-              title: toast.title,
-              body: toast.body,
-              tag: toast.id,
-              onClick: () => handleOpenMeeting(meeting),
-            });
+            setToasts((prev) => [...prev.filter((item) => item.id !== toast.id), toast].slice(-3));
+            playChime();
+            window.setTimeout(() => {
+              setToasts((prev) => prev.filter((item) => item.id !== toast.id));
+            }, 12_000);
+
+            if (document.hidden) {
+              showSystemNotification({
+                title: toast.title,
+                body: toast.body,
+                tag: toast.id,
+                onClick: () => handleOpenMeeting(meeting),
+              });
+            }
           }
         });
       });
@@ -727,6 +798,75 @@ export default function App() {
     () => scopedTasks.filter((task) => isTaskOverdue(task, doneColumnId)),
     [scopedTasks, doneColumnId],
   );
+
+  const dueNotificationRef = useRef(new Set());
+  useEffect(() => {
+    if (!userId || tasks.length === 0 || features.notifications === false) return undefined;
+
+    const checkDueTasks = async () => {
+      const now = Date.now();
+      for (const task of tasks) {
+        if (!task?.due_at || task.deleted_at) continue;
+        if (task.column_id === doneColumnId) continue;
+        if (task.assignee_id !== userId && task.created_by !== userId) continue;
+
+        const due = new Date(task.due_at).getTime();
+        if (!Number.isFinite(due)) continue;
+        const minutesLeft = (due - now) / 60_000;
+        if (minutesLeft > 24 * 60) continue;
+
+        const stage = minutesLeft <= 0 ? 'overdue' : minutesLeft <= 60 ? '1h' : '24h';
+        const dedupeKey = `task-due:${task.id}:${stage}`;
+        if (dueNotificationRef.current.has(dedupeKey)) continue;
+        dueNotificationRef.current.add(dedupeKey);
+
+        const { notification, error } = await createNotification({
+          userId,
+          kind: stage === 'overdue' ? 'task_overdue' : 'task_due',
+          title: stage === 'overdue' ? 'Задача просрочена' : 'Срок задачи приближается',
+          body: task.title,
+          entityType: 'task',
+          entityId: task.id,
+          taskId: task.id,
+          dedupeKey,
+        });
+        if (error) continue;
+        if (notification) {
+          setNotifications((prev) => [
+            notification,
+            ...prev.filter((item) => item.id !== notification.id),
+          ].slice(0, 100));
+        }
+
+        if (!notificationsEnabled) continue;
+        const toast = {
+          id: `task-toast-${task.id}-${stage}`,
+          taskId: task.id,
+          title: stage === 'overdue' ? 'Задача просрочена' : 'Скоро срок задачи',
+          body: task.title,
+          color: stage === 'overdue' ? '#f43f5e' : '#f59e0b',
+        };
+        setToasts((prev) => [...prev.filter((item) => item.id !== toast.id), toast].slice(-3));
+        playChime();
+        window.setTimeout(() => {
+          setToasts((prev) => prev.filter((item) => item.id !== toast.id));
+        }, 10_000);
+        if (document.hidden) {
+          showSystemNotification({
+            title: toast.title,
+            body: toast.body,
+            tag: toast.id,
+            onClick: () => setSelectedTask(task),
+          });
+        }
+      }
+    };
+
+    checkDueTasks();
+    const timer = window.setInterval(checkDueTasks, 60_000);
+    return () => window.clearInterval(timer);
+  }, [tasks, userId, doneColumnId, notificationsEnabled, features.notifications]);
+
 
   const visibleTasks = useMemo(
     () => (overdueOnly ? overdueTasks : scopedTasks),
@@ -1677,15 +1817,15 @@ export default function App() {
             conversationId: row.conversation_id,
           };
 
+          if (!chatViewRef.current.open) setChatUnread((value) => value + 1);
+          if (!notificationsRef.current) return;
+
           setToasts((prev) => [...prev.filter((item) => item.id !== toast.id), toast].slice(-3));
           window.setTimeout(() => {
             setToasts((prev) => prev.filter((item) => item.id !== toast.id));
           }, 8000);
 
-          if (!notificationsRef.current) return;
-
           playChime();
-          if (!chatViewRef.current.open) setChatUnread((value) => value + 1);
           if (document.hidden) {
             showSystemNotification({
               title: toast.title,
@@ -1716,13 +1856,77 @@ export default function App() {
 
     unlockAudio();
     playChime();
-    const permission = await requestNotifications();
-    setNotificationsPermission(permission);
+    await requestNotifications();
     setNotificationsEnabled(true);
     try {
       localStorage.setItem('kanban.notifications', 'on');
     } catch {
       // приватный режим — не критично
+    }
+  };
+
+  const handleReadAllNotifications = async () => {
+    const readAt = new Date().toISOString();
+    setNotifications((prev) =>
+      prev.map((notification) =>
+        notification.read_at ? notification : { ...notification, read_at: readAt },
+      ),
+    );
+    await markAllNotificationsRead();
+  };
+
+  const handleOpenNotifications = () => {
+    setIsNotificationsOpen(true);
+    handleReadAllNotifications();
+  };
+
+  const handleOpenNotification = async (notification) => {
+    setIsNotificationsOpen(false);
+    if (!notification.read_at) {
+      const readAt = new Date().toISOString();
+      setNotifications((prev) =>
+        prev.map((item) => (item.id === notification.id ? { ...item, read_at: readAt } : item)),
+      );
+      await markNotificationRead(notification.id);
+    }
+
+    if (notification.kind === 'chat' && notification.conversation_id) {
+      openChat(null, notification.conversation_id);
+      return;
+    }
+
+    if (notification.kind === 'meeting' && notification.meeting_id) {
+      const meeting =
+        meetings.find((item) => item.id === notification.meeting_id) ||
+        (
+          await supabase
+            .from('meetings')
+            .select('*')
+            .eq('id', notification.meeting_id)
+            .maybeSingle()
+        ).data;
+      if (meeting) handleOpenMeeting(meeting);
+      else setBanner('Встреча из уведомления не найдена.');
+      return;
+    }
+
+    if (notification.task_id) {
+      const task =
+        tasks.find((item) => item.id === notification.task_id) ||
+        (
+          await supabase
+            .from('tasks')
+            .select('*')
+            .eq('id', notification.task_id)
+            .maybeSingle()
+        ).data;
+      if (task) setSelectedTask(task);
+      else setBanner('Задача из уведомления не найдена или уже удалена.');
+      return;
+    }
+
+    if (notification.kind === 'project') {
+      setIsProjectsOpen(true);
     }
   };
 
@@ -1940,7 +2144,8 @@ export default function App() {
         onHelpClick={() => setIsHelpOpen(true)}
         chatUnread={chatUnread}
         notificationsEnabled={notificationsEnabled}
-        notificationsPermission={notificationsPermission}
+        notificationsCount={unreadNotificationCount}
+        onNotificationsClick={handleOpenNotifications}
         onToggleNotifications={handleToggleNotifications}
         onHome={goHome}
         project={currentProject}
@@ -2380,6 +2585,14 @@ export default function App() {
         />
       )}
 
+      <NotificationsModal
+        isOpen={isNotificationsOpen}
+        notifications={notifications}
+        onClose={() => setIsNotificationsOpen(false)}
+        onReadAll={handleReadAllNotifications}
+        onOpenNotification={handleOpenNotification}
+      />
+
       <Toasts
         toasts={toasts}
         onDismiss={(id) => setToasts((prev) => prev.filter((item) => item.id !== id))}
@@ -2388,6 +2601,11 @@ export default function App() {
           if (toast.meetingId) {
             const meeting = meetings.find((item) => item.id === toast.meetingId);
             if (meeting) handleOpenMeeting(meeting);
+            return;
+          }
+          if (toast.taskId) {
+            const task = tasks.find((item) => item.id === toast.taskId);
+            if (task) setSelectedTask(task);
             return;
           }
           openChat(null, toast.conversationId);

@@ -17,7 +17,8 @@ import {
 
   MessageSquare,
   Bell,
-  BellOff,
+  Volume2,
+  VolumeX,
   LifeBuoy,
   Video,
 } from 'lucide-react';
@@ -42,7 +43,8 @@ export default function Header({
   onHelpClick,
   chatUnread = 0,
   notificationsEnabled = true,
-  notificationsPermission = 'default',
+  notificationsCount = 0,
+  onNotificationsClick,
   onToggleNotifications,
   teamCount = 0,
   memberFilter,
@@ -210,24 +212,38 @@ export default function Header({
 
         <div className="header-actions">
           {features.notifications !== false && (
-            <button
-              type="button"
-              onClick={onToggleNotifications}
-              className={`glass-btn relative !px-2.5 !py-1.5 ${
-                notificationsEnabled ? '' : 'opacity-60'
-              }`}
-              title={
-                notificationsEnabled
-                  ? notificationsPermission === 'granted'
-                    ? 'Уведомления включены: звук и браузерные оповещения'
-                    : 'Уведомления включены (только внутри Канбана — разрешите браузерные)'
-                  : 'Включить уведомления'
-              }
-              aria-pressed={notificationsEnabled}
-            >
-              {notificationsEnabled ? <Bell size={17} /> : <BellOff size={17} />}
-              <span className="hidden xl:inline">Уведомления</span>
-            </button>
+            <>
+              <button
+                type="button"
+                onClick={onNotificationsClick}
+                className="glass-btn relative !px-2.5 !py-1.5"
+                title="Уведомления"
+                aria-label={`Уведомления${notificationsCount > 0 ? `: ${notificationsCount}` : ''}`}
+              >
+                <Bell size={17} />
+                <span className="hidden xl:inline">Уведомления</span>
+                {notificationsCount > 0 && (
+                  <span className="absolute -top-1 -right-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-rose-500 px-1 text-[0.55rem] font-bold text-white shadow">
+                    {notificationsCount > 9 ? '9+' : notificationsCount}
+                  </span>
+                )}
+              </button>
+
+              <button
+                type="button"
+                onClick={onToggleNotifications}
+                className={`glass-btn !px-2.5 !py-1.5 ${notificationsEnabled ? '' : 'opacity-60'}`}
+                title={
+                  notificationsEnabled
+                    ? 'Звук уведомлений включён'
+                    : 'Звук уведомлений выключен — уведомления всё равно считаются'
+                }
+                aria-pressed={notificationsEnabled}
+                aria-label={notificationsEnabled ? 'Выключить звук уведомлений' : 'Включить звук уведомлений'}
+              >
+                {notificationsEnabled ? <Volume2 size={17} /> : <VolumeX size={17} />}
+              </button>
+            </>
           )}
 
           {meetingsEnabled && features.meetings !== false && (
