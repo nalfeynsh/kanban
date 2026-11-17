@@ -277,7 +277,9 @@ export default function ProjectsModal({
                           const { error: restoreError } = await onRestoreProject?.(project.id) || {};
                           if (restoreError) setError(restoreError.message);
                         }}
-                        className="glass-btn !px-2.5 !py-1 !text-[0.65rem]"
+                        className={`glass-btn !px-2.5 !py-1 !text-[0.65rem] ${
+                          canDeleteProject(project) ? '' : 'hidden'
+                        }`}
                       >
                         <RotateCcw size={12} /> Восстановить
                       </button>
