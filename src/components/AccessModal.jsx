@@ -31,8 +31,8 @@ import Avatar from './Avatar';
 const TABS = [
   { key: 'members', label: 'Сотрудники', icon: Users, permission: 'team.view' },
   { key: 'roles', label: 'Роли', icon: ShieldCheck, permission: 'roles.manage' },
+  { key: 'matrix', label: 'Права ролей', icon: Table2, permission: 'team.view' },
   { key: 'invites', label: 'Приглашения', icon: KeyRound, permission: 'invites.view' },
-  { key: 'matrix', label: 'Матрица прав', icon: Table2, permission: 'team.view' },
 ];
 
 export default function AccessModal({
