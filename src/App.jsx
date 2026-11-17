@@ -53,6 +53,7 @@ import { readOAuthError, explainOAuthError, cleanOAuthUrl } from './lib/oauth';
 import { canSeeTask, matchesMode } from './lib/access';
 import { byPosition, isTaskOverdue } from './lib/format';
 import { normalizePriority } from './lib/priority';
+import { registerRoleDefinitions, can } from './lib/permissions';
 import { clearLocalTelegram, getLocalTelegram, setLocalTelegram } from './lib/localProfile';
 import { applyTaskUpdates, planTaskMove } from './lib/dnd';
 
@@ -135,6 +136,7 @@ export default function App() {
   });
   const [notificationsPermission, setNotificationsPermission] = useState(() => notificationPermission());
   const [roleSaving, setRoleSaving] = useState(false);
+  const [roles, setRoles] = useState([]);
 
   const [currentView, setCurrentView] = useState('board');
   const [filterMode, setFilterMode] = useState('all');
@@ -239,6 +241,25 @@ export default function App() {
     }).catch(() => {});
     cleanOAuthUrl();
   }, []);
+
+  // --- Роли и права ---
+  const refreshRoles = useCallback(async () => {
+    const { data, error } = await supabase
+      .from('roles')
+      .select('key,name,rank,permissions,is_system')
+      .order('rank', { ascending: false });
+    if (error) return [];
+    const nextRoles = data ?? [];
+    registerRoleDefinitions(nextRoles);
+    setRoles(nextRoles);
+    return nextRoles;
+  }, []);
+
+  useEffect(() => {
+    if (!userId) return undefined;
+    const timer = window.setTimeout(refreshRoles, 0);
+    return () => window.clearTimeout(timer);
+  }, [userId, refreshRoles]);
 
   // --- Профиль ---
   useEffect(() => {
@@ -773,7 +794,7 @@ export default function App() {
     [taskSchema],
   );
 
-  const canManageRoles = profile?.role === 'admin';
+  const canManageRoles = can(profile, 'roles.manage');
 
   const upcomingMeetingCount = useMemo(() => {
     if (features.meetings === false) return 0;
@@ -1751,7 +1772,7 @@ export default function App() {
     setProfileSchema((prev) => mergeFields(prev, collectFields([next])));
   };
 
-  /** Смена роли сотрудника — только администратор */
+  /** Смена роли сотрудника — через серверную проверку иерархии. */
   const handleRoleChange = async (memberId, role) => {
     const previous = allProfiles.find((item) => item.id === memberId);
     if (!previous || previous.role === role) return;
@@ -1761,7 +1782,10 @@ export default function App() {
     setSelectedMember((prev) => (prev?.id === memberId ? { ...prev, role } : prev));
     if (memberId === userId) setProfile((prev) => (prev ? { ...prev, role } : prev));
 
-    const { error } = await supabase.from('profiles').update({ role }).eq('id', memberId);
+    const { error } = await supabase.rpc('assign_role', {
+      p_user_id: memberId,
+      p_role_key: role,
+    });
 
     if (error) {
       setAllProfiles((prev) => prev.map((item) => (item.id === memberId ? previous : item)));
@@ -1769,9 +1793,11 @@ export default function App() {
       if (memberId === userId) setProfile((prev) => (prev ? { ...prev, role: previous.role } : prev));
       const hint =
         error.code === '42501'
-          ? ' Нужна RLS-политика profiles_update_admin из миграции.'
+          ? ' Нужны права на управление ролями и миграция 034.'
           : '';
       setBanner(`Не удалось изменить роль: ${error.message}.${hint}`);
+    } else {
+      await refreshRoles();
     }
 
     setRoleSaving(false);
@@ -2118,6 +2144,8 @@ export default function App() {
         currentRole={profile?.role || 'member'}
         onRoleChange={handleRoleChange}
         roleSaving={roleSaving}
+        roles={roles}
+        onRolesChange={refreshRoles}
         tasks={tasks}
         archivedTasks={archivedTasks}
         statusEvents={statusEvents}
@@ -2283,8 +2311,10 @@ export default function App() {
         isSelf={selectedMember?.id === userId}
         taskCount={selectedMember ? taskCountByUser.get(selectedMember.id) ?? 0 : 0}
         canManageRoles={canManageRoles}
+        currentRole={profile?.role || 'member'}
         onRoleChange={handleRoleChange}
         roleSaving={roleSaving}
+        roles={roles}
         onOpenChat={(member) => {
           setSelectedMember(null);
           openChat(member.id);

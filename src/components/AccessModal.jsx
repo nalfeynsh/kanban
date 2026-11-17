@@ -15,14 +15,24 @@ import {
   Table2,
 } from 'lucide-react';
 import { supabase } from '../supabaseClient';
-import { PERMISSIONS, ROLE_META, ROLE_ORDER, can, roleOf } from '../lib/permissions';
-import { ROLE_OPTIONS } from '../lib/priority';
+import {
+  PERMISSIONS,
+  ROLE_META,
+  ROLE_ORDER,
+  can,
+  registerRoleDefinitions,
+  roleHasPermission,
+  roleOf,
+  roleOptions,
+  roleRank,
+} from '../lib/permissions';
 import Avatar from './Avatar';
 
 const TABS = [
-  { key: 'members', label: 'Роли', icon: Users, permission: 'team.view' },
+  { key: 'members', label: 'Сотрудники', icon: Users, permission: 'team.view' },
+  { key: 'roles', label: 'Роли', icon: ShieldCheck, permission: 'roles.manage' },
   { key: 'invites', label: 'Приглашения', icon: KeyRound, permission: 'invites.view' },
-  { key: 'matrix', label: 'Права ролей', icon: Table2, permission: 'team.view' },
+  { key: 'matrix', label: 'Матрица прав', icon: Table2, permission: 'team.view' },
 ];
 
 export default function AccessModal({
@@ -33,6 +43,8 @@ export default function AccessModal({
   currentRole = 'member',
   onRoleChange,
   roleSaving = false,
+  roles = [],
+  onRolesChange,
   defaultTab = 'members',
   embedded = false,
 }) {
@@ -46,6 +58,12 @@ export default function AccessModal({
   const [formError, setFormError] = useState('');
   const [copied, setCopied] = useState('');
   const [ownerHintOpen, setOwnerHintOpen] = useState(false);
+  const [roleList, setRoleList] = useState(roles);
+  const [roleEditor, setRoleEditor] = useState(null);
+  const [roleBusy, setRoleBusy] = useState(false);
+  const [roleError, setRoleError] = useState('');
+  const [rolesLoadError, setRolesLoadError] = useState('');
+  const [roleNotice, setRoleNotice] = useState('');
 
   const mayManageRoles = can(currentRole, 'roles.manage');
   const mayViewInvites = can(currentRole, 'invites.view');
@@ -56,6 +74,63 @@ export default function AccessModal({
   const mayRevokeInvites = can(currentRole, 'invites.revoke');
 
   const visibleTabs = TABS.filter((item) => can(currentRole, item.permission));
+  const assignableRoles = useMemo(() => {
+    const actorIsAdmin = roleOf(currentRole) === 'admin';
+    const actorRank = roleRank(currentRole);
+    const list = (roleList.length ? roleList : roles).filter(
+      (role) => actorIsAdmin || Number(role.rank) < actorRank,
+    );
+    return roleOptions(list);
+  }, [currentRole, roleList, roles]);
+  const allRoleOptions = useMemo(
+    () => roleOptions(roleList.length ? roleList : roles),
+    [roleList, roles],
+  );
+  const currentRoleDefinition = roleList.find((item) => item.key === roleOf(currentRole));
+  const availablePermissions = useMemo(() => {
+    if (roleOf(currentRole) === 'admin') return PERMISSIONS;
+    const allowed = new Set(currentRoleDefinition?.permissions ?? []);
+    return PERMISSIONS.filter((permission) => allowed.has(permission.key));
+  }, [currentRole, currentRoleDefinition]);
+
+  useEffect(() => {
+    if (!isOpen) return undefined;
+    let alive = true;
+    (async () => {
+      const { data, error } = await supabase
+        .from('roles')
+        .select('key,name,rank,permissions,is_system')
+        .order('rank', { ascending: false });
+      if (!alive) return;
+      if (error) {
+        setRolesLoadError(error.message);
+        return;
+      }
+      registerRoleDefinitions(data ?? []);
+      setRoleList(data ?? []);
+      setRolesLoadError('');
+    })();
+    return () => {
+      alive = false;
+    };
+  }, [isOpen]);
+
+  const reloadRoles = async () => {
+    const { data, error } = await supabase
+      .from('roles')
+      .select('key,name,rank,permissions,is_system')
+      .order('rank', { ascending: false });
+    if (error) {
+      setRolesLoadError(error.message);
+      return [];
+    }
+    registerRoleDefinitions(data ?? []);
+    setRoleList(data ?? []);
+    setRolesLoadError('');
+    await onRolesChange?.();
+    return data ?? [];
+  };
+
 
   useEffect(() => {
     if (!isOpen) return undefined;
@@ -103,6 +178,95 @@ export default function AccessModal({
       setCopied('');
     }
   };
+
+  const startCreateRole = () => {
+    setRoleError('');
+    setRoleNotice('');
+    setRoleEditor({
+      key: null,
+      name: '',
+      rank: Math.max(1, (currentRoleDefinition?.rank ?? 99) - 10),
+      permissions: [],
+      is_system: false,
+    });
+  };
+
+  const startEditRole = (role) => {
+    setRoleError('');
+    setRoleNotice('');
+    setRoleEditor({
+      key: role.key,
+      name: role.name,
+      rank: role.rank,
+      permissions: Array.isArray(role.permissions) ? role.permissions : [],
+      is_system: Boolean(role.is_system),
+    });
+  };
+
+  const toggleRolePermission = (permissionKey) => {
+    setRoleEditor((prev) => {
+      if (!prev) return prev;
+      const has = prev.permissions.includes(permissionKey);
+      return {
+        ...prev,
+        permissions: has
+          ? prev.permissions.filter((key) => key !== permissionKey)
+          : [...prev.permissions, permissionKey],
+      };
+    });
+  };
+
+  const saveRole = async () => {
+    if (!roleEditor) return;
+    const name = roleEditor.name.trim();
+    const rank = Number(roleEditor.rank);
+    if (name.length < 2) {
+      setRoleError('Название роли: минимум 2 символа');
+      return;
+    }
+    if (!Number.isInteger(rank) || rank < 1 || rank > 98) {
+      setRoleError('Ранг роли: целое число от 1 до 98');
+      return;
+    }
+
+    setRoleBusy(true);
+    setRoleError('');
+    const params = {
+      p_name: name,
+      p_rank: rank,
+      p_permissions: roleEditor.permissions,
+    };
+    if (roleEditor.key) params.p_key = roleEditor.key;
+    const { error } = await supabase.rpc(roleEditor.key ? 'update_role' : 'create_role', params);
+    if (error) {
+      setRoleError(
+        `${error.message}${error.code === '42501' ? ' — проверьте миграцию 034 и права роли.' : ''}`,
+      );
+      setRoleBusy(false);
+      return;
+    }
+
+    await reloadRoles();
+    setRoleBusy(false);
+    setRoleEditor(null);
+    setRoleNotice(roleEditor.key ? 'Роль обновлена' : 'Роль создана');
+  };
+
+  const removeRole = async (role) => {
+    if (!window.confirm(`Удалить роль «${role.name}»?`)) return;
+    setRoleBusy(true);
+    setRoleError('');
+    const { error } = await supabase.rpc('delete_role', { p_key: role.key });
+    if (error) {
+      setRoleError(error.message);
+      setRoleBusy(false);
+      return;
+    }
+    await reloadRoles();
+    setRoleBusy(false);
+    setRoleNotice('Роль удалена');
+  };
+
 
   const createInvite = async () => {
     const email = form.email.trim().toLowerCase();
@@ -238,8 +402,18 @@ export default function AccessModal({
               <ul className="space-y-2">
               {filteredMembers.map((member) => {
                 const role = roleOf(member);
-                const meta = ROLE_META[role] ?? ROLE_META.member;
+                const meta = ROLE_META[role] ?? {
+                  label: roleList.find((item) => item.key === role)?.name || role,
+                  short: roleList.find((item) => item.key === role)?.name || role,
+                  description: 'Пользовательская роль',
+                  chip: 'border-indigo-400/50 bg-indigo-500/12 text-indigo-700 dark:text-indigo-300',
+                  dot: 'bg-indigo-400',
+                };
                 const isSelf = member.id === currentUserId;
+                const actorIsAdmin = roleOf(currentRole) === 'admin';
+                const canChangeThisMember =
+                  mayManageRoles &&
+                  (actorIsAdmin || roleRank(currentRole) > roleRank(member.role));
 
                 return (
                   <li
@@ -274,19 +448,26 @@ export default function AccessModal({
                       </span>
                       <select
                         value={role}
-                        disabled={!mayManageRoles || isSelf || roleSaving}
+                        disabled={!canChangeThisMember || isSelf || roleSaving}
                         onChange={(event) => onRoleChange?.(member.id, event.target.value)}
                         className="glass-input !w-auto !py-1.5 !text-xs disabled:cursor-not-allowed disabled:opacity-60"
                         title={
                           isSelf
                             ? 'Свою роль изменить нельзя'
-                            : mayManageRoles
+                            : canChangeThisMember
                               ? 'Назначить роль'
-                              : 'Роли меняет администратор'
+                              : 'Можно менять только роли ниже своей'
                         }
                       >
-                        {ROLE_OPTIONS.map((option) => (
-                          <option key={option.value} value={option.value}>
+                        {allRoleOptions.map((option) => (
+                          <option
+                            key={option.value}
+                            value={option.value}
+                            disabled={
+                              !actorIsAdmin &&
+                              roleRank(option.value) >= roleRank(currentRole)
+                            }
+                          >
                             {option.label}
                           </option>
                         ))}
@@ -327,7 +508,7 @@ export default function AccessModal({
                       className="glass-input !py-1.5 !text-xs"
                       title="Роль нового сотрудника"
                     >
-                      {ROLE_OPTIONS.map((option) => (
+                      {assignableRoles.map((option) => (
                         <option key={option.value} value={option.value}>
                           {option.label}
                         </option>
@@ -435,12 +616,211 @@ export default function AccessModal({
             </div>
           )}
 
+          {/* --- Управление ролями --- */}
+          {tab === 'roles' && (
+            <div className="space-y-3">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div>
+                  <p className="text-xs font-semibold text-slate-800 dark:text-slate-100">
+                    Роли и уровни доступа
+                  </p>
+                  <p className="text-[0.65rem] text-slate-500 dark:text-slate-400">
+                    Ранг задаёт иерархию: менять можно только роли ниже своей.
+                  </p>
+                </div>
+                {mayManageRoles && (
+                  <button
+                    type="button"
+                    onClick={startCreateRole}
+                    disabled={roleBusy}
+                    className="glass-btn glass-btn-primary !px-3 !py-1.5 !text-xs"
+                  >
+                    <Plus size={13} /> Добавить роль
+                  </button>
+                )}
+              </div>
+
+              {rolesLoadError && (
+                <p className="rounded-xl border border-rose-400/40 bg-rose-500/10 px-3 py-2 text-[0.68rem] text-rose-700 dark:text-rose-300">
+                  Роли не загрузились: {rolesLoadError}. Проверьте миграцию 034.
+                </p>
+              )}
+
+              {roleError && (
+                <p className="rounded-xl border border-rose-400/40 bg-rose-500/10 px-3 py-2 text-[0.68rem] text-rose-700 dark:text-rose-300">
+                  {roleError}
+                </p>
+              )}
+              {roleNotice && (
+                <p className="rounded-xl border border-emerald-400/40 bg-emerald-500/10 px-3 py-2 text-[0.68rem] text-emerald-700 dark:text-emerald-300">
+                  {roleNotice}
+                </p>
+              )}
+
+              {roleEditor && (
+                <div className="rounded-2xl border border-indigo-400/40 bg-indigo-500/[0.06] p-3">
+                  <div className="grid gap-2 sm:grid-cols-[1fr_6rem]">
+                    <label className="text-[0.65rem] text-slate-500 dark:text-slate-400">
+                      Название
+                      <input
+                        value={roleEditor.name}
+                        onChange={(event) =>
+                          setRoleEditor((prev) => ({ ...prev, name: event.target.value }))
+                        }
+                        className="glass-input mt-1 !py-1.5 !text-xs"
+                        placeholder="Например, Старший сотрудник"
+                      />
+                    </label>
+                    <label className="text-[0.65rem] text-slate-500 dark:text-slate-400">
+                      Ранг
+                      <input
+                        type="number"
+                        min="1"
+                        max="98"
+                        value={roleEditor.rank}
+                        onChange={(event) =>
+                          setRoleEditor((prev) => ({ ...prev, rank: event.target.value }))
+                        }
+                        className="glass-input mt-1 !py-1.5 !text-xs"
+                      />
+                    </label>
+                  </div>
+
+                  <p className="mt-3 text-[0.65rem] font-semibold text-slate-600 dark:text-slate-300">
+                    Права доступа
+                  </p>
+                  <div className="mt-2 grid gap-1.5 sm:grid-cols-2">
+                    {PERMISSIONS.map((permission) => {
+                      const allowed = availablePermissions.some(
+                        (item) => item.key === permission.key,
+                      );
+                      const checked = roleEditor.permissions.includes(permission.key);
+                      return (
+                        <label
+                          key={permission.key}
+                          className={`flex cursor-pointer items-start gap-2 rounded-xl border p-2 text-[0.68rem] ${
+                            checked
+                              ? 'border-indigo-400/50 bg-indigo-500/10 text-slate-800 dark:text-slate-100'
+                              : 'border-white/45 bg-white/30 text-slate-600 dark:border-white/10 dark:bg-white/5 dark:text-slate-300'
+                          } ${!allowed ? 'cursor-not-allowed opacity-45' : ''}`}
+                          title={!allowed ? 'Этого права нет у вашей роли' : permission.hint}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={checked}
+                            disabled={!allowed || roleBusy}
+                            onChange={() => toggleRolePermission(permission.key)}
+                            className="mt-0.5 accent-indigo-500"
+                          />
+                          <span>
+                            <span className="block font-medium">{permission.label}</span>
+                            <span className="block text-[0.6rem] opacity-70">{permission.hint}</span>
+                          </span>
+                        </label>
+                      );
+                    })}
+                  </div>
+
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      onClick={saveRole}
+                      disabled={roleBusy}
+                      className="glass-btn glass-btn-primary !px-3 !py-1.5 !text-xs"
+                    >
+                      {roleBusy ? <Loader2 size={13} className="animate-spin" /> : <Check size={13} />}
+                      Сохранить роль
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setRoleEditor(null)}
+                      disabled={roleBusy}
+                      className="glass-btn !px-3 !py-1.5 !text-xs"
+                    >
+                      Отмена
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              <div className="space-y-2">
+                {roleList.map((role) => {
+                  const meta = ROLE_META[role.key] ?? {
+                    label: role.name,
+                    short: role.name,
+                    description: 'Пользовательская роль',
+                    chip: 'border-indigo-400/50 bg-indigo-500/12 text-indigo-700 dark:text-indigo-300',
+                    dot: 'bg-indigo-400',
+                  };
+                  const isCurrent = roleOf(currentRole) === role.key;
+                  return (
+                    <div
+                      key={role.key}
+                      className={`flex flex-wrap items-center gap-3 rounded-2xl border p-3 ${
+                        isCurrent
+                          ? 'border-indigo-400/60 bg-indigo-500/10'
+                          : 'border-white/45 bg-white/30 dark:border-white/10 dark:bg-white/5'
+                      }`}
+                    >
+                      <span className={`h-2.5 w-2.5 shrink-0 rounded-full ${meta.dot}`} />
+                      <div className="min-w-0 flex-1">
+                        <p className="flex flex-wrap items-center gap-1.5 text-xs font-bold text-slate-800 dark:text-slate-100">
+                          {role.name}
+                          <span className={`rounded-full border px-1.5 py-0.5 text-[0.55rem] ${meta.chip}`}>
+                            {role.is_system ? 'системная' : 'пользовательская'}
+                          </span>
+                          {isCurrent && <span className="glass-chip !text-[0.55rem]">ваша</span>}
+                        </p>
+                        <p className="text-[0.62rem] text-slate-500 dark:text-slate-400">
+                          Ранг {role.rank} · прав: {Array.isArray(role.permissions) ? role.permissions.length : 0}
+                        </p>
+                      </div>
+                      {mayManageRoles && !role.is_system && (
+                        <div className="flex items-center gap-1.5">
+                          <button
+                            type="button"
+                            onClick={() => startEditRole(role)}
+                            disabled={roleBusy}
+                            className="glass-btn !px-2 !py-1 !text-[0.65rem]"
+                          >
+                            Изменить
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => removeRole(role)}
+                            disabled={roleBusy}
+                            className="glass-btn glass-btn-danger !px-2 !py-1"
+                            title="Удалить роль"
+                          >
+                            <Trash2 size={12} />
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+
+              <p className="flex items-start gap-1.5 text-[0.65rem] text-slate-500 dark:text-slate-400">
+                <ShieldCheck size={12} className="mt-0.5 shrink-0" />
+                Системные роли изменить нельзя. Удалить пользовательскую роль можно только после
+                переназначения сотрудников и удаления приглашений с этой ролью.
+              </p>
+            </div>
+          )}
+
           {/* --- Матрица прав --- */}
           {tab === 'matrix' && (
             <div className="space-y-3">
               <div className="grid gap-2 sm:grid-cols-2">
                 {ROLE_ORDER.map((role) => {
-                  const meta = ROLE_META[role];
+                  const meta = ROLE_META[role] ?? {
+                    label: roleList.find((item) => item.key === role)?.name || role,
+                    short: roleList.find((item) => item.key === role)?.name || role,
+                    description: 'Пользовательская роль',
+                    chip: 'border-indigo-400/50 bg-indigo-500/12 text-indigo-700 dark:text-indigo-300',
+                    dot: 'bg-indigo-400',
+                  };
                   return (
                     <div
                       key={role}
@@ -496,7 +876,7 @@ export default function AccessModal({
                         </td>
                         {ROLE_ORDER.map((role) => (
                           <td key={role} className="px-2 py-2 text-center">
-                            {permission.roles.includes(role) ? (
+                            {roleHasPermission(role, permission.key) ? (
                               <Check size={14} className="mx-auto text-emerald-500" />
                             ) : (
                               <span className="text-slate-300 dark:text-slate-600">—</span>
@@ -511,8 +891,8 @@ export default function AccessModal({
 
               <p className="flex items-start gap-1.5 text-[0.65rem] text-slate-500 dark:text-slate-400">
                 <ShieldCheck size={12} className="mt-0.5 shrink-0" />
-                Матрица описана в <code className="font-mono">src/lib/permissions.js</code>; на сервере
-                те же ограничения заданы RLS-политиками и триггером роли.
+                Матрица обновляется из ролей Supabase. Системные роли заданы в миграции 034;
+                пользовательские роли можно менять на вкладке «Роли».
               </p>
             </div>
           )}

@@ -20,6 +20,8 @@ export default function TeamModal({
   currentRole = 'member',
   onRoleChange,
   roleSaving = false,
+  roles = [],
+  onRolesChange,
   tasks = [],
   archivedTasks = [],
   statusEvents = [],
@@ -37,8 +39,21 @@ export default function TeamModal({
     if (roleFilter === 'admin') return member.role === 'admin';
     if (roleFilter === 'lead') return member.role === 'manager' || member.role === 'deputy';
     if (roleFilter === 'member') return !member.role || member.role === 'member';
+    if (roleFilter.startsWith('custom:')) {
+      return member.role === roleFilter.slice('custom:'.length);
+    }
     return true;
   };
+
+  const roleFilterOptions = [
+    { key: 'all', label: 'Все' },
+    { key: 'admin', label: 'Админы' },
+    { key: 'lead', label: 'Руководители' },
+    { key: 'member', label: 'Сотрудники' },
+    ...roles
+      .filter((role) => !role.is_system)
+      .map((role) => ({ key: `custom:${role.key}`, label: role.name })),
+  ];
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -166,12 +181,7 @@ export default function TeamModal({
           </div>
 
           <div className="glass-segment">
-            {[
-              { key: 'all', label: 'Все' },
-              { key: 'admin', label: 'Админы' },
-              { key: 'lead', label: 'Руководители' },
-              { key: 'member', label: 'Сотрудники' },
-            ].map((item) => (
+            {roleFilterOptions.map((item) => (
               <button
                 key={item.key}
                 type="button"
@@ -336,6 +346,8 @@ export default function TeamModal({
               currentRole={currentRole}
               onRoleChange={onRoleChange}
               roleSaving={roleSaving}
+              roles={roles}
+              onRolesChange={onRolesChange}
             />
           </div>
         )}

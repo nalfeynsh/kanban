@@ -16,7 +16,8 @@ import {
   KeyRound,
   MessageSquare,
 } from 'lucide-react';
-import { roleLabel, ROLE_OPTIONS } from '../lib/priority';
+import { roleLabel } from '../lib/priority';
+import { roleOptions, roleOf, roleRank } from '../lib/permissions';
 import { telegramUrl } from '../lib/telegram';
 import { formatPhone, phoneHref } from '../lib/phone';
 import Avatar from './Avatar';
@@ -62,6 +63,8 @@ export default function MemberProfileModal({
   canManageRoles = false,
   onRoleChange,
   roleSaving = false,
+  roles = [],
+  currentRole = 'member',
 }) {
   const [copied, setCopied] = useState(false);
 
@@ -232,11 +235,18 @@ export default function MemberProfileModal({
               <select
                 value={member.role || 'member'}
                 onChange={(event) => onRoleChange?.(member.id, event.target.value)}
-                disabled={roleSaving}
+                disabled={roleSaving || !canManageRoles || isSelf}
                 className="glass-input !py-1.5 !text-xs"
               >
-                {ROLE_OPTIONS.map((option) => (
-                  <option key={option.value} value={option.value}>
+                {roleOptions(roles).map((option) => (
+                  <option
+                    key={option.value}
+                    value={option.value}
+                    disabled={
+                      roleOf(currentRole) !== 'admin' &&
+                      roleRank(option.value) >= roleRank(currentRole)
+                    }
+                  >
                     {option.label}
                   </option>
                 ))}

@@ -8,6 +8,9 @@
 
 export const ROLE_ORDER = ['admin', 'manager', 'deputy', 'member'];
 
+const ROLE_RANKS = { admin: 99, manager: 70, deputy: 50, member: 20 };
+const ROLE_DEFINITIONS = new Map();
+
 export const PERMISSIONS = [
   {
     key: 'tasks.create',
@@ -53,9 +56,9 @@ export const PERMISSIONS = [
   },
   {
     key: 'roles.manage',
-    label: 'Менять роли сотрудников',
-    hint: 'Выдача администраторов, менеджеров, заместителей',
-    roles: ['admin'],
+    label: 'Управлять ролями',
+    hint: 'Создавать роли, менять права и назначать их сотрудникам',
+    roles: ['admin', 'manager', 'deputy'],
   },
   {
     key: 'invites.view',
@@ -120,9 +123,71 @@ export function roleOf(profileOrRole) {
   return profileOrRole.role || 'member';
 }
 
+/**
+ * Регистрирует роли из Supabase в клиентском реестре.
+ * Системные названия/цвета остаются прежними, пользовательские добавляются рядом.
+ */
+export function registerRoleDefinitions(roleList = []) {
+  ROLE_DEFINITIONS.clear();
+  const ordered = [...roleList].sort((a, b) => Number(b.rank) - Number(a.rank));
+
+  ordered.forEach((role) => {
+    if (!role?.key) return;
+    ROLE_DEFINITIONS.set(role.key, {
+      key: role.key,
+      name: role.name || role.key,
+      rank: Number(role.rank) || 1,
+      permissions: Array.isArray(role.permissions) ? role.permissions : [],
+      isSystem: Boolean(role.is_system),
+    });
+
+    if (!ROLE_META[role.key] || role.is_system !== true) {
+      ROLE_META[role.key] = {
+        label: role.name || role.key,
+        short: role.name || role.key,
+        description: role.is_system
+          ? 'Системная роль'
+          : `Пользовательская роль · ранг ${Number(role.rank) || 1}`,
+        chip: 'border-indigo-400/50 bg-indigo-500/12 text-indigo-700 dark:text-indigo-300',
+        dot: 'bg-indigo-400',
+      };
+    }
+  });
+
+  ROLE_ORDER.length = 0;
+  ROLE_ORDER.push(...ordered.map((role) => role.key));
+}
+
+export function roleOptions(roleList = []) {
+  if (Array.isArray(roleList) && roleList.length > 0) {
+    return [...roleList]
+      .sort((a, b) => Number(b.rank) - Number(a.rank))
+      .map((role) => ({ value: role.key, label: role.name }));
+  }
+  const fallback = ROLE_DEFINITIONS.size
+    ? [...ROLE_DEFINITIONS.values()]
+    : ROLE_ORDER.map((key) => ({
+        key,
+        name: ROLE_META[key]?.label || key,
+        rank: ROLE_RANKS[key] || 1,
+      }));
+  return fallback.map((role) => ({ value: role.key, label: role.name }));
+}
+
+export function roleRank(profileOrRole) {
+  const role = roleOf(profileOrRole);
+  return ROLE_DEFINITIONS.get(role)?.rank ?? ROLE_RANKS[role] ?? 1;
+}
+
+export function roleHasPermission(profileOrRole, permissionKey) {
+  return can(profileOrRole, permissionKey);
+}
+
 /** Есть ли у роли право */
 export function can(profileOrRole, permissionKey) {
   const role = roleOf(profileOrRole);
+  const dynamicRole = ROLE_DEFINITIONS.get(role);
+  if (dynamicRole) return dynamicRole.permissions.includes(permissionKey);
   const permission = PERMISSIONS.find((item) => item.key === permissionKey);
   if (!permission) return false;
   return permission.roles.includes(role);
@@ -131,7 +196,14 @@ export function can(profileOrRole, permissionKey) {
 /** Все права роли */
 export function permissionsFor(profileOrRole) {
   const role = roleOf(profileOrRole);
+  const dynamicRole = ROLE_DEFINITIONS.get(role);
+  if (dynamicRole) return permissionKeysToObjects(dynamicRole.permissions);
   return PERMISSIONS.filter((permission) => permission.roles.includes(role));
+}
+
+function permissionKeysToObjects(keys) {
+  const set = new Set(keys);
+  return PERMISSIONS.filter((permission) => set.has(permission.key));
 }
 
 export function isAdmin(profileOrRole) {
@@ -139,11 +211,6 @@ export function isAdmin(profileOrRole) {
 }
 
 export const CHAT_MODERATION_ROLES = ['admin', 'manager', 'deputy'];
-
-export function roleRank(profileOrRole) {
-  const role = roleOf(profileOrRole);
-  return { admin: 4, manager: 3, deputy: 2, member: 1 }[role] || 1;
-}
 
 /** Может ли роль открывать панель модерации чата. */
 export function canModerateChat(profileOrRole) {

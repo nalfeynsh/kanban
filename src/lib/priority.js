@@ -1,4 +1,6 @@
 /** Приоритет задачи = её «рейтинг» на доске. */
+import { ROLE_META } from './permissions';
+
 export const PRIORITIES = [
   {
     value: 3,
@@ -58,7 +60,7 @@ const ROLE_LABELS = {
 };
 
 export function roleLabel(role) {
-  return ROLE_LABELS[role] ?? 'Сотрудник';
+  return ROLE_META[role]?.label ?? ROLE_LABELS[role] ?? 'Сотрудник';
 }
 
 export const ROLE_OPTIONS = Object.entries(ROLE_LABELS).map(([value, label]) => ({ value, label }));
