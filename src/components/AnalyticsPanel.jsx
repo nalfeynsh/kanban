@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   AlarmClock,
   Archive,
@@ -6,8 +6,11 @@ import {
   BarChart3,
   CheckCircle2,
   Clock3,
+  FileSpreadsheet,
+  FileText,
   Inbox,
   ListChecks,
+  Loader2,
   SlidersHorizontal,
   TrendingUp,
   Users,
@@ -15,6 +18,8 @@ import {
 import Avatar from './Avatar';
 import AnalyticsFiltersModal from './AnalyticsFiltersModal';
 import { computeAnalytics, defaultAnalyticsFilters } from '../lib/analytics';
+import { buildAnalyticsReport, downloadAnalyticsExcel, printAnalyticsPdf } from '../lib/analyticsExport';
+import { supabase } from '../supabaseClient';
 import { PRIORITIES } from '../lib/priority';
 
 const CHART_COLORS = {
@@ -62,19 +67,104 @@ export default function AnalyticsPanel({
   statusEvents = [],
   columns = [],
   members = [],
+  projects = [],
+  currentProjectId = null,
 }) {
   const [filters, setFilters] = useState(defaultAnalyticsFilters);
   const [isFilterOpen, setIsFilterOpen] = useState(false);
+  const [selectedProjectId, setSelectedProjectId] = useState(currentProjectId || projects[0]?.id || null);
+  const [projectData, setProjectData] = useState(null);
+  const [projectLoading, setProjectLoading] = useState(false);
+  const [projectError, setProjectError] = useState('');
+
+  useEffect(() => {
+    if (!selectedProjectId || selectedProjectId === currentProjectId) return undefined;
+
+    let alive = true;
+    (async () => {
+      const { data: projectColumns, error: columnsError } = await supabase
+        .from('columns')
+        .select('*')
+        .eq('project_id', selectedProjectId)
+        .order('position', { ascending: true });
+      if (!alive) return;
+      if (columnsError) {
+        setProjectError(columnsError.message);
+        setProjectData({ columns: [], tasks: [], archivedTasks: [], statusEvents: [] });
+        setProjectLoading(false);
+        return;
+      }
+
+      const columnIds = (projectColumns ?? []).map((column) => column.id);
+      const { data: allTasks, error: tasksError } = columnIds.length
+        ? await supabase
+            .from('tasks')
+            .select('*')
+            .in('column_id', columnIds)
+            .order('created_at', { ascending: false })
+        : { data: [], error: null };
+      if (!alive) return;
+      if (tasksError) {
+        setProjectError(tasksError.message);
+        setProjectData({ columns: projectColumns ?? [], tasks: [], archivedTasks: [], statusEvents: [] });
+        setProjectLoading(false);
+        return;
+      }
+
+      const taskIds = (allTasks ?? []).map((task) => task.id);
+      const { data: events } = taskIds.length
+        ? await supabase.from('task_status_events').select('*').in('task_id', taskIds)
+        : { data: [] };
+
+      if (!alive) return;
+      setProjectData({
+        columns: projectColumns ?? [],
+        tasks: (allTasks ?? []).filter((task) => !task.deleted_at),
+        archivedTasks: (allTasks ?? []).filter((task) => task.deleted_at),
+        statusEvents: events ?? [],
+      });
+      setProjectLoading(false);
+    })();
+
+    return () => {
+      alive = false;
+    };
+  }, [selectedProjectId, currentProjectId]);
+
+  const data = useMemo(
+    () => projectData || { tasks, archivedTasks, columns, statusEvents },
+    [projectData, tasks, archivedTasks, columns, statusEvents],
+  );
+  const selectedProject = projects.find((project) => project.id === selectedProjectId) || null;
 
   const analytics = useMemo(
-    () => computeAnalytics({ tasks, archivedTasks, columns, members, filters, statusEvents }),
-    [tasks, archivedTasks, columns, members, filters, statusEvents],
+    () =>
+      computeAnalytics({
+        tasks: data.tasks,
+        archivedTasks: data.archivedTasks,
+        columns: data.columns,
+        members,
+        filters,
+        statusEvents: data.statusEvents,
+      }),
+    [data, members, filters],
   );
 
   const employeeName =
     filters.employeeId === 'all'
       ? 'Все сотрудники'
       : members.find((member) => member.id === filters.employeeId)?.full_name || 'Сотрудник';
+
+  const report = useMemo(
+    () =>
+      buildAnalyticsReport({
+        analytics,
+        projectName: selectedProject?.name || 'Текущий проект',
+        filters,
+        members,
+      }),
+    [analytics, selectedProject, filters, members],
+  );
 
   const statusItems = [
     {
@@ -130,14 +220,65 @@ export default function AnalyticsPanel({
             {formatRange(filters.from, filters.to)} · {employeeName} · по дате создания
           </p>
         </div>
-        <button
-          type="button"
-          onClick={() => setIsFilterOpen(true)}
-          className="glass-btn !px-2.5 !py-1.5 !text-xs"
-        >
-          <SlidersHorizontal size={14} /> Настроить
-        </button>
+
+        <div className="flex flex-wrap items-center gap-2">
+          {projects.length > 1 && (
+            <label className="flex items-center gap-1.5 text-[0.65rem] text-slate-500 dark:text-slate-400">
+              Проект
+              <select
+                value={selectedProjectId || ''}
+                onChange={(event) => {
+                  const nextId = event.target.value;
+                  setSelectedProjectId(nextId);
+                  setProjectData(null);
+                  setProjectError('');
+                  setProjectLoading(Boolean(nextId && nextId !== currentProjectId));
+                }}
+                disabled={projectLoading}
+                className="glass-input !w-auto !py-1.5 !text-xs"
+              >
+                {projects.map((project) => (
+                  <option key={project.id} value={project.id}>
+                    {project.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
+          {projectLoading && <Loader2 size={14} className="animate-spin text-indigo-500" />}
+          <button
+            type="button"
+            onClick={() => downloadAnalyticsExcel(report)}
+            disabled={projectLoading}
+            className="glass-btn !px-2.5 !py-1.5 !text-xs"
+            title="Выгрузить аналитику в Excel"
+          >
+            <FileSpreadsheet size={14} /> Excel
+          </button>
+          <button
+            type="button"
+            onClick={() => printAnalyticsPdf(report)}
+            disabled={projectLoading}
+            className="glass-btn !px-2.5 !py-1.5 !text-xs"
+            title="Выгрузить аналитику в PDF"
+          >
+            <FileText size={14} /> PDF
+          </button>
+          <button
+            type="button"
+            onClick={() => setIsFilterOpen(true)}
+            className="glass-btn !px-2.5 !py-1.5 !text-xs"
+          >
+            <SlidersHorizontal size={14} /> Настроить
+          </button>
+        </div>
       </div>
+
+      {projectError && (
+        <p className="mx-6 mt-3 rounded-xl border border-rose-400/40 bg-rose-500/10 px-3 py-2 text-xs text-rose-700 dark:text-rose-300">
+          Не удалось загрузить аналитику проекта: {projectError}
+        </p>
+      )}
 
       <div className="scrollbar-slim flex-1 overflow-y-auto px-6 py-4">
         <div className="grid grid-cols-2 gap-2 lg:grid-cols-6">

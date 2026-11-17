@@ -26,14 +26,18 @@ export default function TeamModal({
   archivedTasks = [],
   statusEvents = [],
   columns = [],
+  projects = [],
+  currentProjectId = null,
   features = {},
   onFeatureChange,
 }) {
   const [query, setQuery] = useState('');
   const [roleFilter, setRoleFilter] = useState('all');
   const [tab, setTab] = useState('members');
+  const isProjectOwner = projects.some((project) => project.owner_id === currentUserId);
   const canAnalytics =
-    ['admin', 'manager', 'deputy'].includes(currentRole) && features.analytics !== false;
+    (['admin', 'manager', 'deputy'].includes(currentRole) || isProjectOwner) &&
+    features.analytics !== false;
 
   const matchesRole = (member) => {
     if (roleFilter === 'admin') return member.role === 'admin';
@@ -331,6 +335,8 @@ export default function TeamModal({
               statusEvents={statusEvents}
               columns={columns}
               members={members}
+              projects={projects}
+              currentProjectId={currentProjectId}
             />
           </div>
         )}

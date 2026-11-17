@@ -2445,6 +2445,8 @@ export default function App() {
         archivedTasks={archivedTasks}
         statusEvents={statusEvents}
         columns={columns}
+        projects={projects}
+        currentProjectId={currentProjectId}
         features={features}
         onFeatureChange={handleFeatureChange}
         onOpenChat={(member) => {
