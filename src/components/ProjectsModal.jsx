@@ -11,8 +11,11 @@ import {
   Users,
   X,
   Settings2,
+  RotateCcw,
+  Clock3,
 } from 'lucide-react';
 import Avatar from './Avatar';
+import ProjectDeleteModal from './ProjectDeleteModal';
 import { WORKFLOW_PRESETS, createProject } from '../lib/projects';
 import { roleOf } from '../lib/permissions';
 
@@ -20,6 +23,8 @@ const CREATE_ROLES = ['admin', 'manager', 'deputy'];
 
 export default function ProjectsModal({
   projects = [],
+  trashedProjects = [],
+  projectNotices = [],
   currentProjectId,
   currentRole,
   currentUserId,
@@ -27,9 +32,14 @@ export default function ProjectsModal({
   onClose,
   onSelect,
   onCreated,
+  onDeleteProject,
+  onRestoreProject,
+  onMarkNoticeRead,
   onManageWorkflow,
 }) {
   const [mode, setMode] = useState('list');
+  const [showTrash, setShowTrash] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState(null);
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [preset, setPreset] = useState('simple');
@@ -47,6 +57,25 @@ export default function ProjectsModal({
   const currentProject = projects.find((project) => project.id === currentProjectId) || null;
   const canManageWorkflow = Boolean(currentProject) && CREATE_ROLES.includes(roleOf(currentRole));
   const me = members.find((member) => member.id === currentUserId);
+  const unreadNotices = projectNotices.filter((notice) => !notice.read_at);
+  const canDeleteProject = (project) =>
+    roleOf(currentRole) === 'admin' || project.owner_id === currentUserId;
+  const ownerName = (project) =>
+    members.find((member) => member.id === project.owner_id)?.full_name || 'не указан';
+  const noticeText = (notice) => {
+    if (notice.kind === 'project_deleted') {
+      const until = notice.created_at
+        ? new Date(new Date(notice.created_at).getTime() + 30 * 24 * 60 * 60 * 1000)
+        : null;
+      return `Проект «${notice.project_name}» перемещён в корзину. Восстановить можно до ${
+        until ? until.toLocaleDateString('ru-RU') : '30 дней'
+      }. После этой даты блоки, задачи и вложенные файлы будут удалены.`;
+    }
+    if (notice.kind === 'project_restored') {
+      return `Проект «${notice.project_name}» восстановлен из корзины.`;
+    }
+    return notice.message;
+  };
   const candidates = useMemo(
     () =>
       members
@@ -182,43 +211,136 @@ export default function ProjectsModal({
         <div className="scrollbar-slim min-h-0 flex-1 overflow-y-auto px-5 py-4">
           {mode === 'list' ? (
             <div className="space-y-2">
-              {projects.map((project) => {
-                const active = project.id === currentProjectId;
-                return (
-                  <button
-                    key={project.id}
-                    type="button"
-                    onClick={() => onSelect?.(project.id)}
-                    className={`flex w-full items-center gap-3 rounded-2xl border px-3 py-2.5 text-left transition ${
-                      active
-                        ? 'border-indigo-400/60 bg-indigo-400/10'
-                        : 'border-slate-300/60 bg-white/45 hover:border-indigo-400/40 hover:bg-white/70 dark:border-white/10 dark:bg-white/5 dark:hover:bg-white/10'
-                    }`}
-                  >
-                    <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-indigo-500 to-sky-400 text-white">
-                      <FolderKanban size={17} />
-                    </span>
-                    <span className="min-w-0 flex-1">
-                      <span className="flex items-center gap-2">
-                        <span className="truncate text-sm font-semibold text-slate-800 dark:text-slate-100">
-                          {project.name}
-                        </span>
-                        {active && (
-                          <span className="rounded-full bg-indigo-500/15 px-1.5 py-0.5 text-[0.55rem] font-bold text-indigo-700 dark:text-indigo-300">
-                            Открыт
-                          </span>
-                        )}
-                      </span>
-                      <span className="block truncate text-[0.65rem] text-slate-500 dark:text-slate-400">
-                        {project.description || 'Без описания'}
-                      </span>
-                    </span>
-                    <ChevronRight size={16} className="shrink-0 text-slate-400" />
-                  </button>
-                );
-              })}
+              {error && (
+                <p className="rounded-xl border border-rose-400/40 bg-rose-500/10 px-3 py-2 text-xs text-rose-700 dark:text-rose-300">
+                  {error}
+                </p>
+              )}
+              {unreadNotices.length > 0 && (
+                <div className="rounded-2xl border border-amber-400/50 bg-amber-400/10 p-3 text-xs text-amber-900 dark:border-amber-400/30 dark:text-amber-100">
+                  <p className="font-semibold">Уведомления по проектам</p>
+                  <ul className="mt-1.5 space-y-2">
+                    {unreadNotices.map((notice) => (
+                      <li key={notice.id} className="flex items-start gap-2">
+                        <span className="min-w-0 flex-1">{noticeText(notice)}</span>
+                        <button
+                          type="button"
+                          onClick={() => onMarkNoticeRead?.(notice.id)}
+                          className="shrink-0 text-[0.62rem] underline underline-offset-2"
+                        >
+                          Прочитано
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
 
-              {projects.length === 0 && (
+              <div className="flex items-center justify-between gap-2">
+                <p className="text-[0.65rem] font-semibold text-slate-500 dark:text-slate-400">
+                  {showTrash ? 'Корзина проектов' : 'Активные проекты'}
+                </p>
+                <button
+                  type="button"
+                  onClick={() => setShowTrash((value) => !value)}
+                  className="glass-btn !px-2.5 !py-1 !text-[0.65rem]"
+                >
+                  {showTrash ? 'К активным' : `Корзина (${trashedProjects.length})`}
+                </button>
+              </div>
+
+              {showTrash ? (
+                <div className="space-y-2">
+                  {trashedProjects.map((project) => (
+                    <div
+                      key={project.id}
+                      className="flex flex-wrap items-center gap-3 rounded-2xl border border-white/45 bg-white/30 p-3 dark:border-white/10 dark:bg-white/5"
+                    >
+                      <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-slate-500/15 text-slate-600 dark:text-slate-300">
+                        <Trash2 size={16} />
+                      </span>
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-sm font-semibold text-slate-800 dark:text-slate-100">
+                          {project.name}
+                        </p>
+                        <p className="flex items-center gap-1 text-[0.65rem] text-slate-500 dark:text-slate-400">
+                          <Clock3 size={11} />
+                          Удалён {project.deleted_at ? new Date(project.deleted_at).toLocaleDateString('ru-RU') : '—'}
+                          {project.purge_at
+                            ? ` · удалится ${new Date(project.purge_at).toLocaleDateString('ru-RU')}`
+                            : ''}
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          const { error: restoreError } = await onRestoreProject?.(project.id) || {};
+                          if (restoreError) setError(restoreError.message);
+                        }}
+                        className="glass-btn !px-2.5 !py-1 !text-[0.65rem]"
+                      >
+                        <RotateCcw size={12} /> Восстановить
+                      </button>
+                    </div>
+                  ))}
+                  {trashedProjects.length === 0 && (
+                    <p className="rounded-xl border border-dashed border-slate-300/70 px-3 py-6 text-center text-xs text-slate-500 dark:border-white/15 dark:text-slate-400">
+                      Корзина пуста
+                    </p>
+                  )}
+                </div>
+              ) : (
+                <>
+                  {projects.map((project) => {
+                    const active = project.id === currentProjectId;
+                    return (
+                      <div key={project.id} className="relative">
+                        <button
+                          type="button"
+                          onClick={() => onSelect?.(project.id)}
+                          className={`flex w-full items-center gap-3 rounded-2xl border px-3 py-2.5 pr-14 text-left transition ${
+                            active
+                              ? 'border-indigo-400/60 bg-indigo-400/10'
+                              : 'border-slate-300/60 bg-white/45 hover:border-indigo-400/40 hover:bg-white/70 dark:border-white/10 dark:bg-white/5 dark:hover:bg-white/10'
+                          }`}
+                        >
+                          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-indigo-500 to-sky-400 text-white">
+                            <FolderKanban size={17} />
+                          </span>
+                          <span className="min-w-0 flex-1">
+                            <span className="flex items-center gap-2">
+                              <span className="truncate text-sm font-semibold text-slate-800 dark:text-slate-100">
+                                {project.name}
+                              </span>
+                              {active && (
+                                <span className="rounded-full bg-indigo-500/15 px-1.5 py-0.5 text-[0.55rem] font-bold text-indigo-700 dark:text-indigo-300">
+                                  Открыт
+                                </span>
+                              )}
+                            </span>
+                            <span className="block truncate text-[0.65rem] text-slate-500 dark:text-slate-400">
+                              {project.description || 'Без описания'}
+                            </span>
+                          </span>
+                          <ChevronRight size={16} className="shrink-0 text-slate-400" />
+                        </button>
+                        {canDeleteProject(project) && (
+                          <button
+                            type="button"
+                            onClick={() => setDeleteTarget(project)}
+                            className="absolute top-1/2 right-2 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-xl text-slate-400 transition hover:bg-rose-500/10 hover:text-rose-500"
+                            title="Удалить проект"
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                        )}
+                      </div>
+                    );
+                  })}
+                </>
+              )}
+
+              {!showTrash && projects.length === 0 && (
                 <p className="rounded-xl border border-dashed border-slate-300/70 px-3 py-6 text-center text-xs text-slate-500 dark:border-white/15 dark:text-slate-400">
                   Проектов пока нет
                 </p>
@@ -433,6 +555,15 @@ export default function ProjectsModal({
           )}
         </div>
       </div>
+
+      {deleteTarget && (
+        <ProjectDeleteModal
+          project={deleteTarget}
+          ownerName={ownerName(deleteTarget)}
+          onClose={() => setDeleteTarget(null)}
+          onDelete={onDeleteProject}
+        />
+      )}
     </div>,
     document.body,
   );

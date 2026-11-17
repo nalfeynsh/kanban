@@ -47,7 +47,14 @@ import { TaskCardView } from './components/TaskCard';
 import { supabase } from './supabaseClient';
 import { collectFields, mergeFields, pickFields, profileFields, supports, taskFields } from './lib/schema';
 import { buildTaskQuote, stripTaskMarker } from './lib/quote';
-import { fetchProjects, PROJECT_STORAGE_KEY } from './lib/projects';
+import {
+  fetchProjects,
+  PROJECT_STORAGE_KEY,
+  fetchProjectNotices,
+  markProjectNoticeRead,
+  softDeleteProject,
+  restoreProject,
+} from './lib/projects';
 import { DEFAULT_FEATURES, fetchFeatureFlags, rowsToFeatures } from './lib/features';
 import { readOAuthError, explainOAuthError, cleanOAuthUrl } from './lib/oauth';
 import { canSeeTask, matchesMode } from './lib/access';
@@ -88,6 +95,8 @@ export default function App() {
   const [statusEvents, setStatusEvents] = useState([]);
   const [allProfiles, setAllProfiles] = useState([]);
   const [projects, setProjects] = useState([]);
+  const [trashedProjects, setTrashedProjects] = useState([]);
+  const [projectNotices, setProjectNotices] = useState([]);
   const [currentProjectId, setCurrentProjectId] = useState(null);
   const [isProjectsOpen, setIsProjectsOpen] = useState(false);
   const [workflowProject, setWorkflowProject] = useState(null);
@@ -347,22 +356,37 @@ export default function App() {
 
     let alive = true;
     (async () => {
-      const { projects: list, error } = await fetchProjects();
+      const { projects: allProjects, error } = await fetchProjects({ includeDeleted: true });
       if (!alive) return;
       if (error) {
         setBanner(`Не удалось загрузить проекты: ${error.message}`);
         setProjects([]);
+        setTrashedProjects([]);
         setLoading(false);
         return;
       }
 
+      const list = allProjects.filter((project) => !project.deleted_at);
+      const deleted = allProjects.filter((project) => project.deleted_at);
       setProjects(list);
+      setTrashedProjects(deleted);
       const saved = localStorage.getItem(PROJECT_STORAGE_KEY);
       const next = list.find((project) => project.id === saved) || list[0] || null;
       setCurrentProjectId(next?.id ?? null);
       if (!next) setLoading(false);
     })();
 
+    return () => {
+      alive = false;
+    };
+  }, [userId]);
+
+  useEffect(() => {
+    if (!userId) return undefined;
+    let alive = true;
+    fetchProjectNotices().then(({ notices }) => {
+      if (alive) setProjectNotices(notices);
+    });
     return () => {
       alive = false;
     };
@@ -738,12 +762,13 @@ export default function App() {
   };
 
   const handleProjectCreated = async (projectId) => {
-    const { projects: list, error } = await fetchProjects();
+    const { projects: allProjects, error } = await fetchProjects({ includeDeleted: true });
     if (error) {
       setBanner(`Не удалось обновить проекты: ${error.message}`);
       return;
     }
-    setProjects(list);
+    setProjects(allProjects.filter((project) => !project.deleted_at));
+    setTrashedProjects(allProjects.filter((project) => project.deleted_at));
     setIsProjectsOpen(false);
     if (projectId) {
       localStorage.setItem(PROJECT_STORAGE_KEY, projectId);
@@ -754,6 +779,66 @@ export default function App() {
       setColumns([]);
       setLoading(true);
     }
+  };
+
+  const reloadProjectLists = useCallback(async () => {
+    const { projects: allProjects, error } = await fetchProjects({ includeDeleted: true });
+    if (error) return { error };
+    const active = allProjects.filter((project) => !project.deleted_at);
+    const deleted = allProjects.filter((project) => project.deleted_at);
+    setProjects(active);
+    setTrashedProjects(deleted);
+    return { active, deleted, error: null };
+  }, []);
+
+  const handleDeleteProject = async (projectId) => {
+    const { result, error } = await softDeleteProject(projectId);
+    if (error) return { error };
+    const lists = await reloadProjectLists();
+    if (lists.error) return { error: lists.error };
+    if (projectId === currentProjectId) {
+      const next = lists.active[0] || null;
+      setCurrentProjectId(next?.id ?? null);
+      setSelectedTask(null);
+      setTasks([]);
+      setArchivedTasks([]);
+      setColumns([]);
+      setSelectedIds(new Set());
+      if (next) localStorage.setItem(PROJECT_STORAGE_KEY, next.id);
+      else localStorage.removeItem(PROJECT_STORAGE_KEY);
+    }
+    const { notices } = await fetchProjectNotices();
+    setProjectNotices(notices);
+    return { result, error: null };
+  };
+
+  const handleRestoreProject = async (projectId) => {
+    const { result, error } = await restoreProject(projectId);
+    if (error) return { error };
+    const lists = await reloadProjectLists();
+    if (lists.error) return { error: lists.error };
+    const restored = lists.active.find((project) => project.id === projectId);
+    if (restored) {
+      localStorage.setItem(PROJECT_STORAGE_KEY, restored.id);
+      setCurrentProjectId(restored.id);
+      setSelectedTask(null);
+      setTasks([]);
+      setArchivedTasks([]);
+      setColumns([]);
+      setLoading(true);
+    }
+    const { notices } = await fetchProjectNotices();
+    setProjectNotices(notices);
+    return { result, error: null };
+  };
+
+  const handleMarkProjectNoticeRead = async (noticeId) => {
+    await markProjectNoticeRead(noticeId);
+    setProjectNotices((prev) =>
+      prev.map((notice) =>
+        notice.id === noticeId ? { ...notice, read_at: new Date().toISOString() } : notice,
+      ),
+    );
   };
 
   const handleManageWorkflow = (project) => {
@@ -2110,6 +2195,8 @@ export default function App() {
       {isProjectsOpen && (
         <ProjectsModal
           projects={projects}
+          trashedProjects={trashedProjects}
+          projectNotices={projectNotices}
           currentProjectId={currentProjectId}
           currentRole={profile?.role || 'member'}
           currentUserId={userId}
@@ -2117,6 +2204,9 @@ export default function App() {
           onClose={() => setIsProjectsOpen(false)}
           onSelect={handleSelectProject}
           onCreated={handleProjectCreated}
+          onDeleteProject={handleDeleteProject}
+          onRestoreProject={handleRestoreProject}
+          onMarkNoticeRead={handleMarkProjectNoticeRead}
           onManageWorkflow={handleManageWorkflow}
         />
       )}

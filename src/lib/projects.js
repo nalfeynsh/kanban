@@ -29,13 +29,92 @@ export const WORKFLOW_PRESETS = [
   },
 ];
 
-export async function fetchProjects() {
-  const { data, error } = await supabase
+export async function fetchProjects({ includeDeleted = false } = {}) {
+  let query = supabase
     .from('projects')
     .select('*')
     .order('created_at', { ascending: true });
+
+  if (!includeDeleted) query = query.is('deleted_at', null);
+
+  const { data, error } = await query;
   return { projects: Array.isArray(data) ? data : [], error };
 }
+
+export async function fetchProjectNotices() {
+  const { data, error } = await supabase
+    .from('project_notices')
+    .select('*')
+    .order('created_at', { ascending: false })
+    .limit(20);
+  return { notices: Array.isArray(data) ? data : [], error };
+}
+
+export async function markProjectNoticeRead(noticeId) {
+  const { error } = await supabase
+    .from('project_notices')
+    .update({ read_at: new Date().toISOString() })
+    .eq('id', noticeId);
+  return { error };
+}
+
+export async function softDeleteProject(projectId) {
+  const { data, error } = await supabase.rpc('soft_delete_project', {
+    p_project: projectId,
+  });
+  return { result: data, error };
+}
+
+export async function restoreProject(projectId) {
+  const { data, error } = await supabase.rpc('restore_project', {
+    p_project: projectId,
+  });
+  return { result: data, error };
+}
+
+export async function purgeDeletedProjects() {
+  const { data, error } = await supabase.rpc('purge_deleted_projects');
+  return { count: data, error };
+}
+
+export async function downloadProjectArchive(projectId) {
+  const { data: project, error: projectError } = await supabase
+    .from('projects')
+    .select('*')
+    .eq('id', projectId)
+    .maybeSingle();
+  if (projectError || !project) return { error: projectError || new Error('project_not_found') };
+
+  const { data: columns } = await supabase
+    .from('columns')
+    .select('*')
+    .eq('project_id', projectId)
+    .order('position', { ascending: true });
+
+  const columnIds = (columns ?? []).map((column) => column.id);
+  const { data: tasks } = columnIds.length
+    ? await supabase.from('tasks').select('*').in('column_id', columnIds).order('position')
+    : { data: [] };
+
+  const payload = {
+    exported_at: new Date().toISOString(),
+    project,
+    columns: columns ?? [],
+    tasks: tasks ?? [],
+    note: 'Файлы задач доступны по ссылкам в поле files. Это резервная копия метаданных проекта.',
+  };
+  const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = `project-${project.name || projectId}.json`;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+  return { error: null };
+}
+
 
 export async function createProject({ name, description, columns, members }) {
   const { data, error } = await supabase.rpc('create_project', {
