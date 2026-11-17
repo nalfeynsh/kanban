@@ -33,11 +33,13 @@ const VK_ACCESS_TOKEN = String(process.env.VK_ACCESS_TOKEN || '').trim();
 const VK_GROUP_ID = String(process.env.VK_GROUP_ID || '').trim();
 const VK_CONFIGURED = Boolean(VK_ACCESS_TOKEN);
 const VK_CLIENT_ID = String(process.env.VK_CLIENT_ID || '54900725').trim();
-const VK_CLIENT_SECRET = String(process.env.VK_CLIENT_SECRET || '').trim();
+const VK_SERVICE_TOKEN = String(
+  process.env.VK_SERVICE_TOKEN || process.env.VK_CLIENT_SECRET || '',
+).trim();
 const VK_REDIRECT_URI = String(
   process.env.VK_REDIRECT_URI || 'https://kanban.layero.app/vk-auth',
 ).trim();
-const VK_OAUTH_CONFIGURED = Boolean(VK_CLIENT_ID && VK_CLIENT_SECRET && VK_REDIRECT_URI);
+const VK_OAUTH_CONFIGURED = Boolean(VK_CLIENT_ID && VK_SERVICE_TOKEN && VK_REDIRECT_URI);
 const JITSI_DOMAIN = String(
   process.env.JITSI_DOMAIN || process.env.VITE_JITSI_DOMAIN || 'meet.jit.si',
 )
@@ -380,30 +382,43 @@ async function handleVkOAuthToken(req, res) {
 
   const body = await readJsonBody(req, 16 * 1024);
   const code = String(body?.code || '').trim();
-  if (!code || code.length > 2048) {
-    sendJson(res, 400, { error: 'invalid_code' });
+  const codeVerifier = String(body?.code_verifier || '').trim();
+  const deviceId = String(body?.device_id || '').trim();
+  const state = String(body?.state || '').trim();
+  const redirectUri = String(body?.redirect_uri || VK_REDIRECT_URI).trim();
+  if (!code || !codeVerifier || !deviceId || code.length > 2048 || codeVerifier.length < 43) {
+    sendJson(res, 400, { error: 'invalid_code_request' });
     return;
   }
 
   try {
-    const params = new URLSearchParams({
-      client_id: VK_CLIENT_ID,
-      client_secret: VK_CLIENT_SECRET,
-      redirect_uri: VK_REDIRECT_URI,
+    const form = new URLSearchParams({
+      grant_type: 'authorization_code',
       code,
+      code_verifier: codeVerifier,
+      redirect_uri: redirectUri,
+      client_id: VK_CLIENT_ID,
+      device_id: deviceId,
+      state,
+      service_token: VK_SERVICE_TOKEN,
     });
-    const response = await fetch(`https://oauth.vk.com/access_token?${params}`);
+    const response = await fetch('https://id.vk.ru/oauth2/auth', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: form,
+    });
     const payload = await response.json().catch(() => null);
     if (!response.ok || payload?.error || !payload?.access_token) {
-      console.error(`[vk-oauth] ${payload?.error_description || 'no access token'}`);
+      console.error(`[vk-oauth] ${payload?.error_description || payload?.error || 'no access token'}`);
       sendJson(res, 502, {
         error: 'vk_oauth_failed',
-        message: payload?.error_description || payload?.error || 'VK не выдал access token',
+        message: payload?.error_description || payload?.error || 'VK ID не выдал access token',
       });
       return;
     }
     sendJson(res, 200, {
       access_token: payload.access_token,
+      refresh_token: payload.refresh_token || null,
       expires_in: payload.expires_in,
       user_id: payload.user_id,
     });
