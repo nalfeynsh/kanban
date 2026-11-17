@@ -34,7 +34,8 @@ begin
   if tg_op = 'INSERT' then
     new.updated_at := coalesce(new.updated_at, now());
   elsif new.updated_at is not distinct from old.updated_at then
-    new.updated_at := now();
+    -- локальная правка: время не должно «откатываться» из-за часовых сдвигов
+    new.updated_at := greatest(now(), old.updated_at);
   end if;
   return new;
 end $$;
