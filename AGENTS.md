@@ -100,6 +100,7 @@ docs/vks-scope.md           — скоуп ВКС: встречи, звонки,
 deploy/livekit/             — docker-compose, Caddy и конфиг self-hosted LiveKit SFU
 docs/feature-flags.md       — анализ функциональных флагов и тарифов
 docs/mobile-android-scope.md — анализ Android-приложения: Capacitor, экраны, оценки, риски
+docs/secret-santa-module.md — ТЗ на отдельный модуль «Тайный Санта»: сценарии, таблицы, RLS, жеребьёвка, оценка
 ```
 
 ---
