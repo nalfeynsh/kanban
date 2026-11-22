@@ -51,6 +51,40 @@ export default function GanttScrumModal({
     : 0;
   const active = sprintStats.find((item) => item.sprint.status === 'active') || sprintStats[0] || null;
 
+  const burndown = useMemo(() => {
+    if (!active) return { points: [], ideal: [], total: 0, remaining: 0 };
+    const start = new Date(`${active.sprint.start_date}T00:00:00`);
+    const end = new Date(`${active.sprint.end_date}T00:00:00`);
+    if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
+      return { points: [], ideal: [], total: active.totalSp, remaining: active.remainingSp };
+    }
+    const days = Math.max(1, Math.min(60, Math.round((end - start) / 86400000) + 1));
+    const doneEvents = active.items
+      .filter((task) => isDone(task, doneColumnId))
+      .map((task) => {
+        const date = task.done_at ? new Date(task.done_at) : new Date();
+        return { at: Number.isNaN(date.getTime()) ? new Date() : date, points: taskPoints(task) };
+      });
+    const points = [];
+    const ideal = [];
+    let remaining = active.totalSp;
+    for (let i = 0; i < days; i += 1) {
+      const day = new Date(start.getTime() + i * 86400000);
+      const next = new Date(day.getTime() + 86400000);
+      remaining -= doneEvents
+        .filter((event) => event.at >= day && event.at < next)
+        .reduce((sum, event) => sum + event.points, 0);
+      const x = days === 1 ? 150 : (i / (days - 1)) * 300;
+      const y = active.totalSp ? 80 - (Math.max(0, remaining) / active.totalSp) * 65 : 80;
+      points.push({ x, y, remaining: Math.max(0, remaining) });
+      ideal.push({
+        x,
+        y: active.totalSp ? 80 - ((active.totalSp * (1 - i / Math.max(1, days - 1))) / active.totalSp) * 65 : 80,
+      });
+    }
+    return { points, ideal, total: active.totalSp, remaining: active.remainingSp };
+  }, [active, doneColumnId]);
+
   if (!isOpen) return null;
 
   const moveTask = async (task, sprintId) => {
@@ -165,6 +199,37 @@ export default function GanttScrumModal({
             <p className="text-[0.6rem] text-slate-500">по всем спринтам</p>
           </div>
         </div>
+
+        {active && burndown.points.length > 2 && (
+          <div className="border-b border-slate-300/50 px-5 py-2 dark:border-white/10">
+            <div className="flex items-center justify-between">
+              <p className="text-[0.65rem] font-semibold text-slate-600 dark:text-slate-300">
+                Burndown · {active.sprint.name}
+              </p>
+              <p className="text-[0.6rem] text-slate-500">
+                осталось {burndown.remaining} из {burndown.total} SP
+              </p>
+            </div>
+            <svg viewBox="0 0 300 84" className="mt-1 h-14 w-full overflow-visible" preserveAspectRatio="none">
+              <line x1="0" y1="80" x2="300" y2="80" stroke="currentColor" className="text-slate-300/60" strokeWidth="0.5" />
+              <polyline
+                points={burndown.ideal.map((point) => `${point.x},${point.y}`).join(' ')}
+                fill="none"
+                stroke="currentColor"
+                className="text-slate-400/60"
+                strokeWidth="1"
+                strokeDasharray="3 3"
+              />
+              <polyline
+                points={burndown.points.map((point) => `${point.x},${point.y}`).join(' ')}
+                fill="none"
+                stroke="#10b981"
+                strokeWidth="1.8"
+                strokeLinejoin="round"
+              />
+            </svg>
+          </div>
+        )}
 
         <div className="scrollbar-slim min-h-0 flex-1 overflow-auto px-5 py-4">
           <div className="flex min-w-[760px] gap-2">
