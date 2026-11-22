@@ -70,6 +70,8 @@ components/
   AnalyticsFiltersModal.jsx — период/сотрудник для дашборда
   ThemeToggle.jsx           — тема
   MobilePrototype.jsx       — интерактивный прототип мобильной доски и задачи
+features/
+  secret-santa/             — отдельный модуль «Тайный Санта» (UI, API, жеребьёвка)
 lib/
   analytics.js              — расчёт KPI, статусов, сроков и группировка по сотрудникам
   analyticsExport.js        — выгрузка аналитики в Excel и PDF
@@ -100,7 +102,7 @@ docs/vks-scope.md           — скоуп ВКС: встречи, звонки,
 deploy/livekit/             — docker-compose, Caddy и конфиг self-hosted LiveKit SFU
 docs/feature-flags.md       — анализ функциональных флагов и тарифов
 docs/mobile-android-scope.md — анализ Android-приложения: Capacitor, экраны, оценки, риски
-docs/modules/secret-santa/ — документация модуля «Тайный Санта»: README и ТЗ; код и миграции не начаты
+docs/modules/secret-santa/ — документация модуля «Тайный Санта»: README и ТЗ; код в src/features/secret-santa/
 ```
 
 ---
@@ -358,9 +360,10 @@ docs/modules/secret-santa/ — документация модуля «Тайн�
   `projects.js`, миграция `035_project_trash.sql`.
 - [x] **Функциональные флаги модулей.** Реализованы feature flags: таблица `feature_flags`,
   админ-вкладка **«Функции»** в «Команде», RPC `set_feature_flag` только для admin.
-  Флаги: проекты, встречи, чат, Гант, календарь, аналитика, уведомления. Выключенный модуль
-  скрывается из шапки/вкладок; данные не удаляются. Серверная проверка API/тарифов — следующий этап.
-  Код: `FeatureFlagsPanel.jsx`, `lib/features.js`, миграция `030`; план — `docs/feature-flags.md`.
+  Флаги: проекты, встречи, чат, Гант, календарь, аналитика, уведомления, Тайный Санта.
+  Выключенный модуль скрывается из шапки/вкладок; данные не удаляются. Серверная проверка
+  API/тарифов — следующий этап. Код: `FeatureFlagsPanel.jsx`, `lib/features.js`,
+  миграция `030`; план — `docs/feature-flags.md`.
 
 ### Требует действий в Supabase (без этого фичи работают в ограниченном режиме)
 
@@ -508,6 +511,9 @@ docs/modules/secret-santa/ — документация модуля «Тайн�
   ежедневная очистка через `pg_cron`.
 - `036_notification_center.sql` — постоянные уведомления: `notifications`, RLS,
   триггер на новые сообщения чата, Realtime для счётчика и центра.
+- `037_secret_santa.sql` — отдельный модуль «Тайный Санта»: таблицы `secret_santa_*`,
+  RLS, RPC создания/участия/исключений/жеребьёвки и выдачи только своей пары.
+- `037_secret_santa_rollback.sql` — полное удаление модуля (применять только при отказе).
 - `README.md` — пошаговая инструкция: New query → Run, проверочные SQL,
   типовые ошибки и порядок действий после миграции.
 

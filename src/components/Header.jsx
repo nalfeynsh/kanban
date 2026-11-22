@@ -21,6 +21,7 @@ import {
   VolumeX,
   LifeBuoy,
   Video,
+  Gift,
 } from 'lucide-react';
 
 export default function Header({
@@ -40,6 +41,7 @@ export default function Header({
   onMeetingsClick,
   meetingsCount = 0,
   meetingsEnabled = true,
+  onSecretSantaClick,
   onHelpClick,
   chatUnread = 0,
   notificationsEnabled = true,
@@ -244,6 +246,18 @@ export default function Header({
                 {notificationsEnabled ? <Volume2 size={17} /> : <VolumeX size={17} />}
               </button>
             </>
+          )}
+
+          {features.secret_santa !== false && onSecretSantaClick && (
+            <button
+              type="button"
+              onClick={onSecretSantaClick}
+              className="glass-btn !px-2.5 !py-1.5"
+              title="Тайный Санта"
+            >
+              <Gift size={17} className="text-rose-500" />
+              <span className="hidden xl:inline">Санта</span>
+            </button>
           )}
 
           {meetingsEnabled && features.meetings !== false && (

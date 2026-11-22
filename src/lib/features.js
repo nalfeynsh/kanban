@@ -14,9 +14,14 @@ export const FEATURE_KEYS = [
   'calendar',
   'analytics',
   'notifications',
+  'secret_santa',
 ];
 
-export const DEFAULT_FEATURES = Object.fromEntries(FEATURE_KEYS.map((key) => [key, true]));
+export const DEFAULT_FEATURES = {
+  ...Object.fromEntries(FEATURE_KEYS.map((key) => [key, true])),
+  // Модуль появляется только после применения миграции 037 и включения флага.
+  secret_santa: false,
+};
 
 export function rowsToFeatures(rows) {
   const next = { ...DEFAULT_FEATURES };

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, lazy, Suspense } from 'react';
 import {
   DndContext,
   DragOverlay,
@@ -70,6 +70,8 @@ import { registerRoleDefinitions, can } from './lib/permissions';
 import { clearLocalTelegram, getLocalTelegram, setLocalTelegram } from './lib/localProfile';
 import { applyTaskUpdates, planTaskMove } from './lib/dnd';
 
+const SecretSantaModal = lazy(() => import('./features/secret-santa/SecretSantaModal'));
+
 /** Приводим задачу к безопасному виду (старые записи могут иметь null) */
 function sanitizeTask(task) {
   if (!task) return task;
@@ -105,6 +107,8 @@ export default function App() {
   const [projectNotices, setProjectNotices] = useState([]);
   const [currentProjectId, setCurrentProjectId] = useState(null);
   const [isProjectsOpen, setIsProjectsOpen] = useState(false);
+  const [isSecretSantaOpen, setIsSecretSantaOpen] = useState(false);
+  const [secretSantaGameId, setSecretSantaGameId] = useState(null);
   const [workflowProject, setWorkflowProject] = useState(null);
   const [features, setFeatures] = useState(DEFAULT_FEATURES);
   const [loading, setLoading] = useState(true);
@@ -1691,6 +1695,18 @@ export default function App() {
       setSelectedMeeting(null);
     }
     if (key === 'projects') setIsProjectsOpen(false);
+    if (key === 'secret_santa') {
+      setIsSecretSantaOpen(false);
+      setSecretSantaGameId(null);
+    }
+  };
+
+  /** Открыть модуль «Тайный Санта»; gameId — конкретная игра из уведомления */
+  const openSecretSanta = (gameId = null) => {
+    if (features.secret_santa === false) return;
+    exitSelection();
+    setSecretSantaGameId(gameId);
+    setIsSecretSantaOpen(true);
   };
 
   /** Открыть чат на главной, на диалоге с сотрудником или на конкретном диалоге */
@@ -1737,6 +1753,8 @@ export default function App() {
     setIsTeamOpen(false);
     setIsHelpOpen(false);
     setIsChatOpen(false);
+    setIsSecretSantaOpen(false);
+    setSecretSantaGameId(null);
     setChatPeerId(null);
     setChatConversationId(null);
     setActiveChatId(null);
@@ -1892,6 +1910,11 @@ export default function App() {
 
     if (notification.kind === 'chat' && notification.conversation_id) {
       openChat(null, notification.conversation_id);
+      return;
+    }
+
+    if (notification.entity_type === 'secret_santa_game' && notification.entity_id) {
+      openSecretSanta(notification.entity_id);
       return;
     }
 
@@ -2141,6 +2164,7 @@ export default function App() {
         onMeetingsClick={() => setIsMeetingsOpen(true)}
         meetingsCount={upcomingMeetingCount}
         meetingsEnabled={meetingsSupported}
+        onSecretSantaClick={() => openSecretSanta()}
         onHelpClick={() => setIsHelpOpen(true)}
         chatUnread={chatUnread}
         notificationsEnabled={notificationsEnabled}
@@ -2585,6 +2609,30 @@ export default function App() {
           token={calendarFeedToken}
           onClose={() => setIsCalendarFeedOpen(false)}
         />
+      )}
+
+      {isSecretSantaOpen && currentProject && (
+        <Suspense
+          fallback={
+            <div className="modal-overlay !z-[85]">
+              <div className="glass-panel rounded-2xl px-5 py-4 text-sm text-slate-600 dark:text-slate-300">
+                Загружаем «Тайного Санту»…
+              </div>
+            </div>
+          }
+        >
+          <SecretSantaModal
+            isOpen={isSecretSantaOpen}
+            onClose={() => {
+              setIsSecretSantaOpen(false);
+              setSecretSantaGameId(null);
+            }}
+            project={currentProject}
+            members={allProfiles}
+            currentUserId={userId}
+            initialGameId={secretSantaGameId}
+          />
+        </Suspense>
       )}
 
       <NotificationsModal
