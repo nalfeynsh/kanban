@@ -556,8 +556,76 @@ function apiErrorStatus(error) {
   return error?.status && error.status < 500 ? error.status : 500;
 }
 
-async function handleApi(req, res, url) {
+const SPELLCHECK_CACHE = new Map();
+const SPELLCHECK_CACHE_MS = 10 * 60 * 1000;
+
+async function handleSpellcheck(req, res) {
   if (req.method === 'OPTIONS') {
+    res.writeHead(204, {
+      'Access-Control-Allow-Origin': '*',
+      'Access-Control-Allow-Headers': 'Content-Type',
+      'Access-Control-Allow-Methods': 'POST, OPTIONS',
+    });
+    res.end();
+    return;
+  }
+  if (req.method !== 'POST') {
+    sendJson(res, 405, { error: 'method_not_allowed' });
+    return;
+  }
+
+  const body = await readJsonBody(req, 64 * 1024);
+  const text = String(body?.text || '').trim().slice(0, 12000);
+  if (!text) {
+    sendJson(res, 200, { matches: [] });
+    return;
+  }
+
+  const cached = SPELLCHECK_CACHE.get(text);
+  if (cached && Date.now() - cached.at < SPELLCHECK_CACHE_MS) {
+    sendJson(res, 200, { matches: cached.matches, cached: true });
+    return;
+  }
+
+  try {
+    const params = new URLSearchParams({
+      text,
+      language: body?.language === 'en-US' ? 'en-US' : 'ru-RU',
+      enabledOnly: 'false',
+    });
+    const response = await fetch('https://api.languagetool.org/v2/check', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: params.toString(),
+      signal: AbortSignal.timeout(12000),
+    });
+    if (!response.ok) {
+      sendJson(res, 502, { error: 'spellcheck_upstream', status: response.status, matches: [] });
+      return;
+    }
+    const result = await response.json();
+    const matches = (result.matches || []).slice(0, 80).map((match) => ({
+      offset: match.offset,
+      length: match.length,
+      message: match.message || match.shortMessage || 'Возможная ошибка',
+      shortMessage: match.shortMessage || '',
+      replacements: (match.replacements || []).slice(0, 8).map((item) => item.value),
+      ruleId: match.rule?.id || '',
+      issueType: match.rule?.issueType || '',
+    }));
+    SPELLCHECK_CACHE.set(text, { at: Date.now(), matches });
+    if (SPELLCHECK_CACHE.size > 200) {
+      const oldest = [...SPELLCHECK_CACHE.entries()].sort((a, b) => a[1].at - b[1].at)[0];
+      if (oldest) SPELLCHECK_CACHE.delete(oldest[0]);
+    }
+    sendJson(res, 200, { matches });
+  } catch (error) {
+    console.error(`[spellcheck] ${error?.message || error}`);
+    sendJson(res, 502, { error: 'spellcheck_unavailable', matches: [] });
+  }
+}
+
+async function handleApi(req, res, url) {  if (req.method === 'OPTIONS') {
     res.writeHead(204, {
       'Access-Control-Allow-Origin': '*',
       'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-API-Key',
@@ -816,6 +884,11 @@ async function serveCalendarFeed(req, res, token) {
 
 const server = http.createServer((req, res) => {
   const urlPath = (req.url || '/').split('?')[0];
+
+  if (urlPath === '/api/spellcheck') {
+    handleSpellcheck(req, res);
+    return;
+  }
 
   if (urlPath === '/api/v1' || urlPath.startsWith('/api/v1/')) {
     handleApi(req, res, new URL(req.url || '/', 'http://localhost'));

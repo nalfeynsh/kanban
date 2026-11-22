@@ -576,10 +576,18 @@ textarea.glass-input {
 /* ============================================================
    TIPTAP
    ============================================================ */
+.ProseMirror .spellcheck-issue {
+	text-decoration-line: underline;
+	text-decoration-style: wavy;
+	text-decoration-color: #e11d48;
+	text-decoration-thickness: 1.5px;
+	text-underline-offset: 2px;
+	cursor: context-menu;
+}
+
 .ProseMirror {
 	outline: none;
-	min-height: 140px;
-	padding: 0.85rem 0.95rem;
+	min-height: 140px;	padding: 0.85rem 0.95rem;
 	font-size: 0.9rem;
 	line-height: 1.6;
 	color: var(--ink);

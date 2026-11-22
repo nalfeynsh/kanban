@@ -366,6 +366,8 @@ export default function TaskDetailModal({
               <input
                 type="text"
                 value={editedTask.title}
+                spellCheck="true"
+                lang="ru"
                 onChange={(event) => setField('title', event.target.value)}
                 onKeyDown={(event) => {
                   // Tab из названия — сразу в описание, минуя панель форматирования
@@ -814,6 +816,8 @@ export default function TaskDetailModal({
                       }
                     }}
                     placeholder="Подзадача или пункт чек-листа"
+                    spellCheck="true"
+                    lang="ru"
                     className="glass-input !min-w-0 flex-1 !py-1.5 !text-xs"
                   />
                   <button
