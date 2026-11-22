@@ -25,6 +25,8 @@ import {
   Gauge,
   GitBranch,
   Layers3,
+  ListChecks,
+  Link2,
 } from 'lucide-react';
 import TipTapEditor from './TipTapEditor';
 import DateTimeField from './DateTimeField';
@@ -42,7 +44,7 @@ import { htmlToText } from '../lib/quote';
 import { recurrenceLabel, recurrenceNextValue, RECURRENCE_OPTIONS } from '../lib/recurrence';
 
 /** props.task → редактируемая копия (модалка монтируется заново на каждую задачу) */
-function toEditableTask(task, dependencyIds = []) {
+function toEditableTask(task, dependencyIds = [], relatedIds = []) {
   if (!task) return null;
   return {
     id: task.id || null,
@@ -69,6 +71,7 @@ function toEditableTask(task, dependencyIds = []) {
     dependency_lag_days: Number(task.dependency_lag_days) || 0,
     sprint_id: task.sprint_id || '',
     depends_on_ids: dependencyIds,
+    related_task_ids: relatedIds,
   };
 }
 
@@ -90,9 +93,21 @@ export default function TaskDetailModal({
   sprints = [],
   taskOptions = [],
   dependencyIds = [],
+  relatedTaskIds = [],
+  checklistItems = [],
   onSaveDependencies,
+  onSaveRelations,
+  onSaveChecklist,
 }) {
-  const [editedTask, setEditedTask] = useState(() => toEditableTask(task, dependencyIds));
+  const [editedTask, setEditedTask] = useState(() => toEditableTask(task, dependencyIds, relatedTaskIds));
+  const [checklist, setChecklist] = useState(() =>
+    (checklistItems || []).map((item) => ({
+      id: item.id,
+      title: item.title,
+      is_done: Boolean(item.is_done),
+    })),
+  );
+  const [newChecklistTitle, setNewChecklistTitle] = useState('');
   const [isCopied, setIsCopied] = useState(false);
   const [newLinkTitle, setNewLinkTitle] = useState('');
   const [newLinkUrl, setNewLinkUrl] = useState('');
@@ -161,6 +176,10 @@ export default function TaskDetailModal({
   if (!isOpen || !editedTask) return null;
 
   const isNewTask = !editedTask.id;
+  const checklistTotal = checklist.length;
+  const checklistDone = checklist.filter((item) => item.is_done).length;
+  const checklistProgress =
+    checklistTotal > 0 ? Math.round((checklistDone / checklistTotal) * 100) : null;
   // Приватность меняет только постановщик: иначе можно «запереть» чужую задачу
   const canTogglePrivacy = isNewTask || !editedTask.created_by || editedTask.created_by === currentUserId;
 
@@ -172,12 +191,50 @@ export default function TaskDetailModal({
     }
   };
 
+  const persistChecklist = async (next) => {
+    setChecklist(next);
+    if (task?.id && onSaveChecklist) await onSaveChecklist(task.id, next);
+  };
+
+  const addChecklistItem = () => {
+    const title = newChecklistTitle.trim();
+    if (!title) return;
+    const next = [...checklist, { id: null, title, is_done: false }];
+    setNewChecklistTitle('');
+    persistChecklist(next);
+  };
+
+  const toggleChecklistItem = (index) => {
+    const next = checklist.map((item, i) => (i === index ? { ...item, is_done: !item.is_done } : item));
+    persistChecklist(next);
+  };
+
+  const removeChecklistItem = (index) => {
+    persistChecklist(checklist.filter((_, i) => i !== index));
+  };
+
   const saveTask = async () => {
     setFormError('');
     setIsSaving(true);
-    await onSaveTask({ ...editedTask, title: editedTask.title.trim() }, editedTask.column_id);
-    if (editedTask.id && onSaveDependencies) {
-      await onSaveDependencies(editedTask.id, editedTask.depends_on_ids || []);
+    const saved = await onSaveTask(
+      {
+        ...editedTask,
+        title: editedTask.title.trim(),
+        progress_percent: checklistProgress ?? editedTask.progress_percent,
+      },
+      editedTask.column_id,
+    );
+    const taskId = saved?.id || editedTask.id;
+    if (taskId) {
+      if (onSaveDependencies) {
+        await onSaveDependencies(taskId, editedTask.depends_on_ids || []);
+      }
+      if (onSaveRelations) {
+        await onSaveRelations(taskId, editedTask.related_task_ids || []);
+      }
+      if (onSaveChecklist && (checklist.length > 0 || checklistItems.length > 0)) {
+        await onSaveChecklist(taskId, checklist);
+      }
     }
     setIsSaving(false);
   };
@@ -700,6 +757,80 @@ export default function TaskDetailModal({
                 )}
               </div>
 
+              <div className="rounded-2xl border border-emerald-400/25 bg-emerald-500/[0.045] p-3 dark:border-emerald-300/15 dark:bg-emerald-400/[0.06]">
+                <div className="flex items-center justify-between gap-2">
+                  <p className="flex items-center gap-1.5 text-[0.68rem] font-semibold tracking-[0.1em] text-slate-500 uppercase dark:text-slate-400">
+                    <ListChecks size={13} /> Чек-лист
+                  </p>
+                  <span className="text-[0.65rem] font-semibold text-emerald-700 dark:text-emerald-300">
+                    {checklistDone}/{checklistTotal} · {checklistProgress ?? 0}%
+                  </span>
+                </div>
+
+                {checklistTotal > 0 && (
+                  <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-slate-400/20">
+                    <div
+                      className="h-full rounded-full bg-emerald-500 transition-all"
+                      style={{ width: `${checklistProgress}%` }}
+                    />
+                  </div>
+                )}
+
+                <div className="mt-2 space-y-1">
+                  {checklist.map((item, index) => (
+                    <div
+                      key={item.id || `new-${index}`}
+                      className="flex items-center gap-2 rounded-lg border border-white/45 bg-white/45 px-2 py-1.5 dark:border-white/10 dark:bg-white/5"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={item.is_done}
+                        onChange={() => toggleChecklistItem(index)}
+                        className="h-3.5 w-3.5 shrink-0 accent-emerald-500"
+                      />
+                      <span className={`min-w-0 flex-1 text-[0.7rem] ${item.is_done ? 'text-slate-400 line-through' : 'text-slate-700 dark:text-slate-200'}`}>
+                        {item.title}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => removeChecklistItem(index)}
+                        className="text-slate-400 hover:text-rose-500"
+                        title="Удалить пункт"
+                      >
+                        <Trash2 size={13} />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="mt-2 flex gap-1.5">
+                  <input
+                    value={newChecklistTitle}
+                    onChange={(event) => setNewChecklistTitle(event.target.value)}
+                    onKeyDown={(event) => {
+                      if (event.key === 'Enter') {
+                        event.preventDefault();
+                        addChecklistItem();
+                      }
+                    }}
+                    placeholder="Подзадача или пункт чек-листа"
+                    className="glass-input !min-w-0 flex-1 !py-1.5 !text-xs"
+                  />
+                  <button
+                    type="button"
+                    onClick={addChecklistItem}
+                    disabled={!newChecklistTitle.trim()}
+                    className="glass-btn !px-2.5 !py-1.5 !text-xs disabled:opacity-40"
+                    title="Добавить пункт"
+                  >
+                    <Plus size={13} />
+                  </button>
+                </div>
+                <p className="mt-1 text-[0.6rem] text-slate-500 dark:text-slate-400">
+                  Прогресс задачи считается автоматически: выполнено пунктов / всего пунктов.
+                </p>
+              </div>
+
               {(progressSupported || milestoneSupported || (storyPointsEnabled && storyPointsSupported) || (methodology === 'agile' && sprintSupported) || dependenciesSupported) && (
                 <div className="rounded-2xl border border-indigo-400/25 bg-indigo-500/[0.045] p-3 dark:border-indigo-300/15 dark:bg-indigo-400/[0.06]">
                   <p className="mb-2 flex items-center gap-1.5 text-[0.68rem] font-semibold tracking-[0.1em] text-slate-500 uppercase dark:text-slate-400">
@@ -708,21 +839,33 @@ export default function TaskDetailModal({
 
                   <div className="space-y-2.5">
                     {progressSupported && (
-                      <label className="block text-[0.68rem] font-medium text-slate-600 dark:text-slate-300">
-                        <span className="flex items-center justify-between">
-                          <span>Готовность</span>
-                          <span className="font-mono text-slate-500">{editedTask.progress_percent}%</span>
-                        </span>
-                        <input
-                          type="range"
-                          min="0"
-                          max="100"
-                          step="5"
-                          value={editedTask.progress_percent}
-                          onChange={(event) => setField('progress_percent', Number(event.target.value))}
-                          className="mt-1 w-full accent-indigo-500"
-                        />
-                      </label>
+                      checklistTotal > 0 ? (
+                        <div className="text-[0.68rem] font-medium text-slate-600 dark:text-slate-300">
+                          <span className="flex items-center justify-between">
+                            <span>Готовность из чек-листа</span>
+                            <span className="font-mono text-emerald-600 dark:text-emerald-300">{checklistProgress}%</span>
+                          </span>
+                          <div className="mt-1 h-2 overflow-hidden rounded-full bg-slate-400/20">
+                            <div className="h-full rounded-full bg-emerald-500" style={{ width: `${checklistProgress}%` }} />
+                          </div>
+                        </div>
+                      ) : (
+                        <label className="block text-[0.68rem] font-medium text-slate-600 dark:text-slate-300">
+                          <span className="flex items-center justify-between">
+                            <span>Готовность</span>
+                            <span className="font-mono text-slate-500">{editedTask.progress_percent}%</span>
+                          </span>
+                          <input
+                            type="range"
+                            min="0"
+                            max="100"
+                            step="5"
+                            value={editedTask.progress_percent}
+                            onChange={(event) => setField('progress_percent', Number(event.target.value))}
+                            className="mt-1 w-full accent-indigo-500"
+                          />
+                        </label>
+                      )
                     )}
 
                     <div className="flex flex-wrap items-center gap-2">
@@ -861,6 +1004,42 @@ export default function TaskDetailModal({
                             />
                           </label>
                         )}
+                      </div>
+                    )}
+
+                    {onSaveRelations && (
+                      <div>
+                        <p className="flex items-center gap-1.5 text-[0.68rem] font-medium text-slate-600 dark:text-slate-300">
+                          <Link2 size={12} /> Связанные задачи
+                        </p>
+                        <p className="mt-0.5 text-[0.6rem] text-slate-500 dark:text-slate-400">
+                          Задачи по теме. Связь не влияет на сроки и критический путь.
+                        </p>
+                        <div className="scrollbar-slim mt-1 max-h-24 space-y-1 overflow-y-auto rounded-xl border border-slate-300/60 bg-white/45 p-1.5 dark:border-white/10 dark:bg-white/5">
+                          {taskOptions.filter((option) => option.id !== editedTask.id).map((option) => {
+                            const checked = (editedTask.related_task_ids || []).includes(option.id);
+                            return (
+                              <label key={option.id} className="flex items-center gap-2 rounded-lg px-1 py-1 text-[0.65rem] text-slate-600 hover:bg-white/60 dark:text-slate-300 dark:hover:bg-white/10">
+                                <input
+                                  type="checkbox"
+                                  checked={checked}
+                                  onChange={() => {
+                                    const current = editedTask.related_task_ids || [];
+                                    setField(
+                                      'related_task_ids',
+                                      checked ? current.filter((id) => id !== option.id) : [...current, option.id],
+                                    );
+                                  }}
+                                  className="accent-indigo-500"
+                                />
+                                <span className="truncate">{option.title || 'Без названия'}</span>
+                              </label>
+                            );
+                          })}
+                          {taskOptions.filter((option) => option.id !== editedTask.id).length === 0 && (
+                            <p className="px-1 py-1 text-[0.62rem] text-slate-500">Других задач пока нет.</p>
+                          )}
+                        </div>
                       </div>
                     )}
                   </div>

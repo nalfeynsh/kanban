@@ -122,6 +122,21 @@ export function TaskCardView({
         {task.title || 'Без названия'}
       </p>
 
+      {(Number(task.progress_percent) || 0) > 0 && (
+        <div className="mb-2 pl-1">
+          <div className="flex items-center justify-between text-[0.6rem] font-medium text-slate-500 dark:text-slate-400">
+            <span>Выполнено</span>
+            <span className="tabular-nums">{Number(task.progress_percent)}%</span>
+          </div>
+          <div className="mt-0.5 h-1.5 overflow-hidden rounded-full bg-slate-400/20">
+            <div
+              className="h-full rounded-full bg-emerald-500 transition-all"
+              style={{ width: `${Math.min(100, Number(task.progress_percent) || 0)}%` }}
+            />
+          </div>
+        </div>
+      )}
+
       <div className="mt-auto flex items-end justify-between gap-2 pl-1">
         <div className="flex min-w-0 flex-wrap items-center gap-1.5">
           {due && (

@@ -108,6 +108,8 @@ export default function App() {
   const [ganttBaselines, setGanttBaselines] = useState([]);
   const [ganttBaselineTasks, setGanttBaselineTasks] = useState([]);
   const [activeBaselineId, setActiveBaselineId] = useState(null);
+  const [checklistByTask, setChecklistByTask] = useState({});
+  const [taskRelations, setTaskRelations] = useState([]);
   const [allProfiles, setAllProfiles] = useState([]);
   const [projects, setProjects] = useState([]);
   const [trashedProjects, setTrashedProjects] = useState([]);
@@ -532,6 +534,24 @@ export default function App() {
         ? await supabase.from('gantt_baseline_tasks').select('*').in('baseline_id', baselineIds)
         : { data: [] };
 
+      const [{ data: checklistRows }, { data: relationRows }] = await Promise.all([
+        taskIds.length
+          ? supabase
+              .from('task_checklist_items')
+              .select('*')
+              .in('task_id', taskIds)
+              .order('position', { ascending: true })
+          : Promise.resolve({ data: [] }),
+        taskIds.length
+          ? supabase.from('task_relations').select('*').in('task_id', taskIds)
+          : Promise.resolve({ data: [] }),
+      ]);
+      const checklistMap = {};
+      (checklistRows ?? []).forEach((item) => {
+        if (!checklistMap[item.task_id]) checklistMap[item.task_id] = [];
+        checklistMap[item.task_id].push(item);
+      });
+
       setColumns(columnsResult.data ?? []);
       setTasks(activeRows);
       setArchivedTasks(archiveRows);
@@ -540,6 +560,8 @@ export default function App() {
       setTaskDependencies(dependenciesResult.error ? [] : dependenciesResult.data ?? []);
       setGanttBaselines(baselineRows ?? []);
       setGanttBaselineTasks(baselineTaskRows ?? []);
+      setChecklistByTask(checklistMap);
+      setTaskRelations(relationRows ?? []);
       setActiveBaselineId((prev) =>
         (baselineRows ?? []).some((baseline) => baseline.id === prev)
           ? prev
@@ -1120,8 +1142,71 @@ export default function App() {
     }
   };
 
-  const handleSaveBaseline = async (name = 'Базовый план') => {
-    if (!currentProjectId || tasks.length === 0) return;
+  const handleSaveChecklist = async (taskId, items = []) => {
+    if (!taskId) return;
+    const { error: deleteError } = await supabase.from('task_checklist_items').delete().eq('task_id', taskId);
+    if (deleteError) {
+      setBanner(`Не удалось сохранить чек-лист: ${deleteError.message}`);
+      return;
+    }
+    let saved = [];
+    if (items.length > 0) {
+      const { data, error } = await supabase
+        .from('task_checklist_items')
+        .insert(
+          items.map((item, index) => ({
+            task_id: taskId,
+            title: String(item.title || '').trim() || 'Пункт',
+            is_done: Boolean(item.is_done),
+            position: index,
+          })),
+        )
+        .select();
+      if (error) {
+        setBanner(`Не удалось сохранить чек-лист: ${error.message}`);
+        return;
+      }
+      saved = data ?? [];
+    }
+    const total = saved.length;
+    const done = saved.filter((item) => item.is_done).length;
+    const progress = total > 0 ? Math.round((done / total) * 100) : 0;
+    const { error: progressError } = await supabase
+      .from('tasks')
+      .update({ progress_percent: progress })
+      .eq('id', taskId);
+    if (progressError) {
+      setBanner(`Не удалось обновить прогресс: ${progressError.message}`);
+      return;
+    }
+    setChecklistByTask((prev) => ({ ...prev, [taskId]: saved }));
+    setTasks((prev) => prev.map((task) => (task.id === taskId ? { ...task, progress_percent: progress } : task)));
+  };
+
+  const handleSaveRelations = async (taskId, ids = []) => {
+    if (!taskId) return;
+    const { error: deleteError } = await supabase.from('task_relations').delete().eq('task_id', taskId);
+    if (deleteError) {
+      setBanner(`Не удалось сохранить связи: ${deleteError.message}`);
+      return;
+    }
+    const uniqueIds = [...new Set(ids)].filter((id) => id && id !== taskId);
+    if (uniqueIds.length === 0) {
+      setTaskRelations((prev) => prev.filter((item) => item.task_id !== taskId));
+      return;
+    }
+    const { data, error } = await supabase
+      .from('task_relations')
+      .insert(uniqueIds.map((id) => ({ task_id: taskId, related_task_id: id, created_by: userId })))
+      .select();
+    if (error) {
+      setBanner(`Не удалось сохранить связи: ${error.message}`);
+      return;
+    }
+    setTaskRelations((prev) => [...prev.filter((item) => item.task_id !== taskId), ...(data ?? [])]);
+  };
+
+  const handleSaveBaseline = async (name = 'Базовый план') => {    if (!currentProjectId || tasks.length === 0) return;
     const { data: baseline, error: baselineError } = await supabase
       .from('gantt_baselines')
       .insert({
@@ -1676,7 +1761,7 @@ export default function App() {
 
       setTasks((prev) => [...prev, sanitizeTask(data)]);
       setSelectedTask(null);
-      return;
+      return sanitizeTask(data);
     }
 
     const payload = pickFields(payloadBase, taskSchema);
@@ -1695,6 +1780,7 @@ export default function App() {
     const updated = sanitizeTask(data) || { ...taskToSave, ...payload };
     setTasks((prev) => prev.map((task) => (task.id === updated.id ? { ...task, ...updated } : task)));
     setSelectedTask(null);
+    return updated;
   };
 
   const handleDeleteTask = async (taskId, draft) => {
@@ -2597,6 +2683,16 @@ export default function App() {
                   .map((item) => item.depends_on_task_id)
               : []
           }
+          relatedTaskIds={
+            selectedTask.id
+              ? taskRelations
+                  .filter((item) => item.task_id === selectedTask.id)
+                  .map((item) => item.related_task_id)
+              : []
+          }
+          checklistItems={selectedTask.id ? checklistByTask[selectedTask.id] || [] : []}
+          onSaveChecklist={handleSaveChecklist}
+          onSaveRelations={handleSaveRelations}
           onSaveDependencies={handleSaveDependencies}
           onOpenExistingTask={(taskId) => {
             const existing = tasks.find((item) => item.id === taskId);
