@@ -442,8 +442,6 @@ declare
   v_attempt integer;
   v_ok boolean;
   v_i integer;
-  v_j integer;
-  v_tmp uuid;
 begin
   if not public.secret_santa_can_manage(p_game_id) then
     raise exception 'secret_santa_manager_required' using errcode = '42501';
@@ -468,13 +466,8 @@ begin
 
   v_ok := false;
   for v_attempt in 1..2000 loop
-    v_recipients := v_givers;
-    for v_i in reverse v_n..2 loop
-      v_j := 1 + floor(random() * v_i)::integer;
-      v_tmp := v_recipients[v_i];
-      v_recipients[v_i] := v_recipients[v_j];
-      v_recipients[v_j] := v_tmp;
-    end loop;
+    select array_agg(id order by random()) into v_recipients
+    from public.secret_santa_participants where game_id = p_game_id;
 
     v_ok := true;
     for v_i in 1..v_n loop
