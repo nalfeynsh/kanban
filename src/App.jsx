@@ -15,6 +15,7 @@ import Header from './components/Header';
 import Column from './components/Column';
 import CalendarView from './components/CalendarView';
 import GanttView from './components/GanttView';
+import GanttSprintsModal from './components/GanttSprintsModal';
 import TaskDetailModal from './components/TaskDetailModal';
 import LoginPage from './components/LoginPage';
 import ProfileModal from './components/ProfileModal';
@@ -101,6 +102,8 @@ export default function App() {
   const [tasks, setTasks] = useState([]);
   const [archivedTasks, setArchivedTasks] = useState([]);
   const [statusEvents, setStatusEvents] = useState([]);
+  const [ganttSprints, setGanttSprints] = useState([]);
+  const [taskDependencies, setTaskDependencies] = useState([]);
   const [allProfiles, setAllProfiles] = useState([]);
   const [projects, setProjects] = useState([]);
   const [trashedProjects, setTrashedProjects] = useState([]);
@@ -129,6 +132,7 @@ export default function App() {
   const [isHelpOpen, setIsHelpOpen] = useState(false);
   const [isChatOpen, setIsChatOpen] = useState(false);
   const [isMeetingsOpen, setIsMeetingsOpen] = useState(false);
+  const [isGanttSprintsOpen, setIsGanttSprintsOpen] = useState(false);
   const [isMeetingModalOpen, setIsMeetingModalOpen] = useState(false);
   const [selectedMeeting, setSelectedMeeting] = useState(null);
   const [editingMeeting, setEditingMeeting] = useState(null);
@@ -500,11 +504,25 @@ export default function App() {
       }
 
       const profileRows = profilesResult.data ?? [];
+      const taskIds = [...activeRows, ...archiveRows].map((task) => task.id);
+
+      const [sprintsResult, dependenciesResult] = await Promise.all([
+        supabase
+          .from('gantt_sprints')
+          .select('*')
+          .eq('project_id', currentProjectId)
+          .order('start_date', { ascending: true }),
+        taskIds.length
+          ? supabase.from('task_dependencies').select('*').in('task_id', taskIds)
+          : Promise.resolve({ data: [], error: null }),
+      ]);
 
       setColumns(columnsResult.data ?? []);
       setTasks(activeRows);
       setArchivedTasks(archiveRows);
       setAllProfiles(profileRows);
+      setGanttSprints(sprintsResult.error ? [] : sprintsResult.data ?? []);
+      setTaskDependencies(dependenciesResult.error ? [] : dependenciesResult.data ?? []);
       setTaskSchema((prev) => mergeFields(prev, taskFields([...activeRows, ...archiveRows])));
       setProfileSchema((prev) => mergeFields(prev, profileFields([...profileRows, ...(profile ? [profile] : [])])));
       setBanner('');
@@ -1025,6 +1043,137 @@ export default function App() {
 
   const canManageRoles = can(profile, 'roles.manage');
 
+  const handleGanttSettingsChange = async (patch) => {
+    if (!currentProjectId) return;
+    const { data, error } = await supabase
+      .from('projects')
+      .update({ ...patch, updated_at: new Date().toISOString() })
+      .eq('id', currentProjectId)
+      .select()
+      .maybeSingle();
+    if (error) {
+      setBanner(`Не удалось изменить настройки Ганта: ${error.message}`);
+      return;
+    }
+    if (data) setProjects((prev) => prev.map((project) => (project.id === data.id ? { ...project, ...data } : project)));
+  };
+
+  const refreshGanttSprints = useCallback(async () => {
+    if (!currentProjectId) return;
+    const { data, error } = await supabase
+      .from('gantt_sprints')
+      .select('*')
+      .eq('project_id', currentProjectId)
+      .order('start_date', { ascending: true });
+    if (error) {
+      setBanner(`Не удалось загрузить спринты: ${error.message}`);
+      return;
+    }
+    setGanttSprints(data ?? []);
+  }, [currentProjectId]);
+
+  const handleSaveDependencies = async (taskId, ids = []) => {
+    if (!taskId) return;
+    const { error: deleteError } = await supabase.from('task_dependencies').delete().eq('task_id', taskId);
+    if (deleteError) {
+      setBanner(`Не удалось сохранить зависимости: ${deleteError.message}`);
+      return;
+    }
+    const uniqueIds = [...new Set(ids)].filter((id) => id !== taskId);
+    if (uniqueIds.length > 0) {
+      const { data, error } = await supabase
+        .from('task_dependencies')
+        .insert(uniqueIds.map((id) => ({ task_id: taskId, depends_on_task_id: id, created_by: userId })))
+        .select();
+      if (error) {
+        setBanner(`Не удалось сохранить зависимости: ${error.message}`);
+        return;
+      }
+      setTaskDependencies((prev) => [
+        ...prev.filter((item) => item.task_id !== taskId),
+        ...(data ?? []),
+      ]);
+    } else {
+      setTaskDependencies((prev) => prev.filter((item) => item.task_id !== taskId));
+    }
+  };
+
+  const handleSaveBaseline = async () => {
+    if (!currentProjectId || tasks.length === 0) return;
+    if (!window.confirm('Зафиксировать текущие даты задач как базовый план?')) return;
+    const now = new Date().toISOString();
+    const updates = await Promise.all(
+      tasks.map((task) =>
+        supabase
+          .from('tasks')
+          .update({
+            baseline_start_at: task.start_at || null,
+            baseline_due_at: task.due_at || null,
+          })
+          .eq('id', task.id),
+      ),
+    );
+    const failed = updates.find((result) => result.error);
+    if (failed) {
+      setBanner(`Не удалось сохранить базовый план: ${failed.error.message}`);
+      return;
+    }
+    const { error } = await supabase
+      .from('projects')
+      .update({ baseline_saved_at: now, updated_at: now })
+      .eq('id', currentProjectId);
+    if (error) {
+      setBanner(`Не удалось сохранить базовый план: ${error.message}`);
+      return;
+    }
+    setTasks((prev) =>
+      prev.map((task) => ({
+        ...task,
+        baseline_start_at: task.start_at || null,
+        baseline_due_at: task.due_at || null,
+      })),
+    );
+    setProjects((prev) =>
+      prev.map((project) => (project.id === currentProjectId ? { ...project, baseline_saved_at: now } : project)),
+    );
+    setBanner('Базовый план зафиксирован.');
+  };
+
+  const handleClearBaseline = async () => {
+    if (!currentProjectId) return;
+    if (!window.confirm('Сбросить базовый план? Текущие даты задач останутся без изменений.')) return;
+    const updates = await Promise.all(
+      tasks.map((task) =>
+        supabase
+          .from('tasks')
+          .update({ baseline_start_at: null, baseline_due_at: null })
+          .eq('id', task.id),
+      ),
+    );
+    const failed = updates.find((result) => result.error);
+    if (failed) {
+      setBanner(`Не удалось сбросить базовый план: ${failed.error.message}`);
+      return;
+    }
+    const { error } = await supabase
+      .from('projects')
+      .update({ baseline_saved_at: null, updated_at: new Date().toISOString() })
+      .eq('id', currentProjectId);
+    if (error) {
+      setBanner(`Не удалось сбросить базовый план: ${error.message}`);
+      return;
+    }
+    setTasks((prev) =>
+      prev.map((task) => ({ ...task, baseline_start_at: null, baseline_due_at: null })),
+    );
+    setProjects((prev) =>
+      prev.map((project) =>
+        project.id === currentProjectId ? { ...project, baseline_saved_at: null } : project,
+      ),
+    );
+  };
+
+
   const upcomingMeetingCount = useMemo(() => {
     if (features.meetings === false) return 0;
     const declined = new Set(
@@ -1463,6 +1612,23 @@ export default function App() {
         : {}),
       ...(supports(taskSchema, 'assignee_id')
         ? { assignee_id: taskToSave.assignee_id || null }
+        : {}),
+      ...(supports(taskSchema, 'story_points')
+        ? {
+            story_points:
+              taskToSave.story_points === '' || taskToSave.story_points == null
+                ? null
+                : Math.max(0, Number(taskToSave.story_points)),
+          }
+        : {}),
+      ...(supports(taskSchema, 'progress_percent')
+        ? { progress_percent: Math.max(0, Math.min(100, Number(taskToSave.progress_percent) || 0)) }
+        : {}),
+      ...(supports(taskSchema, 'is_milestone')
+        ? { is_milestone: Boolean(taskToSave.is_milestone) }
+        : {}),
+      ...(supports(taskSchema, 'sprint_id')
+        ? { sprint_id: taskToSave.sprint_id || null }
         : {}),
       ...(supports(taskSchema, 'recurrence_freq')
         ? { recurrence_freq: due ? taskToSave.recurrence_freq || null : null }
@@ -2356,6 +2522,18 @@ export default function App() {
             onTaskClick={setSelectedTask}
             onScheduleChange={handleScheduleChange}
             canEditSchedule={canEditGantt}
+            project={currentProject}
+            sprints={ganttSprints}
+            dependencies={taskDependencies}
+            doneColumnId={doneColumnId}
+            canManageProject={
+              ['admin', 'manager', 'deputy'].includes(profile?.role) ||
+              currentProject?.owner_id === userId
+            }
+            onProjectSettingsChange={handleGanttSettingsChange}
+            onSaveBaseline={handleSaveBaseline}
+            onClearBaseline={handleClearBaseline}
+            onSprintsClick={() => setIsGanttSprintsOpen(true)}
           />
         )}
       </main>
@@ -2392,6 +2570,18 @@ export default function App() {
           currentUserId={userId}
           onQuoteToChat={handleQuoteToChat}
           columns={columns}
+          storyPointsEnabled={currentProject?.story_points_enabled === true}
+          methodology={currentProject?.methodology || 'waterfall'}
+          sprints={ganttSprints}
+          taskOptions={tasks}
+          dependencyIds={
+            selectedTask.id
+              ? taskDependencies
+                  .filter((item) => item.task_id === selectedTask.id)
+                  .map((item) => item.depends_on_task_id)
+              : []
+          }
+          onSaveDependencies={handleSaveDependencies}
           onOpenExistingTask={(taskId) => {
             const existing = tasks.find((item) => item.id === taskId);
             if (existing) setSelectedTask(existing);
@@ -2608,6 +2798,20 @@ export default function App() {
         <CalendarFeedModal
           token={calendarFeedToken}
           onClose={() => setIsCalendarFeedOpen(false)}
+        />
+      )}
+
+      {isGanttSprintsOpen && currentProject && (
+        <GanttSprintsModal
+          isOpen={isGanttSprintsOpen}
+          onClose={() => setIsGanttSprintsOpen(false)}
+          projectId={currentProject.id}
+          sprints={ganttSprints}
+          canManage={
+            ['admin', 'manager', 'deputy'].includes(profile?.role) ||
+            currentProject.owner_id === userId
+          }
+          onChanged={refreshGanttSprints}
         />
       )}
 

@@ -3,7 +3,7 @@
  * Задача имеет начало (start_at) и срок (due_at). Если начало не задано —
  * берём дату создания, чтобы полоса всегда была видимой.
  */
-import { getDueValue, parseDateValue } from './format';
+import { getDueValue, parseDateValue } from './format.js';
 
 export const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -53,6 +53,11 @@ export function getTaskSchedule(task) {
   let start = parseDateValue(task.start_at) || parseDateValue(task.created_at);
   let finish = parseDateValue(getDueValue(task));
 
+  if (task.is_milestone && finish) {
+    const date = startOfDay(finish);
+    return { start: date, finish: date };
+  }
+
   if (!start && finish) start = addDays(finish, -1);
   if (!start) return null;
 
@@ -63,8 +68,8 @@ export function getTaskSchedule(task) {
 }
 
 export function durationDays(schedule) {
-  if (!schedule) return 1;
-  return Math.max(1, daysBetween(schedule.start, schedule.finish) + 1);
+  if (!schedule) return 0;
+  return Math.max(0, daysBetween(schedule.start, schedule.finish) + 1);
 }
 
 /** Строка диаграммы */

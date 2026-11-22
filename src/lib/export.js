@@ -53,6 +53,11 @@ export function buildScheduleRows({ tasks = [], columns = [], authorById, number
         days: durationDays(schedule),
         priority: getPriority(task.priority).label,
         personal: task.is_private === true,
+        storyPoints: Number(task.story_points) || 0,
+        progress: Math.max(0, Math.min(100, Number(task.progress_percent) || 0)),
+        milestone: task.is_milestone === true,
+        baselineStart: task.baseline_start_at ? new Date(task.baseline_start_at) : null,
+        baselineFinish: task.baseline_due_at ? new Date(task.baseline_due_at) : null,
         notes: String(task.description || '')
           .replace(/<[^>]+>/g, ' ')
           .replace(/\s+/g, ' ')
@@ -76,6 +81,9 @@ export function buildCsv(rows, meta = {}) {
     'Длительность, дн',
     'Приоритет',
     'Тип',
+    'SP',
+    'Готовность, %',
+    'Веха',
   ];
 
   const lines = [
@@ -95,6 +103,9 @@ export function buildCsv(rows, meta = {}) {
       row.days,
       row.priority,
       row.personal ? 'Личная' : 'Командная',
+      row.storyPoints || '',
+      row.progress,
+      row.milestone ? 'Да' : 'Нет',
     ]),
   ];
 
@@ -123,6 +134,8 @@ export function buildMsProjectXml(rows, meta = {}) {
         row.assignee ? `Исполнитель: ${row.assignee}` : '',
         row.column ? `Колонка: ${row.column}` : '',
         row.personal ? 'Личная задача' : '',
+        row.storyPoints ? `Story points: ${row.storyPoints}` : '',
+        row.milestone ? 'Веха' : '',
       ]
         .filter(Boolean)
         .join('\n');
@@ -149,13 +162,22 @@ export function buildMsProjectXml(rows, meta = {}) {
         '      <Recurring>0</Recurring>',
         '      <OverAllocated>0</OverAllocated>',
         '      <Estimated>0</Estimated>',
-        '      <Milestone>0</Milestone>',
+        `      <Milestone>${row.milestone ? 1 : 0}</Milestone>`,
         '      <Summary>0</Summary>',
         '      <Critical>0</Critical>',
         '      <IsSubproject>0</IsSubproject>',
         '      <ExternalTask>0</ExternalTask>',
-        '      <PercentComplete>0</PercentComplete>',
-        '      <PercentWorkComplete>0</PercentWorkComplete>',
+        `      <PercentComplete>${row.progress || 0}</PercentComplete>`,
+        `      <PercentWorkComplete>${row.progress || 0}</PercentWorkComplete>`,
+        ...(row.baselineStart
+          ? [
+              '      <Baseline>',
+              '        <Number>0</Number>',
+              `        <Start>${isoLocal(row.baselineStart)}</Start>`,
+              `        <Finish>${isoLocal(row.baselineFinish || row.finish)}</Finish>`,
+              '      </Baseline>',
+            ]
+          : []),
         `      <Contact>${xmlEscape(row.author)}</Contact>`,
         `      <Notes>${xmlEscape(notes)}</Notes>`,
         '    </Task>',

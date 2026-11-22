@@ -21,6 +21,10 @@ import {
   Send,
   Quote,
   Repeat,
+  Diamond,
+  Gauge,
+  GitBranch,
+  Layers3,
 } from 'lucide-react';
 import TipTapEditor from './TipTapEditor';
 import DateTimeField from './DateTimeField';
@@ -38,7 +42,7 @@ import { htmlToText } from '../lib/quote';
 import { recurrenceLabel, recurrenceNextValue, RECURRENCE_OPTIONS } from '../lib/recurrence';
 
 /** props.task → редактируемая копия (модалка монтируется заново на каждую задачу) */
-function toEditableTask(task) {
+function toEditableTask(task, dependencyIds = []) {
   if (!task) return null;
   return {
     id: task.id || null,
@@ -57,6 +61,11 @@ function toEditableTask(task) {
     recurrence_freq: task.recurrence_freq || '',
     recurrence_interval: Number(task.recurrence_interval) || 1,
     recurrence_until: task.recurrence_until || '',
+    story_points: task.story_points ?? '',
+    progress_percent: Number(task.progress_percent) || 0,
+    is_milestone: task.is_milestone === true,
+    sprint_id: task.sprint_id || '',
+    depends_on_ids: dependencyIds,
   };
 }
 
@@ -73,8 +82,14 @@ export default function TaskDetailModal({
   onQuoteToChat,
   columns = [],
   onOpenExistingTask,
+  storyPointsEnabled = false,
+  methodology = 'waterfall',
+  sprints = [],
+  taskOptions = [],
+  dependencyIds = [],
+  onSaveDependencies,
 }) {
-  const [editedTask, setEditedTask] = useState(() => toEditableTask(task));
+  const [editedTask, setEditedTask] = useState(() => toEditableTask(task, dependencyIds));
   const [isCopied, setIsCopied] = useState(false);
   const [newLinkTitle, setNewLinkTitle] = useState('');
   const [newLinkUrl, setNewLinkUrl] = useState('');
@@ -95,6 +110,11 @@ export default function TaskDetailModal({
   const prioritySupported = supports(allowedFields, 'priority');
   const assigneeSupported = supports(allowedFields, 'assignee_id');
   const recurrenceSupported = supports(allowedFields, 'recurrence_freq');
+  const storyPointsSupported = supports(allowedFields, 'story_points');
+  const progressSupported = supports(allowedFields, 'progress_percent');
+  const milestoneSupported = supports(allowedFields, 'is_milestone');
+  const sprintSupported = supports(allowedFields, 'sprint_id');
+  const dependenciesSupported = Boolean(onSaveDependencies) && Boolean(task?.id);
 
   const authorProfile = useMemo(
     () => allProfiles.find((profile) => profile.id === task?.created_by) || null,
@@ -150,6 +170,9 @@ export default function TaskDetailModal({
     setFormError('');
     setIsSaving(true);
     await onSaveTask({ ...editedTask, title: editedTask.title.trim() }, editedTask.column_id);
+    if (editedTask.id && onSaveDependencies) {
+      await onSaveDependencies(editedTask.id, editedTask.depends_on_ids || []);
+    }
     setIsSaving(false);
   };
 
@@ -670,6 +693,131 @@ export default function TaskDetailModal({
                   </p>
                 )}
               </div>
+
+              {(progressSupported || milestoneSupported || (storyPointsEnabled && storyPointsSupported) || (methodology === 'agile' && sprintSupported) || dependenciesSupported) && (
+                <div className="rounded-2xl border border-indigo-400/25 bg-indigo-500/[0.045] p-3 dark:border-indigo-300/15 dark:bg-indigo-400/[0.06]">
+                  <p className="mb-2 flex items-center gap-1.5 text-[0.68rem] font-semibold tracking-[0.1em] text-slate-500 uppercase dark:text-slate-400">
+                    <Gauge size={12} /> Планирование
+                  </p>
+
+                  <div className="space-y-2.5">
+                    {progressSupported && (
+                      <label className="block text-[0.68rem] font-medium text-slate-600 dark:text-slate-300">
+                        <span className="flex items-center justify-between">
+                          <span>Готовность</span>
+                          <span className="font-mono text-slate-500">{editedTask.progress_percent}%</span>
+                        </span>
+                        <input
+                          type="range"
+                          min="0"
+                          max="100"
+                          step="5"
+                          value={editedTask.progress_percent}
+                          onChange={(event) => setField('progress_percent', Number(event.target.value))}
+                          className="mt-1 w-full accent-indigo-500"
+                        />
+                      </label>
+                    )}
+
+                    <div className="flex flex-wrap items-center gap-2">
+                      {storyPointsEnabled && storyPointsSupported && (
+                        <label className="flex items-center gap-1.5 text-[0.68rem] text-slate-600 dark:text-slate-300">
+                          <Layers3 size={12} /> SP
+                          <input
+                            type="number"
+                            min="0"
+                            step="0.5"
+                            value={editedTask.story_points}
+                            onChange={(event) => setField('story_points', event.target.value)}
+                            className="glass-input ml-1 !w-20 !py-1 !text-xs"
+                            placeholder="0"
+                          />
+                        </label>
+                      )}
+
+                      {milestoneSupported && (
+                        <label className="flex items-center gap-1.5 text-[0.68rem] text-slate-600 dark:text-slate-300">
+                          <input
+                            type="checkbox"
+                            checked={editedTask.is_milestone}
+                            onChange={(event) => setField('is_milestone', event.target.checked)}
+                            className="accent-amber-500"
+                          />
+                          <Diamond size={12} className="text-amber-500" /> Веха
+                        </label>
+                      )}
+                    </div>
+
+                    {editedTask.is_milestone && (
+                      <p className="text-[0.62rem] text-amber-700 dark:text-amber-300">
+                        Веха показывается ромбом на дату срока; длительность у неё не считается.
+                      </p>
+                    )}
+
+                    {methodology === 'agile' && sprintSupported && (
+                      <label className="block text-[0.68rem] font-medium text-slate-600 dark:text-slate-300">
+                        Спринт
+                        <select
+                          value={editedTask.sprint_id}
+                          onChange={(event) => setField('sprint_id', event.target.value)}
+                          className="glass-input mt-1 !py-1.5 !text-xs"
+                        >
+                          <option value="">Без спринта</option>
+                          {sprints.map((sprint) => (
+                            <option key={sprint.id} value={sprint.id}>
+                              {sprint.name}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                    )}
+
+                    {dependenciesSupported && (
+                      <div>
+                        <p className="flex items-center gap-1.5 text-[0.68rem] font-medium text-slate-600 dark:text-slate-300">
+                          <GitBranch size={12} /> Зависит от
+                        </p>
+                        <p className="mt-0.5 text-[0.6rem] text-slate-500 dark:text-slate-400">
+                          Задача не может начаться раньше этих задач. По зависимостям строится критический путь.
+                        </p>
+                        <div className="scrollbar-slim mt-1 max-h-28 space-y-1 overflow-y-auto rounded-xl border border-slate-300/60 bg-white/45 p-1.5 dark:border-white/10 dark:bg-white/5">
+                          {taskOptions.filter((option) => option.id !== editedTask.id).length === 0 ? (
+                            <p className="px-1 py-1 text-[0.62rem] text-slate-500">Других задач пока нет.</p>
+                          ) : (
+                            taskOptions
+                              .filter((option) => option.id !== editedTask.id)
+                              .map((option) => {
+                                const checked = (editedTask.depends_on_ids || []).includes(option.id);
+                                return (
+                                  <label
+                                    key={option.id}
+                                    className="flex items-center gap-2 rounded-lg px-1 py-1 text-[0.65rem] text-slate-600 hover:bg-white/60 dark:text-slate-300 dark:hover:bg-white/10"
+                                  >
+                                    <input
+                                      type="checkbox"
+                                      checked={checked}
+                                      onChange={() => {
+                                        const current = editedTask.depends_on_ids || [];
+                                        setField(
+                                          'depends_on_ids',
+                                          checked
+                                            ? current.filter((id) => id !== option.id)
+                                            : [...current, option.id],
+                                        );
+                                      }}
+                                      className="accent-indigo-500"
+                                    />
+                                    <span className="truncate">{option.title || 'Без названия'}</span>
+                                  </label>
+                                );
+                              })
+                          )}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
 
               <button
                 type="button"
