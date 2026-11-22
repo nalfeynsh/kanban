@@ -16,6 +16,7 @@ import Column from './components/Column';
 import CalendarView from './components/CalendarView';
 import GanttView from './components/GanttView';
 import GanttSprintsModal from './components/GanttSprintsModal';
+import GanttScrumModal from './components/GanttScrumModal';
 import TaskDetailModal from './components/TaskDetailModal';
 import LoginPage from './components/LoginPage';
 import ProfileModal from './components/ProfileModal';
@@ -104,6 +105,9 @@ export default function App() {
   const [statusEvents, setStatusEvents] = useState([]);
   const [ganttSprints, setGanttSprints] = useState([]);
   const [taskDependencies, setTaskDependencies] = useState([]);
+  const [ganttBaselines, setGanttBaselines] = useState([]);
+  const [ganttBaselineTasks, setGanttBaselineTasks] = useState([]);
+  const [activeBaselineId, setActiveBaselineId] = useState(null);
   const [allProfiles, setAllProfiles] = useState([]);
   const [projects, setProjects] = useState([]);
   const [trashedProjects, setTrashedProjects] = useState([]);
@@ -133,6 +137,7 @@ export default function App() {
   const [isChatOpen, setIsChatOpen] = useState(false);
   const [isMeetingsOpen, setIsMeetingsOpen] = useState(false);
   const [isGanttSprintsOpen, setIsGanttSprintsOpen] = useState(false);
+  const [isGanttScrumOpen, setIsGanttScrumOpen] = useState(false);
   const [isMeetingModalOpen, setIsMeetingModalOpen] = useState(false);
   const [selectedMeeting, setSelectedMeeting] = useState(null);
   const [editingMeeting, setEditingMeeting] = useState(null);
@@ -517,12 +522,29 @@ export default function App() {
           : Promise.resolve({ data: [], error: null }),
       ]);
 
+      const { data: baselineRows } = await supabase
+        .from('gantt_baselines')
+        .select('*')
+        .eq('project_id', currentProjectId)
+        .order('created_at', { ascending: false });
+      const baselineIds = (baselineRows ?? []).map((baseline) => baseline.id);
+      const { data: baselineTaskRows } = baselineIds.length
+        ? await supabase.from('gantt_baseline_tasks').select('*').in('baseline_id', baselineIds)
+        : { data: [] };
+
       setColumns(columnsResult.data ?? []);
       setTasks(activeRows);
       setArchivedTasks(archiveRows);
       setAllProfiles(profileRows);
       setGanttSprints(sprintsResult.error ? [] : sprintsResult.data ?? []);
       setTaskDependencies(dependenciesResult.error ? [] : dependenciesResult.data ?? []);
+      setGanttBaselines(baselineRows ?? []);
+      setGanttBaselineTasks(baselineTaskRows ?? []);
+      setActiveBaselineId((prev) =>
+        (baselineRows ?? []).some((baseline) => baseline.id === prev)
+          ? prev
+          : baselineRows?.[0]?.id ?? null,
+      );
       setTaskSchema((prev) => mergeFields(prev, taskFields([...activeRows, ...archiveRows])));
       setProfileSchema((prev) => mergeFields(prev, profileFields([...profileRows, ...(profile ? [profile] : [])])));
       setBanner('');
@@ -1098,79 +1120,54 @@ export default function App() {
     }
   };
 
-  const handleSaveBaseline = async () => {
+  const handleSaveBaseline = async (name = 'Базовый план') => {
     if (!currentProjectId || tasks.length === 0) return;
-    if (!window.confirm('Зафиксировать текущие даты задач как базовый план?')) return;
-    const now = new Date().toISOString();
-    const updates = await Promise.all(
-      tasks.map((task) =>
-        supabase
-          .from('tasks')
-          .update({
-            baseline_start_at: task.start_at || null,
-            baseline_due_at: task.due_at || null,
-          })
-          .eq('id', task.id),
-      ),
-    );
-    const failed = updates.find((result) => result.error);
-    if (failed) {
-      setBanner(`Не удалось сохранить базовый план: ${failed.error.message}`);
+    const { data: baseline, error: baselineError } = await supabase
+      .from('gantt_baselines')
+      .insert({
+        project_id: currentProjectId,
+        name: name.trim() || 'Базовый план',
+        created_by: userId,
+      })
+      .select()
+      .maybeSingle();
+    if (baselineError || !baseline) {
+      setBanner(`Не удалось сохранить базовый план: ${baselineError?.message || 'нет данных'}`);
       return;
     }
-    const { error } = await supabase
-      .from('projects')
-      .update({ baseline_saved_at: now, updated_at: now })
-      .eq('id', currentProjectId);
-    if (error) {
-      setBanner(`Не удалось сохранить базовый план: ${error.message}`);
+
+    const snapshots = tasks.map((task) => ({
+      baseline_id: baseline.id,
+      task_id: task.id,
+      start_at: task.start_at || null,
+      due_at: task.is_milestone && task.milestone_date ? task.milestone_date : task.due_at || null,
+    }));
+    const { data: baselineTasks, error: itemsError } = await supabase
+      .from('gantt_baseline_tasks')
+      .insert(snapshots)
+      .select();
+    if (itemsError) {
+      setBanner(`Не удалось сохранить базовый план: ${itemsError.message}`);
       return;
     }
-    setTasks((prev) =>
-      prev.map((task) => ({
-        ...task,
-        baseline_start_at: task.start_at || null,
-        baseline_due_at: task.due_at || null,
-      })),
-    );
-    setProjects((prev) =>
-      prev.map((project) => (project.id === currentProjectId ? { ...project, baseline_saved_at: now } : project)),
-    );
-    setBanner('Базовый план зафиксирован.');
+
+    setGanttBaselines((prev) => [baseline, ...prev]);
+    setGanttBaselineTasks((prev) => [...prev, ...(baselineTasks ?? [])]);
+    setActiveBaselineId(baseline.id);
+    setBanner(`Базовый план «${baseline.name}» зафиксирован.`);
   };
 
-  const handleClearBaseline = async () => {
-    if (!currentProjectId) return;
-    if (!window.confirm('Сбросить базовый план? Текущие даты задач останутся без изменений.')) return;
-    const updates = await Promise.all(
-      tasks.map((task) =>
-        supabase
-          .from('tasks')
-          .update({ baseline_start_at: null, baseline_due_at: null })
-          .eq('id', task.id),
-      ),
-    );
-    const failed = updates.find((result) => result.error);
-    if (failed) {
-      setBanner(`Не удалось сбросить базовый план: ${failed.error.message}`);
-      return;
-    }
-    const { error } = await supabase
-      .from('projects')
-      .update({ baseline_saved_at: null, updated_at: new Date().toISOString() })
-      .eq('id', currentProjectId);
+  const handleDeleteBaseline = async (baselineId) => {
+    if (!baselineId) return;
+    if (!window.confirm('Удалить выбранный базовый план?')) return;
+    const { error } = await supabase.from('gantt_baselines').delete().eq('id', baselineId);
     if (error) {
-      setBanner(`Не удалось сбросить базовый план: ${error.message}`);
+      setBanner(`Не удалось удалить базовый план: ${error.message}`);
       return;
     }
-    setTasks((prev) =>
-      prev.map((task) => ({ ...task, baseline_start_at: null, baseline_due_at: null })),
-    );
-    setProjects((prev) =>
-      prev.map((project) =>
-        project.id === currentProjectId ? { ...project, baseline_saved_at: null } : project,
-      ),
-    );
+    setGanttBaselines((prev) => prev.filter((baseline) => baseline.id !== baselineId));
+    setGanttBaselineTasks((prev) => prev.filter((item) => item.baseline_id !== baselineId));
+    setActiveBaselineId((prev) => (prev === baselineId ? null : prev));
   };
 
 
@@ -1626,6 +1623,20 @@ export default function App() {
         : {}),
       ...(supports(taskSchema, 'is_milestone')
         ? { is_milestone: Boolean(taskToSave.is_milestone) }
+        : {}),
+      ...(supports(taskSchema, 'milestone_date')
+        ? { milestone_date: taskToSave.is_milestone ? taskToSave.milestone_date || null : null }
+        : {}),
+      ...(supports(taskSchema, 'effort_hours')
+        ? {
+            effort_hours:
+              taskToSave.effort_hours === '' || taskToSave.effort_hours == null
+                ? null
+                : Math.max(0, Number(taskToSave.effort_hours)),
+          }
+        : {}),
+      ...(supports(taskSchema, 'dependency_lag_days')
+        ? { dependency_lag_days: Math.max(0, Number(taskToSave.dependency_lag_days) || 0) }
         : {}),
       ...(supports(taskSchema, 'sprint_id')
         ? { sprint_id: taskToSave.sprint_id || null }
@@ -2525,6 +2536,10 @@ export default function App() {
             project={currentProject}
             sprints={ganttSprints}
             dependencies={taskDependencies}
+            baselines={ganttBaselines}
+            baselineTasks={ganttBaselineTasks}
+            activeBaselineId={activeBaselineId}
+            onSelectBaseline={setActiveBaselineId}
             doneColumnId={doneColumnId}
             canManageProject={
               ['admin', 'manager', 'deputy'].includes(profile?.role) ||
@@ -2532,8 +2547,9 @@ export default function App() {
             }
             onProjectSettingsChange={handleGanttSettingsChange}
             onSaveBaseline={handleSaveBaseline}
-            onClearBaseline={handleClearBaseline}
+            onDeleteBaseline={handleDeleteBaseline}
             onSprintsClick={() => setIsGanttSprintsOpen(true)}
+            onScrumClick={() => setIsGanttScrumOpen(true)}
           />
         )}
       </main>
@@ -2812,6 +2828,25 @@ export default function App() {
             currentProject.owner_id === userId
           }
           onChanged={refreshGanttSprints}
+        />
+      )}
+
+      {isGanttScrumOpen && currentProject && (
+        <GanttScrumModal
+          isOpen={isGanttScrumOpen}
+          onClose={() => setIsGanttScrumOpen(false)}
+          sprints={ganttSprints}
+          tasks={tasks}
+          doneColumnId={doneColumnId}
+          canManage={
+            ['admin', 'manager', 'deputy'].includes(profile?.role) ||
+            currentProject.owner_id === userId
+          }
+          onChanged={loadData}
+          onOpenSprints={() => {
+            setIsGanttScrumOpen(false);
+            setIsGanttSprintsOpen(true);
+          }}
         />
       )}
 

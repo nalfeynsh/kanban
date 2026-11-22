@@ -17,8 +17,9 @@ export function taskStoryPoints(task) {
   return Number.isFinite(value) ? value : 0;
 }
 
-/** Загрузка исполнителей: параллельные задачи по дням + story points. */
-export function buildResourceLoad(tasks = [], { storyPointsEnabled = false, capacity = 1 } = {}) {
+/** Загрузка исполнителей: человеко-часы по рабочим дням + story points. */
+export function buildResourceLoad(tasks = [], { storyPointsEnabled = false, dailyHours = 8 } = {}) {
+  const capacity = Number(dailyHours) || 8;
   const byUser = new Map();
   const loadByDay = new Map();
 
@@ -32,7 +33,8 @@ export function buildResourceLoad(tasks = [], { storyPointsEnabled = false, capa
         id: task.assignee_id,
         tasks: [],
         storyPoints: 0,
-        maxLoad: 0,
+        totalHours: 0,
+        maxHours: 0,
         overloadDays: 0,
         activeDays: 0,
       });
@@ -43,35 +45,47 @@ export function buildResourceLoad(tasks = [], { storyPointsEnabled = false, capa
 
     const first = startOfDay(schedule.start);
     const last = startOfDay(schedule.finish);
+    const workdays = [];
     const totalDays = Math.max(0, daysBetween(first, last));
+    for (let i = 0; i <= totalDays; i += 1) {
+      const date = addDays(first, i);
+      const dow = date.getDay();
+      if (dow !== 0 && dow !== 6) workdays.push(date);
+    }
+
+    const effort = Number(task.effort_hours);
+    const taskHours = Number.isFinite(effort) && effort > 0 ? effort : workdays.length * 8;
+    const perDay = workdays.length > 0 ? taskHours / workdays.length : 0;
+    entry.totalHours += taskHours;
+
     const rowKey = task.assignee_id;
     if (!loadByDay.has(rowKey)) loadByDay.set(rowKey, new Map());
     const days = loadByDay.get(rowKey);
-
-    for (let i = 0; i <= totalDays; i += 1) {
-      const key = dayKey(addDays(first, i));
-      days.set(key, (days.get(key) || 0) + 1);
-    }
+    workdays.forEach((date) => {
+      const key = dayKey(date);
+      days.set(key, (days.get(key) || 0) + perDay);
+    });
   });
 
   return [...byUser.values()]
     .map((entry) => {
       const days = loadByDay.get(entry.id) || new Map();
-      let maxLoad = 0;
+      let maxHours = 0;
       let overloadDays = 0;
-      days.forEach((count) => {
-        maxLoad = Math.max(maxLoad, count);
-        if (count > capacity) overloadDays += 1;
+      days.forEach((hours) => {
+        maxHours = Math.max(maxHours, hours);
+        if (hours > capacity + 0.01) overloadDays += 1;
       });
       return {
         ...entry,
-        maxLoad,
+        capacity,
+        maxHours,
         overloadDays,
         activeDays: days.size,
         storyPoints: storyPointsEnabled ? entry.storyPoints : null,
       };
     })
-    .sort((a, b) => b.overloadDays - a.overloadDays || b.maxLoad - a.maxLoad || b.tasks.length - a.tasks.length);
+    .sort((a, b) => b.overloadDays - a.overloadDays || b.maxHours - a.maxHours || b.tasks.length - a.tasks.length);
 }
 
 /**
@@ -121,7 +135,10 @@ export function computeCriticalPath(tasks = [], dependencies = []) {
     let earliest = start;
     (parents.get(id) || []).forEach((parentId) => {
       const parentEf = forward(parentId);
-      if (parentEf != null) earliest = Math.max(earliest, parentEf + DAY_MS);
+      if (parentEf != null) {
+        const lag = Math.max(0, Number(item.task.dependency_lag_days) || 0);
+        earliest = Math.max(earliest, parentEf + (1 + lag) * DAY_MS);
+      }
     });
     const earliestFinish = Math.max(finish, earliest + Math.max(0, days - 1) * DAY_MS);
     es.set(id, earliest);

@@ -18,7 +18,7 @@ export default function GanttSprintsModal({
   canManage = false,
   onChanged,
 }) {
-  const [form, setForm] = useState({ name: '', start_date: '', end_date: '' });
+  const [form, setForm] = useState({ name: '', start_date: '', end_date: '', goal: '', capacity_hours: '' });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
@@ -45,6 +45,8 @@ export default function GanttSprintsModal({
       name: form.name.trim(),
       start_date: form.start_date,
       end_date: form.end_date,
+      goal: form.goal.trim() || null,
+      capacity_hours: Number(form.capacity_hours) || 0,
       status: 'planned',
     });
     setSaving(false);
@@ -52,7 +54,7 @@ export default function GanttSprintsModal({
       setError(insertError.message);
       return;
     }
-    setForm({ name: '', start_date: '', end_date: '' });
+    setForm({ name: '', start_date: '', end_date: '', goal: '', capacity_hours: '' });
     await reload();
   };
 
@@ -124,6 +126,23 @@ export default function GanttSprintsModal({
                   className="glass-input !py-1.5 !text-xs"
                 />
               </div>
+              <div className="mt-2 grid grid-cols-2 gap-2">
+                <input
+                  value={form.goal}
+                  onChange={(event) => setForm((prev) => ({ ...prev, goal: event.target.value }))}
+                  className="glass-input !py-1.5 !text-xs"
+                  placeholder="Цель спринта (необязательно)"
+                />
+                <input
+                  type="number"
+                  min="0"
+                  step="1"
+                  value={form.capacity_hours}
+                  onChange={(event) => setForm((prev) => ({ ...prev, capacity_hours: event.target.value }))}
+                  className="glass-input !py-1.5 !text-xs"
+                  placeholder="Ёмкость, ч"
+                />
+              </div>
               <button type="submit" disabled={saving} className="glass-btn glass-btn-primary mt-2 !px-3 !py-1.5 !text-xs">
                 {saving ? <Loader2 size={13} className="animate-spin" /> : <Plus size={13} />}
                 Добавить спринт
@@ -143,7 +162,9 @@ export default function GanttSprintsModal({
                     <p className="truncate text-xs font-semibold text-slate-800 dark:text-slate-100">{sprint.name}</p>
                     <p className="text-[0.62rem] text-slate-500 dark:text-slate-400">
                       {toDateInput(sprint.start_date)} — {toDateInput(sprint.end_date)}
+                      {sprint.capacity_hours ? ` · ${sprint.capacity_hours} ч` : ''}
                     </p>
+                    {sprint.goal && <p className="mt-0.5 text-[0.6rem] text-slate-500 dark:text-slate-400">{sprint.goal}</p>}
                   </div>
                   <select
                     value={sprint.status}

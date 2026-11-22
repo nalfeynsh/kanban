@@ -64,6 +64,9 @@ function toEditableTask(task, dependencyIds = []) {
     story_points: task.story_points ?? '',
     progress_percent: Number(task.progress_percent) || 0,
     is_milestone: task.is_milestone === true,
+    milestone_date: task.milestone_date ? String(task.milestone_date).slice(0, 10) : '',
+    effort_hours: task.effort_hours ?? '',
+    dependency_lag_days: Number(task.dependency_lag_days) || 0,
     sprint_id: task.sprint_id || '',
     depends_on_ids: dependencyIds,
   };
@@ -114,6 +117,9 @@ export default function TaskDetailModal({
   const progressSupported = supports(allowedFields, 'progress_percent');
   const milestoneSupported = supports(allowedFields, 'is_milestone');
   const sprintSupported = supports(allowedFields, 'sprint_id');
+  const effortSupported = supports(allowedFields, 'effort_hours');
+  const milestoneDateSupported = supports(allowedFields, 'milestone_date');
+  const dependencyLagSupported = supports(allowedFields, 'dependency_lag_days');
   const dependenciesSupported = Boolean(onSaveDependencies) && Boolean(task?.id);
 
   const authorProfile = useMemo(
@@ -746,7 +752,36 @@ export default function TaskDetailModal({
                           <Diamond size={12} className="text-amber-500" /> Веха
                         </label>
                       )}
+                      {effortSupported && !editedTask.is_milestone && (
+                        <label className="flex items-center gap-1.5 text-[0.68rem] text-slate-600 dark:text-slate-300">
+                          <Clock size={12} /> Трудозатраты, ч
+                          <input
+                            type="number"
+                            min="0"
+                            step="0.5"
+                            value={editedTask.effort_hours}
+                            onChange={(event) => setField('effort_hours', event.target.value)}
+                            className="glass-input ml-1 !w-20 !py-1 !text-xs"
+                            placeholder="8"
+                          />
+                        </label>
+                      )}
                     </div>
+
+                    {editedTask.is_milestone && milestoneDateSupported && (
+                      <label className="block text-[0.68rem] font-medium text-slate-600 dark:text-slate-300">
+                        Дата вехи
+                        <input
+                          type="date"
+                          value={editedTask.milestone_date}
+                          onChange={(event) => setField('milestone_date', event.target.value)}
+                          className="glass-input mt-1 !py-1.5 !text-xs"
+                        />
+                        <span className="mt-0.5 block text-[0.6rem] text-slate-500 dark:text-slate-400">
+                          Пусто — веха ставится на срок задачи.
+                        </span>
+                      </label>
+                    )}
 
                     {editedTask.is_milestone && (
                       <p className="text-[0.62rem] text-amber-700 dark:text-amber-300">
@@ -813,6 +848,19 @@ export default function TaskDetailModal({
                               })
                           )}
                         </div>
+                        {dependencyLagSupported && (
+                          <label className="mt-1.5 flex items-center gap-1.5 text-[0.65rem] text-slate-500 dark:text-slate-400">
+                            Задержка после зависимостей, дн:
+                            <input
+                              type="number"
+                              min="0"
+                              step="1"
+                              value={editedTask.dependency_lag_days}
+                              onChange={(event) => setField('dependency_lag_days', Number(event.target.value))}
+                              className="glass-input !w-16 !py-1 !text-xs"
+                            />
+                          </label>
+                        )}
                       </div>
                     )}
                   </div>

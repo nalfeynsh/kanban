@@ -54,6 +54,7 @@ export function buildScheduleRows({ tasks = [], columns = [], authorById, number
         priority: getPriority(task.priority).label,
         personal: task.is_private === true,
         storyPoints: Number(task.story_points) || 0,
+        effortHours: Number(task.effort_hours) || 0,
         progress: Math.max(0, Math.min(100, Number(task.progress_percent) || 0)),
         milestone: task.is_milestone === true,
         baselineStart: task.baseline_start_at ? new Date(task.baseline_start_at) : null,
@@ -82,6 +83,7 @@ export function buildCsv(rows, meta = {}) {
     'Приоритет',
     'Тип',
     'SP',
+    'Трудозатраты, ч',
     'Готовность, %',
     'Веха',
   ];
@@ -104,6 +106,7 @@ export function buildCsv(rows, meta = {}) {
       row.priority,
       row.personal ? 'Личная' : 'Командная',
       row.storyPoints || '',
+      row.effortHours || '',
       row.progress,
       row.milestone ? 'Да' : 'Нет',
     ]),
@@ -135,6 +138,7 @@ export function buildMsProjectXml(rows, meta = {}) {
         row.column ? `Колонка: ${row.column}` : '',
         row.personal ? 'Личная задача' : '',
         row.storyPoints ? `Story points: ${row.storyPoints}` : '',
+        row.effortHours ? `Трудозатраты: ${row.effortHours} ч` : '',
         row.milestone ? 'Веха' : '',
       ]
         .filter(Boolean)

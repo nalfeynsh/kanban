@@ -81,12 +81,17 @@ export default function GanttView({
   project = null,
   sprints = [],
   dependencies = [],
+  baselines = [],
+  baselineTasks = [],
+  activeBaselineId = null,
+  onSelectBaseline,
   doneColumnId = null,
   canManageProject = false,
   onProjectSettingsChange,
   onSaveBaseline,
-  onClearBaseline,
+  onDeleteBaseline,
   onSprintsClick,
+  onScrumClick,
 }) {
   const [scaleKey, setScaleKey] = useState('week');
   const [isExportOpen, setIsExportOpen] = useState(false);
@@ -153,10 +158,22 @@ export default function GanttView({
     () =>
       buildResourceLoad(filteredTasks, {
         storyPointsEnabled,
-        capacity: Number(project?.resource_capacity) || 1,
+        dailyHours: Number(project?.daily_hours) || 8,
       }),
-    [filteredTasks, storyPointsEnabled, project?.resource_capacity],
+    [filteredTasks, storyPointsEnabled, project?.daily_hours],
   );
+
+  const activeBaseline = useMemo(
+    () => baselines.find((baseline) => baseline.id === activeBaselineId) || null,
+    [baselines, activeBaselineId],
+  );
+  const baselineByTask = useMemo(() => {
+    const map = new Map();
+    baselineTasks
+      .filter((item) => item.baseline_id === activeBaselineId)
+      .forEach((item) => map.set(item.task_id, item));
+    return map;
+  }, [baselineTasks, activeBaselineId]);
 
   const scheduleRows = useMemo(
     () => buildScheduleRows({ tasks: filteredTasks, columns, authorById, numberById }),
@@ -219,7 +236,16 @@ export default function GanttView({
     onProjectSettingsChange?.(patch);
   };
 
-  const baselineVisible = showBaseline && Boolean(project?.baseline_saved_at);
+  const saveBaseline = () => {
+    const name = window.prompt(
+      'Название базового плана',
+      `Базовый план ${baselines.length + 1}`,
+    );
+    if (name == null) return;
+    onSaveBaseline?.(name.trim() || `Базовый план ${baselines.length + 1}`);
+  };
+
+  const baselineVisible = showBaseline && Boolean(activeBaseline);
 
   return (
     <div className="gantt-shell flex max-h-[calc(100vh-150px)] min-h-[360px] flex-col overflow-hidden rounded-3xl">
@@ -342,14 +368,29 @@ export default function GanttView({
           {canManageProject && (
             <button
               type="button"
-              onClick={onSaveBaseline}
+              onClick={saveBaseline}
               className="glass-btn !px-2 !py-1.5 !text-[0.68rem]"
               title="Зафиксировать базовый план"
             >
               <Save size={13} /> Базовый план
             </button>
           )}
-          {project?.baseline_saved_at && (
+          {baselines.length > 0 && (
+            <select
+              value={activeBaselineId || ''}
+              onChange={(event) => onSelectBaseline?.(event.target.value || null)}
+              className="glass-input !w-auto !py-1.5 !text-[0.65rem]"
+              title="Выбрать базовый план"
+            >
+              <option value="">Без плана</option>
+              {baselines.map((baseline) => (
+                <option key={baseline.id} value={baseline.id}>
+                  {baseline.name}
+                </option>
+              ))}
+            </select>
+          )}
+          {activeBaseline && (
             <button
               type="button"
               onClick={() => setShowBaseline((value) => !value)}
@@ -359,12 +400,12 @@ export default function GanttView({
               <RotateCcw size={13} /> План
             </button>
           )}
-          {project?.baseline_saved_at && canManageProject && (
+          {activeBaseline && canManageProject && (
             <button
               type="button"
-              onClick={onClearBaseline}
+              onClick={() => onDeleteBaseline?.(activeBaseline.id)}
               className="glass-btn !px-2 !py-1.5 !text-[0.68rem]"
-              title="Сбросить базовый план"
+              title="Удалить выбранный базовый план"
             >
               <X size={13} />
             </button>
@@ -379,6 +420,16 @@ export default function GanttView({
               <ListChecks size={13} /> Спринты
             </button>
           )}
+          {isAgile && (
+            <button
+              type="button"
+              onClick={onScrumClick}
+              className="glass-btn !px-2 !py-1.5 !text-[0.68rem]"
+              title="Scrum-доска: бэклог и скорость"
+            >
+              <BarChart3 size={13} /> Scrum
+            </button>
+          )}
         </div>
       </div>
 
@@ -388,19 +439,19 @@ export default function GanttView({
             <Users size={12} /> Загрузка исполнителей
             <span className="font-normal text-slate-400">норма:</span>
             <select
-              value={Number(project?.resource_capacity) || 1}
-              onChange={(event) => updateSetting({ resource_capacity: Number(event.target.value) })}
+              value={Number(project?.daily_hours) || 8}
+              onChange={(event) => updateSetting({ daily_hours: Number(event.target.value) })}
               disabled={!canManageProject}
               className="glass-input !w-auto !py-0.5 !text-[0.62rem]"
-              title="Сколько задач одновременно считается нормой"
+              title="Рабочих часов в день"
             >
-              {[1, 2, 3, 4, 5].map((value) => (
+              {[6, 7, 8, 9, 10, 12].map((value) => (
                 <option key={value} value={value}>
                   {value}
                 </option>
               ))}
             </select>
-            <span className="font-normal text-slate-400">одновременно</span>
+            <span className="font-normal text-slate-400">ч/день</span>
           </div>
           {resourceLoad.length === 0 ? (
             <p className="text-[0.65rem] text-slate-500">Нет задач с исполнителями.</p>
@@ -429,7 +480,7 @@ export default function GanttView({
                       </span>
                     </div>
                     <p className="mt-0.5 text-[0.6rem] text-slate-500 dark:text-slate-400">
-                      {item.tasks.length} задач · max {item.maxLoad}
+                      {item.tasks.length} задач · max {Math.round(item.maxHours * 10) / 10} ч
                       {storyPointsEnabled ? ` · ${item.storyPoints} SP` : ''}
                     </p>
                     {item.overloadDays > 0 && (
@@ -574,11 +625,12 @@ export default function GanttView({
             const progress = taskProgress(task, doneColumnId);
             const isCritical = criticalEnabled && critical.criticalIds.has(task.id);
             const dimmed = criticalEnabled && !isCritical;
+            const baselineItem = baselineByTask.get(task.id);
             const baselineSchedule =
-              baselineVisible && task.baseline_start_at
+              baselineVisible && (baselineItem?.start_at || baselineItem?.due_at)
                 ? getTaskSchedule({
-                    start_at: task.baseline_start_at,
-                    due_at: task.baseline_due_at,
+                    start_at: baselineItem.start_at,
+                    due_at: baselineItem.due_at,
                     is_milestone: task.is_milestone,
                   })
                 : null;

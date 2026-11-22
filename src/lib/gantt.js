@@ -53,9 +53,12 @@ export function getTaskSchedule(task) {
   let start = parseDateValue(task.start_at) || parseDateValue(task.created_at);
   let finish = parseDateValue(getDueValue(task));
 
-  if (task.is_milestone && finish) {
-    const date = startOfDay(finish);
-    return { start: date, finish: date };
+  if (task.is_milestone) {
+    const milestone = parseDateValue(task.milestone_date) || finish;
+    if (milestone) {
+      const date = startOfDay(milestone);
+      return { start: date, finish: date };
+    }
   }
 
   if (!start && finish) start = addDays(finish, -1);
