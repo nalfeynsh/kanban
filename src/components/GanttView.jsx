@@ -159,8 +159,9 @@ export default function GanttView({
       buildResourceLoad(filteredTasks, {
         storyPointsEnabled,
         dailyHours: Number(project?.daily_hours) || 8,
+        storyPointsPerDay: Number(project?.story_points_per_day) || 2,
       }),
-    [filteredTasks, storyPointsEnabled, project?.daily_hours],
+    [filteredTasks, storyPointsEnabled, project?.daily_hours, project?.story_points_per_day],
   );
 
   const activeBaseline = useMemo(
@@ -439,19 +440,37 @@ export default function GanttView({
             <Users size={12} /> Загрузка исполнителей
             <span className="font-normal text-slate-400">норма:</span>
             <select
-              value={Number(project?.daily_hours) || 8}
-              onChange={(event) => updateSetting({ daily_hours: Number(event.target.value) })}
+              value={
+                storyPointsEnabled
+                  ? Number(project?.story_points_per_day) || 2
+                  : Number(project?.daily_hours) || 8
+              }
+              onChange={(event) =>
+                updateSetting(
+                  storyPointsEnabled
+                    ? { story_points_per_day: Number(event.target.value) }
+                    : { daily_hours: Number(event.target.value) },
+                )
+              }
               disabled={!canManageProject}
               className="glass-input !w-auto !py-0.5 !text-[0.62rem]"
-              title="Рабочих часов в день"
+              title="Норма нагрузки в день"
             >
-              {[6, 7, 8, 9, 10, 12].map((value) => (
-                <option key={value} value={value}>
-                  {value}
-                </option>
-              ))}
+              {storyPointsEnabled
+                ? [1, 2, 3, 4, 5, 8].map((value) => (
+                    <option key={value} value={value}>
+                      {value}
+                    </option>
+                  ))
+                : [6, 7, 8, 9, 10, 12].map((value) => (
+                    <option key={value} value={value}>
+                      {value}
+                    </option>
+                  ))}
             </select>
-            <span className="font-normal text-slate-400">ч/день</span>
+            <span className="font-normal text-slate-400">
+              {storyPointsEnabled ? 'SP/день' : 'ч/день'}
+            </span>
           </div>
           {resourceLoad.length === 0 ? (
             <p className="text-[0.65rem] text-slate-500">Нет задач с исполнителями.</p>
@@ -480,8 +499,10 @@ export default function GanttView({
                       </span>
                     </div>
                     <p className="mt-0.5 text-[0.6rem] text-slate-500 dark:text-slate-400">
-                      {item.tasks.length} задач · max {Math.round(item.maxHours * 10) / 10} ч
-                      {storyPointsEnabled ? ` · ${item.storyPoints} SP` : ''}
+                      {item.tasks.length} задач ·{' '}
+                      {storyPointsEnabled
+                        ? `max ${Math.round(item.maxSp * 10) / 10} SP/день`
+                        : `max ${Math.round(item.maxHours * 10) / 10} ч/день`}
                     </p>
                     {item.overloadDays > 0 && (
                       <p className="text-[0.58rem] font-medium text-rose-600 dark:text-rose-300">

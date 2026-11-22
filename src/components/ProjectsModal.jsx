@@ -36,6 +36,7 @@ export default function ProjectsModal({
   onRestoreProject,
   onMarkNoticeRead,
   onManageWorkflow,
+  onUpdateSettings,
 }) {
   const [mode, setMode] = useState('list');
   const [showTrash, setShowTrash] = useState(false);
@@ -51,6 +52,7 @@ export default function ProjectsModal({
   );
   const [group, setGroup] = useState({});
   const [saving, setSaving] = useState(false);
+  const [storyPointsEnabled, setStoryPointsEnabled] = useState(false);
   const [error, setError] = useState('');
 
   const canCreate = CREATE_ROLES.includes(roleOf(currentRole));
@@ -168,6 +170,7 @@ export default function ProjectsModal({
         responsible_id: column.responsible_id || null,
       })),
       members: Object.entries(group).map(([profile_id, role]) => ({ profile_id, role })),
+      storyPointsEnabled,
     });
     setSaving(false);
 
@@ -358,6 +361,25 @@ export default function ProjectsModal({
                 </button>
               )}
 
+              {currentProject && canManageWorkflow && (
+                <label className="mt-1 flex cursor-pointer items-center gap-2 rounded-xl border border-white/45 bg-white/40 px-3 py-2 dark:border-white/10 dark:bg-white/5">
+                  <input
+                    type="checkbox"
+                    checked={currentProject.story_points_enabled === true}
+                    onChange={(event) => onUpdateSettings?.({ story_points_enabled: event.target.checked })}
+                    className="h-4 w-4 accent-indigo-500"
+                  />
+                  <span className="min-w-0 flex-1">
+                    <span className="block text-xs font-semibold text-slate-800 dark:text-slate-100">
+                      Story points в этом проекте
+                    </span>
+                    <span className="block text-[0.62rem] text-slate-500 dark:text-slate-400">
+                      Оценка задач и загрузка исполнителей в SP
+                    </span>
+                  </span>
+                </label>
+              )}
+
               {canCreate && (
                 <button
                   type="button"
@@ -421,6 +443,24 @@ export default function ProjectsModal({
                   ))}
                 </div>
               </div>
+
+              <label className="flex cursor-pointer items-start gap-2 rounded-xl border border-indigo-400/25 bg-indigo-500/[0.04] px-3 py-2.5 dark:border-indigo-300/15 dark:bg-indigo-400/[0.06]">
+                <input
+                  type="checkbox"
+                  checked={storyPointsEnabled}
+                  onChange={(event) => setStoryPointsEnabled(event.target.checked)}
+                  className="mt-0.5 h-4 w-4 accent-indigo-500"
+                />
+                <span>
+                  <span className="block text-xs font-semibold text-slate-800 dark:text-slate-100">
+                    Оценивать время в story points
+                  </span>
+                  <span className="block text-[0.65rem] text-slate-500 dark:text-slate-400">
+                    Необязательно. В Ганте появятся SP для задач и загрузка исполнителей в SP/день.
+                    Для существующего проекта это можно включить в настройках.
+                  </span>
+                </span>
+              </label>
 
               <div>
                 <div className="mb-1.5 flex items-center justify-between gap-2">

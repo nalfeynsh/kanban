@@ -116,14 +116,33 @@ export async function downloadProjectArchive(projectId) {
 }
 
 
-export async function createProject({ name, description, columns, members }) {
+export async function createProject({
+  name,
+  description,
+  columns,
+  members,
+  storyPointsEnabled = false,
+  methodology = 'waterfall',
+}) {
   const { data, error } = await supabase.rpc('create_project', {
     p_name: name,
     p_description: description || null,
     p_columns: columns,
     p_members: members || [],
   });
-  return { projectId: data, error };
+  if (error || !data) return { projectId: data, error };
+  if (storyPointsEnabled || methodology !== 'waterfall') {
+    const { error: settingsError } = await supabase
+      .from('projects')
+      .update({
+        story_points_enabled: Boolean(storyPointsEnabled),
+        methodology,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', data);
+    if (settingsError) return { projectId: data, error: settingsError };
+  }
+  return { projectId: data, error: null };
 }
 
 export async function updateProject(projectId, patch) {

@@ -18,10 +18,15 @@ export function taskStoryPoints(task) {
 }
 
 /** Загрузка исполнителей: человеко-часы по рабочим дням + story points. */
-export function buildResourceLoad(tasks = [], { storyPointsEnabled = false, dailyHours = 8 } = {}) {
+export function buildResourceLoad(
+  tasks = [],
+  { storyPointsEnabled = false, dailyHours = 8, storyPointsPerDay = 2 } = {},
+) {
   const capacity = Number(dailyHours) || 8;
+  const spCapacity = Number(storyPointsPerDay) || 2;
   const byUser = new Map();
   const loadByDay = new Map();
+  const spByDay = new Map();
 
   tasks.forEach((task) => {
     if (!task?.assignee_id) return;
@@ -33,8 +38,10 @@ export function buildResourceLoad(tasks = [], { storyPointsEnabled = false, dail
         id: task.assignee_id,
         tasks: [],
         storyPoints: 0,
+        totalSp: 0,
         totalHours: 0,
         maxHours: 0,
+        maxSp: 0,
         overloadDays: 0,
         activeDays: 0,
       });
@@ -55,37 +62,54 @@ export function buildResourceLoad(tasks = [], { storyPointsEnabled = false, dail
 
     const effort = Number(task.effort_hours);
     const taskHours = Number.isFinite(effort) && effort > 0 ? effort : workdays.length * 8;
-    const perDay = workdays.length > 0 ? taskHours / workdays.length : 0;
+    const hoursPerDay = workdays.length > 0 ? taskHours / workdays.length : 0;
+    const points = taskStoryPoints(task);
+    const spPerDay = workdays.length > 0 ? points / workdays.length : 0;
     entry.totalHours += taskHours;
+    entry.totalSp += points;
 
     const rowKey = task.assignee_id;
     if (!loadByDay.has(rowKey)) loadByDay.set(rowKey, new Map());
+    if (!spByDay.has(rowKey)) spByDay.set(rowKey, new Map());
     const days = loadByDay.get(rowKey);
+    const spDays = spByDay.get(rowKey);
     workdays.forEach((date) => {
       const key = dayKey(date);
-      days.set(key, (days.get(key) || 0) + perDay);
+      days.set(key, (days.get(key) || 0) + hoursPerDay);
+      spDays.set(key, (spDays.get(key) || 0) + spPerDay);
     });
   });
 
   return [...byUser.values()]
     .map((entry) => {
       const days = loadByDay.get(entry.id) || new Map();
+      const spDays = spByDay.get(entry.id) || new Map();
       let maxHours = 0;
+      let maxSp = 0;
       let overloadDays = 0;
-      days.forEach((hours) => {
+      const activeKeys = new Set([...days.keys(), ...spDays.keys()]);
+      activeKeys.forEach((key) => {
+        const hours = days.get(key) || 0;
+        const sp = spDays.get(key) || 0;
         maxHours = Math.max(maxHours, hours);
-        if (hours > capacity + 0.01) overloadDays += 1;
+        maxSp = Math.max(maxSp, sp);
+        if (storyPointsEnabled ? sp > spCapacity + 0.01 : hours > capacity + 0.01) overloadDays += 1;
       });
       return {
         ...entry,
-        capacity,
+        capacity: storyPointsEnabled ? spCapacity : capacity,
+        unit: storyPointsEnabled ? 'sp' : 'hours',
         maxHours,
+        maxSp,
         overloadDays,
-        activeDays: days.size,
-        storyPoints: storyPointsEnabled ? entry.storyPoints : null,
+        activeDays: activeKeys.size,
       };
     })
-    .sort((a, b) => b.overloadDays - a.overloadDays || b.maxHours - a.maxHours || b.tasks.length - a.tasks.length);
+    .sort((a, b) =>
+      b.overloadDays - a.overloadDays ||
+      (storyPointsEnabled ? b.maxSp - a.maxSp : b.maxHours - a.maxHours) ||
+      b.tasks.length - a.tasks.length,
+    );
 }
 
 /**

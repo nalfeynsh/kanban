@@ -2643,6 +2643,7 @@ export default function App() {
           onRestoreProject={handleRestoreProject}
           onMarkNoticeRead={handleMarkProjectNoticeRead}
           onManageWorkflow={handleManageWorkflow}
+          onUpdateSettings={handleGanttSettingsChange}
         />
       )}
 
