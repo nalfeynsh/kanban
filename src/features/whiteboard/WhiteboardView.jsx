@@ -582,6 +582,7 @@ export default function WhiteboardView({ project, userId, profile, authorById, c
   const [taskSearch, setTaskSearch] = useState('');
   const [shapeKind, setShapeKind] = useState('rect');
   const [selectedId, setSelectedId] = useState(null);
+  const [allSelected, setAllSelected] = useState(false);
   const [editingId, setEditingId] = useState(null);
   const [editValue, setEditValue] = useState('');
   const [connectorFrom, setConnectorFrom] = useState(null);
@@ -719,6 +720,21 @@ export default function WhiteboardView({ project, userId, profile, authorById, c
     setObjects((prev) => prev.filter((item) => item.id !== object.id));
     await deleteBoardObject(object.id);
     setSelectedId(null);
+  };
+
+  const deleteAllObjects = async ({ confirm = false } = {}) => {
+    const items = objectsRef.current;
+    if (!items.length) {
+      showToast('Доска уже пуста');
+      return;
+    }
+    if (confirm && !window.confirm(`Удалить все объекты с доски (${items.length})?`)) return;
+    pushHistory({ type: 'restoreMany', objects: items });
+    setObjects([]);
+    setSelectedId(null);
+    setAllSelected(false);
+    await Promise.all(items.map((item) => deleteBoardObject(item.id)));
+    showToast('Доска очищена');
   };
 
   const deleteAllDrawings = async () => {
@@ -931,6 +947,7 @@ export default function WhiteboardView({ project, userId, profile, authorById, c
     if (!canEdit || tool !== 'select' || object.type === 'connector') return;
     event.stopPropagation();
     setSelectedId(object.id);
+    setAllSelected(false);
     if (event.button !== 0 && event.pointerType === 'mouse') return;
     const world = screenToWorld(event.clientX, event.clientY);
     movedRef.current = false;
@@ -1093,6 +1110,14 @@ export default function WhiteboardView({ project, userId, profile, authorById, c
           redo();
           return;
         }
+        if (key === 'a') {
+          event.preventDefault();
+          setAllSelected(true);
+          setSelectedId(null);
+          setEditingId(null);
+          showToast(`Выбрано объектов: ${objectsRef.current.length}`);
+          return;
+        }
       }
       if (event.code === 'Space' && !event.target.closest('input, textarea, [contenteditable]')) {
         spaceRef.current = true;
@@ -1104,9 +1129,14 @@ export default function WhiteboardView({ project, userId, profile, authorById, c
         setConnectorFrom(null);
         setEditingId(null);
         setSelectedId(null);
+        setAllSelected(false);
       }
-      if ((event.key === 'Delete' || event.key === 'Backspace') && selectedId && canEdit && !event.target.closest('input, textarea, [contenteditable]')) {
+      if ((event.key === 'Delete' || event.key === 'Backspace') && canEdit && !event.target.closest('input, textarea, [contenteditable]') && (allSelected || selectedId)) {
         event.preventDefault();
+        if (allSelected) {
+          deleteAllObjects();
+          return;
+        }
         const target = objectsRef.current.find((item) => item.id === selectedId);
         if (target) {
           deleteWithHistory(target);
@@ -1126,7 +1156,7 @@ export default function WhiteboardView({ project, userId, profile, authorById, c
       window.removeEventListener('keyup', onKeyUp);
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [canEdit, selectedId, presentIndex]);
+  }, [canEdit, selectedId, allSelected, presentIndex]);
 
   const handleCanvasPointerDown = async (event) => {
     stopFollowing();
@@ -1143,6 +1173,7 @@ export default function WhiteboardView({ project, userId, profile, authorById, c
     const world = screenToWorld(event.clientX, event.clientY);
     if (tool === 'select') {
       setSelectedId(null);
+      setAllSelected(false);
       return;
     }
     if (!canEdit && tool !== 'comment') return;
@@ -1250,6 +1281,7 @@ export default function WhiteboardView({ project, userId, profile, authorById, c
     }
     if (!canEdit) {
       setSelectedId(object.id);
+      setAllSelected(false);
       return;
     }
     if (tool === 'eraser') {
@@ -1267,6 +1299,7 @@ export default function WhiteboardView({ project, userId, profile, authorById, c
       return;
     }
     setSelectedId(object.id);
+    setAllSelected(false);
   };
 
   const startEditing = (object) => {
@@ -1759,6 +1792,11 @@ export default function WhiteboardView({ project, userId, profile, authorById, c
                   <Trash2 size={11} /> Удалить все рисунки
                 </button>
               )}
+              {canEdit && objects.length > 0 && (
+                <button type="button" onClick={() => deleteAllObjects({ confirm: true })} className="mt-1.5 flex w-full items-center justify-center gap-1 rounded-lg border border-rose-300/50 px-2 py-1 text-[0.62rem] font-medium text-rose-600 hover:bg-rose-500/10 dark:border-rose-300/20 dark:text-rose-300">
+                  <Trash2 size={11} /> Очистить доску
+                </button>
+              )}
               <button type="button" onClick={() => setShowSettings(false)} className="mt-2 text-[0.65rem] text-indigo-600 dark:text-indigo-300">Закрыть</button>
             </div>
           )}
@@ -2104,7 +2142,7 @@ export default function WhiteboardView({ project, userId, profile, authorById, c
 
           {objects.filter((item) => item.type === 'drawing').map((item) => {
             const points = (item.data?.points || []).map((point) => `${point.x},${point.y}`).join(' ');
-            const selected = selectedId === item.id;
+            const selected = selectedId === item.id || allSelected;
             return (
               <Fragment key={item.id}>
                 <svg
@@ -2130,11 +2168,17 @@ export default function WhiteboardView({ project, userId, profile, authorById, c
                     onPointerDown={(event) => {
                       event.stopPropagation();
                       if (tool === 'eraser') deleteWithHistory(item);
-                      else setSelectedId(item.id);
+                      else {
+                        setSelectedId(item.id);
+                        setAllSelected(false);
+                      }
                     }}
                     onClick={(event) => {
                       event.stopPropagation();
-                      if (tool !== 'eraser') setSelectedId(item.id);
+                      if (tool !== 'eraser') {
+                        setSelectedId(item.id);
+                        setAllSelected(false);
+                      }
                     }}
                   >
                     <title>Нажмите, чтобы выбрать рисунок; Delete — удалить</title>
@@ -2170,7 +2214,7 @@ export default function WhiteboardView({ project, userId, profile, authorById, c
               <div
                 key={item.id}
                 data-board-object
-                className={`absolute select-none ${isSelected ? 'ring-2 ring-indigo-500 ring-offset-1' : ''}`}
+                className={`absolute select-none ${isSelected || allSelected ? 'ring-2 ring-indigo-500 ring-offset-1' : ''}`}
                 style={{
                   left: item.x,
                   top: item.y,
@@ -2377,6 +2421,13 @@ export default function WhiteboardView({ project, userId, profile, authorById, c
         </aside>
       )}
 
+      {allSelected && canEdit && (
+        <div className="absolute bottom-4 left-1/2 z-40 flex -translate-x-1/2 items-center gap-2 rounded-2xl border border-white/60 bg-slate-900/90 px-3 py-1.5 text-xs text-white shadow-xl">
+          <span className="font-medium">Выбрано объектов: {objects.length}</span>
+          <button type="button" onClick={() => deleteAllObjects()} className="rounded-lg bg-rose-500 px-2 py-1 font-medium text-white hover:bg-rose-600">Удалить всё</button>
+          <button type="button" onClick={() => setAllSelected(false)} className="rounded-lg px-2 py-1 text-white/70 hover:bg-white/10 hover:text-white">Снять</button>
+        </div>
+      )}
       {toast && <div className="absolute bottom-16 left-1/2 z-50 -translate-x-1/2 rounded-xl bg-slate-900/90 px-3 py-1.5 text-xs text-white shadow-xl">{toast}</div>}
       {error && <div className="absolute bottom-4 left-4 z-40 max-w-sm rounded-xl border border-rose-400/40 bg-rose-500/90 px-3 py-2 text-xs text-white shadow-xl">{error}<button type="button" onClick={() => setError('')} className="ml-2 font-bold">×</button></div>}
     </div>
