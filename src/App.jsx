@@ -1151,16 +1151,31 @@ export default function App() {
 
   const handleSaveDependencies = async (taskId, ids = []) => {
     if (!taskId) return;
+    const normalized = (Array.isArray(ids) ? ids : [])
+      .map((item) => (typeof item === 'string'
+        ? { id: item, relation_type: 'FS', lag_days: 0 }
+        : {
+            id: item.id,
+            relation_type: ['FS', 'SS', 'FF', 'SF'].includes(item.relation_type) ? item.relation_type : 'FS',
+            lag_days: Number(item.lag_days) || 0,
+          }))
+      .filter((item) => item.id && item.id !== taskId);
+    const unique = [...new Map(normalized.map((item) => [item.id, item])).values()];
     const { error: deleteError } = await supabase.from('task_dependencies').delete().eq('task_id', taskId);
     if (deleteError) {
       setBanner(`Не удалось сохранить зависимости: ${deleteError.message}`);
       return;
     }
-    const uniqueIds = [...new Set(ids)].filter((id) => id !== taskId);
-    if (uniqueIds.length > 0) {
+    if (unique.length > 0) {
       const { data, error } = await supabase
         .from('task_dependencies')
-        .insert(uniqueIds.map((id) => ({ task_id: taskId, depends_on_task_id: id, created_by: userId })))
+        .insert(unique.map((item) => ({
+          task_id: taskId,
+          depends_on_task_id: item.id,
+          relation_type: item.relation_type,
+          lag_days: item.lag_days,
+          created_by: userId,
+        })))
         .select();
       if (error) {
         setBanner(`Не удалось сохранить зависимости: ${error.message}`);
@@ -1342,6 +1357,7 @@ export default function App() {
       task_id: task.id,
       start_at: task.start_at || null,
       due_at: task.is_milestone && task.milestone_date ? task.milestone_date : task.due_at || null,
+      effort_hours: task.effort_hours ?? null,
     }));
     const { data: baselineTasks, error: itemsError } = await supabase
       .from('gantt_baseline_tasks')
@@ -2839,6 +2855,17 @@ export default function App() {
                   .map((item) => item.depends_on_task_id)
               : []
           }
+          dependencyLinks={
+            selectedTask.id
+              ? taskDependencies
+                  .filter((item) => item.task_id === selectedTask.id)
+                  .map((item) => ({
+                    id: item.depends_on_task_id,
+                    relation_type: item.relation_type || 'FS',
+                    lag_days: Number(item.lag_days) || 0,
+                  }))
+              : []
+          }
           relatedTaskIds={
             selectedTask.id
               ? taskRelations
@@ -3119,6 +3146,7 @@ export default function App() {
           onClose={() => setIsGanttScrumOpen(false)}
           sprints={ganttSprints}
           tasks={tasks}
+          archivedTasks={archivedTasks}
           doneColumnId={doneColumnId}
           calendar={projectCalendar}
           canManage={

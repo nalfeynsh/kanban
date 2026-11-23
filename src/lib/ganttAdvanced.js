@@ -139,17 +139,22 @@ export function computeCriticalPath(tasks = [], dependencies = []) {
   });
   if (byId.size === 0) return { criticalIds: new Set(), projectEnd: null };
 
-  const edges = dependencies.filter(
-    (item) => byId.has(item.task_id) && byId.has(item.depends_on_task_id),
-  );
+  const edges = dependencies
+    .filter((item) => byId.has(item.task_id) && byId.has(item.depends_on_task_id))
+    .map((edge) => ({
+      ...edge,
+      relation_type: ['FS', 'SS', 'FF', 'SF'].includes(edge.relation_type) ? edge.relation_type : 'FS',
+      lag_days: Number(edge.lag_days ?? byId.get(edge.task_id)?.task?.dependency_lag_days) || 0,
+    }));
   if (edges.length === 0) return { criticalIds: new Set(), projectEnd: null };
+
   const parents = new Map();
   const children = new Map();
   edges.forEach((edge) => {
     if (!parents.has(edge.task_id)) parents.set(edge.task_id, []);
-    parents.get(edge.task_id).push(edge.depends_on_task_id);
+    parents.get(edge.task_id).push(edge);
     if (!children.has(edge.depends_on_task_id)) children.set(edge.depends_on_task_id, []);
-    children.get(edge.depends_on_task_id).push(edge.task_id);
+    children.get(edge.depends_on_task_id).push(edge);
   });
 
   const duration = new Map();
@@ -159,53 +164,86 @@ export function computeCriticalPath(tasks = [], dependencies = []) {
   let cycle = false;
 
   const forward = (id) => {
-    if (ef.has(id)) return ef.get(id);
+    if (es.has(id)) return { es: es.get(id), ef: ef.get(id) };
     if (visiting.has(id)) {
       cycle = true;
       return null;
     }
     visiting.add(id);
     const item = byId.get(id);
-    const start = dayKey(item.schedule.start);
-    const finish = dayKey(item.schedule.finish);
+    const baseStart = dayKey(item.schedule.start);
+    const baseFinish = dayKey(item.schedule.finish);
     const days = Math.max(item.task.is_milestone ? 0 : 1, daysBetween(item.schedule.start, item.schedule.finish) + 1);
     duration.set(id, days);
 
-    let earliest = start;
-    (parents.get(id) || []).forEach((parentId) => {
-      const parentEf = forward(parentId);
-      if (parentEf != null) {
-        const lag = Math.max(0, Number(item.task.dependency_lag_days) || 0);
-        earliest = Math.max(earliest, parentEf + (1 + lag) * DAY_MS);
+    let earliestStart = baseStart;
+    let earliestFinish = baseFinish;
+    (parents.get(id) || []).forEach((edge) => {
+      const parent = forward(edge.depends_on_task_id);
+      if (!parent) return;
+      const lag = edge.lag_days * DAY_MS;
+      if (edge.relation_type === 'SS') {
+        earliestStart = Math.max(earliestStart, parent.es + lag);
+      } else if (edge.relation_type === 'FF') {
+        earliestFinish = Math.max(earliestFinish, parent.ef + lag);
+      } else if (edge.relation_type === 'SF') {
+        earliestFinish = Math.max(earliestFinish, parent.es + lag);
+      } else {
+        earliestStart = Math.max(earliestStart, parent.ef + DAY_MS + lag);
       }
     });
-    const earliestFinish = Math.max(finish, earliest + Math.max(0, days - 1) * DAY_MS);
-    es.set(id, earliest);
+    earliestFinish = Math.max(earliestFinish, earliestStart + Math.max(0, days - 1) * DAY_MS);
+    es.set(id, earliestStart);
     ef.set(id, earliestFinish);
     visiting.delete(id);
-    return earliestFinish;
+    return { es: earliestStart, ef: earliestFinish };
   };
 
   byId.forEach((_, id) => forward(id));
   if (cycle) return { criticalIds: new Set(), projectEnd: null };
 
   const projectEnd = Math.max(...[...ef.values()]);
-  const lf = new Map();
   const ls = new Map();
-  const computeBackward = (id) => {
-    if (lf.has(id)) return lf.get(id);
-    const kids = children.get(id) || [];
-    let latestFinish = projectEnd;
-    kids.forEach((childId) => {
-      computeBackward(childId);
-      latestFinish = Math.min(latestFinish, ls.get(childId) - DAY_MS);
-    });
-    lf.set(id, latestFinish);
+  const lf = new Map();
+  const backwardVisiting = new Set();
+
+  const backward = (id) => {
+    if (lf.has(id)) return { ls: ls.get(id), lf: lf.get(id) };
+    if (backwardVisiting.has(id)) return null;
+    backwardVisiting.add(id);
     const days = duration.get(id) || 1;
-    ls.set(id, latestFinish - Math.max(0, days - 1) * DAY_MS);
-    return latestFinish;
+    let latestFinish = projectEnd;
+    let latestStart = projectEnd - Math.max(0, days - 1) * DAY_MS;
+    (children.get(id) || []).forEach((edge) => {
+      const child = backward(edge.task_id);
+      if (!child) return;
+      const lag = edge.lag_days * DAY_MS;
+      let finishCandidate;
+      let startCandidate;
+      if (edge.relation_type === 'SS') {
+        startCandidate = child.ls - lag;
+        finishCandidate = startCandidate + Math.max(0, days - 1) * DAY_MS;
+      } else if (edge.relation_type === 'FF') {
+        finishCandidate = child.lf - lag;
+        startCandidate = finishCandidate - Math.max(0, days - 1) * DAY_MS;
+      } else if (edge.relation_type === 'SF') {
+        startCandidate = child.lf - lag;
+        finishCandidate = startCandidate + Math.max(0, days - 1) * DAY_MS;
+      } else {
+        finishCandidate = child.ls - DAY_MS - lag;
+        startCandidate = finishCandidate - Math.max(0, days - 1) * DAY_MS;
+      }
+      latestFinish = Math.min(latestFinish, finishCandidate);
+      latestStart = Math.min(latestStart, startCandidate);
+    });
+    latestStart = Math.min(latestStart, latestFinish - Math.max(0, days - 1) * DAY_MS);
+    ls.set(id, latestStart);
+    lf.set(id, latestFinish);
+    backwardVisiting.delete(id);
+    return { ls: latestStart, lf: latestFinish };
   };
-  byId.forEach((_, id) => computeBackward(id));
+
+  byId.forEach((_, id) => backward(id));
 
   const criticalIds = new Set();
   byId.forEach((_, id) => {

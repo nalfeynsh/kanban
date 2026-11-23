@@ -42,6 +42,7 @@ import { workingDaysBetween } from '../lib/productionCalendar';
 import { getPriority } from '../lib/priority';
 import Avatar from './Avatar';
 import { formatDueLong } from '../lib/format';
+import GanttBaselineReportModal from './GanttBaselineReportModal';
 import {
   buildCsv,
   buildMsProjectXml,
@@ -104,6 +105,7 @@ export default function GanttView({
   const [showResources, setShowResources] = useState(false);
   const [showCritical, setShowCritical] = useState(false);
   const [showBaseline, setShowBaseline] = useState(true);
+  const [showBaselineReport, setShowBaselineReport] = useState(false);
   const [sprintFilter, setSprintFilter] = useState('all');
   const scrollRef = useRef(null);
   const movedRef = useRef(false);
@@ -404,6 +406,16 @@ export default function GanttView({
                 </option>
               ))}
             </select>
+          )}
+          {activeBaseline && (
+            <button
+              type="button"
+              onClick={() => setShowBaselineReport(true)}
+              className="glass-btn !px-2 !py-1.5 !text-[0.68rem]"
+              title="Отчёт план/факт по базовому плану"
+            >
+              <BarChart3 size={13} /> План/факт
+            </button>
           )}
           {activeBaseline && (
             <button
@@ -878,6 +890,15 @@ export default function GanttView({
           <Check size={11} /> Тяните полосу — сдвиг сроков, правый край — длительность
         </span>
       </div>
+      {showBaselineReport && (
+        <GanttBaselineReportModal
+          isOpen={showBaselineReport}
+          onClose={() => setShowBaselineReport(false)}
+          baseline={activeBaseline}
+          tasks={tasks}
+          baselineTasks={baselineTasks}
+        />
+      )}
     </div>
   );
 }

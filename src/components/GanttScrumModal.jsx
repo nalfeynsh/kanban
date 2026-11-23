@@ -11,7 +11,7 @@ function taskPoints(task) {
 }
 
 function isDone(task, doneColumnId) {
-  return Boolean(doneColumnId && task.column_id === doneColumnId);
+  return Boolean(task?.completed_at || (doneColumnId && task.column_id === doneColumnId));
 }
 
 export default function GanttScrumModal({
@@ -19,6 +19,7 @@ export default function GanttScrumModal({
   onClose,
   sprints = [],
   tasks = [],
+  archivedTasks = [],
   doneColumnId,
   canManage = false,
   onChanged,
@@ -26,6 +27,11 @@ export default function GanttScrumModal({
   calendar = null,
 }) {
   const [movingId, setMovingId] = useState(null);
+  const allTasks = useMemo(() => {
+    const byId = new Map();
+    [...tasks, ...archivedTasks].forEach((task) => byId.set(task.id, task));
+    return [...byId.values()];
+  }, [tasks, archivedTasks]);
 
   const backlog = useMemo(
     () => tasks.filter((task) => !isDone(task, doneColumnId) && !task.sprint_id),
@@ -35,11 +41,12 @@ export default function GanttScrumModal({
   const sprintStats = useMemo(
     () =>
       sprints.map((sprint) => {
-        const items = tasks.filter((task) => task.sprint_id === sprint.id);
+        const items = allTasks.filter((task) => task.sprint_id === sprint.id);
         const totalSp = items.reduce((sum, task) => sum + taskPoints(task), 0);
-        const doneSp = items
-          .filter((task) => isDone(task, doneColumnId))
-          .reduce((sum, task) => sum + taskPoints(task), 0);
+        const completedItems = items.filter(
+          (task) => task.completed_sprint_id === sprint.id || (isDone(task, doneColumnId) && task.sprint_id === sprint.id),
+        );
+        const doneSp = completedItems.reduce((sum, task) => sum + taskPoints(task), 0);
         const plannedHours = items.reduce((sum, task) => {
           const effort = Number(task.effort_hours);
           if (Number.isFinite(effort) && effort > 0) return sum + effort;
@@ -58,7 +65,7 @@ export default function GanttScrumModal({
           overCapacity: capacity > 0 && plannedHours > capacity,
         };
       }),
-    [sprints, tasks, doneColumnId, calendar],
+    [sprints, allTasks, doneColumnId, calendar],
   );
 
   const completed = sprintStats.filter((item) => item.sprint.status === 'completed');
@@ -158,6 +165,7 @@ export default function GanttScrumModal({
               <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${isDone(task, doneColumnId) ? 'bg-emerald-500' : 'bg-indigo-400'}`} />
               <span className={`min-w-0 flex-1 truncate text-[0.65rem] ${isDone(task, doneColumnId) ? 'text-slate-400 line-through' : 'text-slate-700 dark:text-slate-200'}`}>
                 {task.title || 'Без названия'}
+                {task.deleted_at && <span className="ml-1 rounded bg-slate-500/10 px-1 py-0.5 text-[0.5rem] text-slate-500 no-underline">архив</span>}
               </span>
               <span className="text-[0.58rem] font-semibold text-slate-500">{taskPoints(task)} SP</span>
               {canManage && (

@@ -99,6 +99,7 @@ export default function TaskDetailModal({
   sprints = [],
   taskOptions = [],
   dependencyIds = [],
+  dependencyLinks = [],
   relatedTaskIds = [],
   checklistItems = [],
   subtasks = [],
@@ -111,6 +112,14 @@ export default function TaskDetailModal({
   taskFeatures = {},
 }) {
   const [editedTask, setEditedTask] = useState(() => toEditableTask(task, dependencyIds, relatedTaskIds));
+  const [dependencySettings, setDependencySettings] = useState(() =>
+    Object.fromEntries(
+      (dependencyLinks || []).map((link) => [
+        link.id,
+        { relation_type: link.relation_type || 'FS', lag_days: Number(link.lag_days) || 0 },
+      ]),
+    ),
+  );
   const [checklist, setChecklist] = useState(() =>
     (checklistItems || []).map((item) => ({
       id: item.id,
@@ -151,7 +160,6 @@ export default function TaskDetailModal({
   const effortSupported = supports(allowedFields, 'effort_hours');
   const actualHoursSupported = supports(allowedFields, 'actual_hours');
   const milestoneDateSupported = supports(allowedFields, 'milestone_date');
-  const dependencyLagSupported = supports(allowedFields, 'dependency_lag_days');
   const planningEnabled = taskFeatures.planning !== false;
   const milestonesEnabled = taskFeatures.milestones !== false;
   const effortEnabled = taskFeatures.effort !== false;
@@ -278,7 +286,14 @@ export default function TaskDetailModal({
     const taskId = saved?.id || editedTask.id;
     if (taskId) {
       if (onSaveDependencies) {
-        await onSaveDependencies(taskId, editedTask.depends_on_ids || []);
+        await onSaveDependencies(
+          taskId,
+          (editedTask.depends_on_ids || []).map((id) => ({
+            id,
+            relation_type: dependencySettings[id]?.relation_type || 'FS',
+            lag_days: Number(dependencySettings[id]?.lag_days) || 0,
+          })),
+        );
       }
       if (onSaveRelations) {
         await onSaveRelations(taskId, editedTask.related_task_ids || []);
@@ -1193,46 +1208,69 @@ export default function TaskDetailModal({
                               .filter((option) => option.id !== editedTask.id)
                               .map((option) => {
                                 const checked = (editedTask.depends_on_ids || []).includes(option.id);
+                                const settings = dependencySettings[option.id] || { relation_type: 'FS', lag_days: 0 };
                                 return (
-                                  <label
-                                    key={option.id}
-                                    className="flex items-center gap-2 rounded-lg px-1 py-1 text-[0.65rem] text-slate-600 hover:bg-white/60 dark:text-slate-300 dark:hover:bg-white/10"
-                                  >
-                                    <input
-                                      type="checkbox"
-                                      checked={checked}
-                                      onChange={() => {
-                                        const current = editedTask.depends_on_ids || [];
-                                        setField(
-                                          'depends_on_ids',
-                                          checked
-                                            ? current.filter((id) => id !== option.id)
-                                            : [...current, option.id],
-                                        );
-                                      }}
-                                      className="accent-indigo-500"
-                                    />
-                                    <span className="truncate">{option.title || 'Без названия'}</span>
-                                  </label>
+                                  <div key={option.id} className="rounded-lg px-1 py-1 hover:bg-white/60 dark:hover:bg-white/10">
+                                    <label className="flex items-center gap-2 text-[0.65rem] text-slate-600 dark:text-slate-300">
+                                      <input
+                                        type="checkbox"
+                                        checked={checked}
+                                        onChange={() => {
+                                          const current = editedTask.depends_on_ids || [];
+                                          if (checked) {
+                                            setField('depends_on_ids', current.filter((id) => id !== option.id));
+                                            setDependencySettings((prev) => {
+                                              const next = { ...prev };
+                                              delete next[option.id];
+                                              return next;
+                                            });
+                                          } else {
+                                            setField('depends_on_ids', [...current, option.id]);
+                                            setDependencySettings((prev) => ({
+                                              ...prev,
+                                              [option.id]: prev[option.id] || { relation_type: 'FS', lag_days: 0 },
+                                            }));
+                                          }
+                                        }}
+                                        className="accent-indigo-500"
+                                      />
+                                      <span className="min-w-0 flex-1 truncate">{option.title || 'Без названия'}</span>
+                                    </label>
+                                    {checked && (
+                                      <div className="mt-1 ml-5 flex items-center gap-1.5">
+                                        <select
+                                          value={settings.relation_type}
+                                          onChange={(event) => setDependencySettings((prev) => ({ ...prev, [option.id]: { ...settings, relation_type: event.target.value } }))}
+                                          className="glass-input !w-24 !py-0.5 !text-[0.58rem]"
+                                          title="Тип зависимости"
+                                        >
+                                          <option value="FS">FS · после</option>
+                                          <option value="SS">SS · вместе</option>
+                                          <option value="FF">FF · финиш</option>
+                                          <option value="SF">SF · старт</option>
+                                        </select>
+                                        <span className="text-[0.55rem] text-slate-400">lag</span>
+                                        <input
+                                          type="number"
+                                          min={canManageLag ? -365 : 0}
+                                          step="1"
+                                          value={settings.lag_days}
+                                          onChange={(event) => {
+                                            const raw = Number(event.target.value);
+                                            const lag = canManageLag ? raw : Math.max(0, raw);
+                                            setDependencySettings((prev) => ({ ...prev, [option.id]: { ...settings, lag_days: lag } }));
+                                          }}
+                                          disabled={!canManageLag && Number(settings.lag_days) < 0}
+                                          className="glass-input !w-14 !py-0.5 !text-[0.58rem]"
+                                          title="Задержка/опережение в днях"
+                                        />
+                                      </div>
+                                    )}
+                                  </div>
                                 );
                               })
                           )}
                         </div>
-                        {dependencyLagSupported && (
-                          <label className="mt-1.5 flex items-center gap-1.5 text-[0.65rem] text-slate-500 dark:text-slate-400">
-                            Задержка после зависимостей, дн:
-                            <input
-                              type="number"
-                              min="0"
-                              step="1"
-                              value={editedTask.dependency_lag_days}
-                              onChange={(event) => setField('dependency_lag_days', Number(event.target.value))}
-                              disabled={!canManageLag}
-                              className="glass-input !w-16 !py-1 !text-xs disabled:opacity-50"
-                            />
-                            {!canManageLag && <span className="text-[0.58rem] text-slate-400">меняет руководитель</span>}
-                          </label>
-                        )}
                       </div>
                     )}
 
