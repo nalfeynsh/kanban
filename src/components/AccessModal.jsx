@@ -57,6 +57,7 @@ export default function AccessModal({
   const [notice, setNotice] = useState('');
   const [formError, setFormError] = useState('');
   const [copied, setCopied] = useState('');
+  const [lastInvite, setLastInvite] = useState(null);
   const [ownerHintOpen, setOwnerHintOpen] = useState(false);
   const [roleList, setRoleList] = useState(roles);
   const [roleEditor, setRoleEditor] = useState(null);
@@ -178,6 +179,8 @@ export default function AccessModal({
       setCopied('');
     }
   };
+
+  const inviteUrl = (id) => `${window.location.origin}/?invite=${id}`;
 
   const startCreateRole = () => {
     setRoleError('');
@@ -306,7 +309,10 @@ export default function AccessModal({
 
     setInvites((prev) => [data, ...prev]);
     setForm({ email: '', role: 'member', code: '' });
-    setNotice(`Приглашение для ${email} создано`);
+    const url = inviteUrl(data.id);
+    setLastInvite({ url, email });
+    await copy(`link-${data.id}`, url);
+    setNotice(`Приглашение для ${email} создано. Ссылка скопирована — отправьте её сотруднику.`);
     setCreating(false);
   };
 
@@ -528,11 +534,11 @@ export default function AccessModal({
                       className="glass-btn glass-btn-primary !py-1.5 !text-xs"
                     >
                       {creating ? <Loader2 size={13} className="animate-spin" /> : <Plus size={13} />}
-                      Выдать
+                      Создать ссылку
                     </button>
                   </div>
                   <p className="mt-1.5 text-[0.65rem] text-slate-500 dark:text-slate-400">
-                    Регистрация закрыта: войти сможет только почта из этого списка.
+                    После создания ссылка скопируется. Отправьте её сотруднику: он задаст пароль и войдёт. Код доступа — по желанию.
                   </p>
                   {formError && (
                     <p className="mt-2 flex items-start gap-1.5 rounded-lg border border-rose-400/40 bg-rose-500/10 px-2 py-1.5 text-[0.68rem] text-rose-700 dark:text-rose-300">
@@ -543,6 +549,31 @@ export default function AccessModal({
                     <p className="mt-2 rounded-lg border border-emerald-400/40 bg-emerald-500/10 px-2 py-1.5 text-[0.68rem] text-emerald-700 dark:text-emerald-300">
                       {notice}
                     </p>
+                  )}
+                  {lastInvite && (
+                    <div className="mt-2 rounded-xl border border-indigo-400/30 bg-indigo-500/8 p-2.5">
+                      <p className="mb-1 text-[0.65rem] font-semibold text-indigo-700 dark:text-indigo-300">
+                        Ссылка для {lastInvite.email}
+                      </p>
+                      <div className="flex items-center gap-1.5">
+                        <code className="min-w-0 flex-1 truncate rounded-md bg-white/60 px-1.5 py-1 font-mono text-[0.6rem] dark:bg-black/25">
+                          {lastInvite.url}
+                        </code>
+                        <button
+                          type="button"
+                          onClick={() => copy('last-invite', lastInvite.url)}
+                          className="glass-btn shrink-0 !px-2 !py-1 !text-[0.62rem]"
+                        >
+                          {copied === 'last-invite' ? <Check size={11} className="text-emerald-500" /> : <Copy size={11} />}
+                        </button>
+                      </div>
+                      <a
+                        href={`mailto:${encodeURIComponent(lastInvite.email)}?subject=${encodeURIComponent('Приглашение в «Мой Канбан»')}&body=${encodeURIComponent(`Здравствуйте!\n\nВы приглашены в «Мой Канбан».\nПерейдите по ссылке, задайте пароль и войдите:\n${lastInvite.url}\n\nЕсли ссылка не открывается, скопируйте её в браузер.`)}`}
+                        className="mt-1.5 inline-flex items-center gap-1 text-[0.62rem] font-medium text-indigo-600 hover:underline dark:text-indigo-300"
+                      >
+                        <Mail size={11} /> Открыть письмо в почтовом клиенте
+                      </a>
+                    </div>
                   )}
                 </div>
               ) : (
@@ -586,11 +617,11 @@ export default function AccessModal({
 
                         <button
                           type="button"
-                          onClick={() => copy(invite.id, invite.code || invite.email)}
+                          onClick={() => copy(`link-${invite.id}`, inviteUrl(invite.id))}
                           className="glass-btn !px-2 !py-1 !text-[0.65rem]"
-                          title="Скопировать код или почту"
+                          title="Скопировать ссылку-приглашение"
                         >
-                          {copied === invite.id ? <Check size={12} className="text-emerald-500" /> : <Copy size={12} />}
+                          {copied === `link-${invite.id}` ? <Check size={12} className="text-emerald-500" /> : <Copy size={12} />}
                         </button>
 
                         {mayRevokeInvites && !used && (

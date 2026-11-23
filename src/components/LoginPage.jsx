@@ -53,6 +53,10 @@ export default function LoginPage() {
   const [inviteCode, setInviteCode] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [inviteToken] = useState(() => new URLSearchParams(window.location.search).get('invite') || '');
+  const [inviteInfo, setInviteInfo] = useState(null);
+  const [inviteState, setInviteState] = useState(inviteToken ? 'loading' : 'none');
+  const [inviteError, setInviteError] = useState('');
   const [oauthError, setOauthError] = useState(() => readOAuthError());
   const [errorMsg, setErrorMsg] = useState(() => {
     const info = explainOAuthError(readOAuthError());
@@ -69,6 +73,33 @@ export default function LoginPage() {
   useEffect(() => {
     if (readOAuthError()) cleanOAuthUrl();
   }, []);
+
+  useEffect(() => {
+    if (!inviteToken) return undefined;
+    let active = true;
+    supabase
+      .rpc('get_invite', { p_id: inviteToken })
+      .then(({ data, error }) => {
+        if (!active) return;
+        const invite = Array.isArray(data) ? data[0] : data;
+        if (error || !invite?.email) {
+          setInviteState('invalid');
+          setInviteError(error?.message || 'Ссылка недействительна или уже использована. Попросите новое приглашение.');
+          return;
+        }
+        setInviteInfo(invite);
+        setEmail(invite.email);
+        setMode('register');
+        setInviteState('ready');
+      })
+      .catch((error) => {
+        if (active) {
+          setInviteState('invalid');
+          setInviteError(error?.message || 'Не удалось проверить приглашение.');
+        }
+      });
+    return () => { active = false; };
+  }, [inviteToken]);
 
   const copy = async (kind, value) => {
     try {
@@ -102,6 +133,14 @@ export default function LoginPage() {
     setSuccessMsg('');
 
     if (!isLogin) {
+      if (inviteState === 'invalid') {
+        setErrorMsg('Приглашение недействительно. Попросите администратора создать новую ссылку.');
+        return;
+      }
+      if (inviteState === 'ready' && inviteInfo?.code_required && !inviteCode.trim()) {
+        setErrorMsg('Введите код доступа из приглашения.');
+        return;
+      }
       if (password.length < 8) {
         setErrorMsg('Пароль должен быть не короче 8 символов.');
         return;
@@ -119,9 +158,12 @@ export default function LoginPage() {
         const { error } = await supabase.auth.signInWithPassword({ email, password });
         if (error) setErrorMsg(translateError(error.message));
       } else {
-        // 1. Проверяем приглашение (RPC из миграции 001)
+        const registrationEmail = inviteState === 'ready' ? inviteInfo.email : email;
+
+        // Проверяем приглашение на сервере. Для ссылки-приглашения почта
+        // берётся из приглашения и не может быть подменена в форме.
         const { data: allowed, error: inviteError } = await supabase.rpc('verify_invite', {
-          p_email: email,
+          p_email: registrationEmail,
           p_code: inviteCode.trim() || null,
         });
 
@@ -138,25 +180,36 @@ export default function LoginPage() {
 
         if (!allowed) {
           setErrorMsg(
-            'Доступ только по приглашению: этой почты нет в списке, либо код неверный, либо приглашение уже использовано.',
+            'Приглашение недействительно: ссылка устарела, уже использована или код неверный. Попросите новую ссылку.',
           );
           setLoading(false);
           return;
         }
 
-        // 2. Регистрируем (триггер guard_signup проверит приглашение ещё раз на сервере)
-        const { error } = await supabase.auth.signUp({
-          email,
+        const { data: signUpData, error } = await supabase.auth.signUp({
+          email: registrationEmail,
           password,
-          options: { emailRedirectTo: authRedirectUrl() },
+          options: {
+            emailRedirectTo: authRedirectUrl(),
+            data: {
+              ...(inviteToken ? { invite_id: inviteToken } : {}),
+              invite_code: inviteCode.trim() || null,
+            },
+          },
         });
 
         if (error) {
           setErrorMsg(translateError(error.message));
-        } else {
-          setSuccessMsg('Готово! Проверьте почту и подтвердите аккаунт — после этого можно войти.');
+        } else if (signUpData?.session) {
+          setSuccessMsg('Аккаунт создан. Вы вошли в сервис.');
           setPassword('');
           setPasswordRepeat('');
+          window.history.replaceState({}, '', window.location.pathname);
+        } else {
+          setSuccessMsg('Аккаунт создан. Теперь войдите с этой почтой и паролем.');
+          setPassword('');
+          setPasswordRepeat('');
+          window.history.replaceState({}, '', window.location.pathname);
         }
       }
     } catch (unexpected) {
@@ -224,9 +277,30 @@ export default function LoginPage() {
             <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
               {isLogin
                 ? 'Введите почту и пароль, чтобы открыть доску'
-                : 'Нужно приглашение от администратора команды'}
+                : inviteState === 'ready'
+                  ? 'Приглашение действительно — задайте пароль'
+                  : 'Нужно приглашение от администратора команды'}
             </p>
           </div>
+
+          {inviteState === 'loading' && (
+            <div className="mb-3 flex items-center gap-2 rounded-xl border border-indigo-400/30 bg-indigo-500/10 px-3 py-2 text-[0.72rem] text-indigo-700 dark:text-indigo-300">
+              <Loader2 size={14} className="animate-spin" /> Проверяем приглашение…
+            </div>
+          )}
+          {inviteState === 'ready' && (
+            <div className="mb-3 rounded-xl border border-emerald-400/40 bg-emerald-500/10 px-3 py-2 text-[0.72rem] text-emerald-800 dark:text-emerald-200">
+              <p className="flex items-center gap-1.5 font-semibold"><CheckCircle2 size={14} /> Приглашение для {inviteInfo.email}</p>
+              <p className="mt-0.5 text-emerald-700/80 dark:text-emerald-300/80">
+                {inviteInfo.code_required ? 'Введите код доступа ниже.' : 'Код доступа не требуется.'} Задайте пароль — и вы сразу войдёте.
+              </p>
+            </div>
+          )}
+          {inviteState === 'invalid' && (
+            <div className="mb-3 flex items-start gap-2 rounded-xl border border-rose-400/40 bg-rose-500/10 px-3 py-2 text-[0.72rem] text-rose-700 dark:text-rose-300">
+              <AlertTriangle size={14} className="mt-0.5 shrink-0" /> {inviteError}
+            </div>
+          )}
 
           <form onSubmit={handleSubmit} className="space-y-3.5">
             <label className="block">
@@ -239,7 +313,8 @@ export default function LoginPage() {
                 autoComplete="email"
                 value={email}
                 onChange={(event) => setEmail(event.target.value)}
-                className="glass-input"
+                readOnly={!isLogin && inviteState === 'ready'}
+                className={`glass-input ${!isLogin && inviteState === 'ready' ? 'cursor-not-allowed opacity-75' : ''}`}
                 placeholder="you@example.com"
               />
             </label>
@@ -299,21 +374,26 @@ export default function LoginPage() {
                   />
                 </div>
 
-                <label className="block">
-                  <span className="mb-1 flex items-center gap-1.5 text-xs font-medium text-slate-600 dark:text-slate-300">
-                    <KeyRound size={12} /> Код приглашения
-                  </span>
-                  <input
-                    type="text"
-                    value={inviteCode}
-                    onChange={(event) => setInviteCode(event.target.value)}
-                    className="glass-input"
-                    placeholder="Если администратор выдал код"
-                  />
-                  <span className="mt-1 block text-[0.68rem] text-slate-500 dark:text-slate-400">
-                    Регистрация возможна только для почты из списка приглашённых.
-                  </span>
-                </label>
+                {(!inviteToken || inviteInfo?.code_required) && (
+                  <label className="block">
+                    <span className="mb-1 flex items-center gap-1.5 text-xs font-medium text-slate-600 dark:text-slate-300">
+                      <KeyRound size={12} /> Код доступа
+                    </span>
+                    <input
+                      type="text"
+                      value={inviteCode}
+                      onChange={(event) => setInviteCode(event.target.value)}
+                      className="glass-input"
+                      placeholder={inviteInfo?.code_required ? 'Код из приглашения' : 'Если администратор выдал код'}
+                      required={Boolean(inviteInfo?.code_required)}
+                    />
+                    <span className="mt-1 block text-[0.68rem] text-slate-500 dark:text-slate-400">
+                      {inviteInfo?.code_required
+                        ? 'Код указан в приглашении — без него войти нельзя.'
+                        : 'Регистрация возможна только для почты из приглашения.'}
+                    </span>
+                  </label>
+                )}
               </>
             )}
 
@@ -331,9 +411,9 @@ export default function LoginPage() {
               </div>
             )}
 
-            <button type="submit" disabled={loading} className="glass-btn glass-btn-primary w-full !py-2.5">
+            <button type="submit" disabled={loading || (!isLogin && inviteState === 'invalid')} className="glass-btn glass-btn-primary w-full !py-2.5">
               {loading ? <Loader2 size={16} className="animate-spin" /> : null}
-              {loading ? 'Подождите…' : isLogin ? 'Войти' : 'Зарегистрироваться'}
+              {loading ? 'Подождите…' : isLogin ? 'Войти' : inviteState === 'ready' ? 'Создать пароль и войти' : 'Зарегистрироваться'}
             </button>
           </form>
 

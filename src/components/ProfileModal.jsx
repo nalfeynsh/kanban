@@ -79,6 +79,10 @@ export default function ProfileModal({
   const [identities, setIdentities] = useState([]);
   const [identitiesError, setIdentitiesError] = useState('');
   const [linkingYandex, setLinkingYandex] = useState(false);
+  const [passwordForm, setPasswordForm] = useState({ current: '', next: '', repeat: '' });
+  const [passwordBusy, setPasswordBusy] = useState(false);
+  const [passwordError, setPasswordError] = useState('');
+  const [passwordNotice, setPasswordNotice] = useState('');
   const avatarInputRef = useRef(null);
 
   const profileId = profile?.id || user?.id || null;
@@ -214,6 +218,45 @@ export default function ProfileModal({
   if (!isOpen) return null;
 
   const setField = (key, value) => setFormData((prev) => ({ ...prev, [key]: value }));
+
+  const changePassword = async () => {
+    setPasswordError('');
+    setPasswordNotice('');
+    if (!passwordForm.current) {
+      setPasswordError('Введите текущий пароль.');
+      return;
+    }
+    if (passwordForm.next.length < 8) {
+      setPasswordError('Новый пароль должен быть не короче 8 символов.');
+      return;
+    }
+    if (passwordForm.next !== passwordForm.repeat) {
+      setPasswordError('Новые пароли не совпадают.');
+      return;
+    }
+    if (!user?.email) {
+      setPasswordError('У аккаунта нет почты — смена пароля недоступна.');
+      return;
+    }
+    setPasswordBusy(true);
+    const { error: checkError } = await supabase.auth.signInWithPassword({
+      email: user.email,
+      password: passwordForm.current,
+    });
+    if (checkError) {
+      setPasswordError('Текущий пароль неверный.');
+      setPasswordBusy(false);
+      return;
+    }
+    const { error } = await supabase.auth.updateUser({ password: passwordForm.next });
+    if (error) {
+      setPasswordError(error.message);
+    } else {
+      setPasswordNotice('Пароль изменён. Используйте новый пароль при следующем входе.');
+      setPasswordForm({ current: '', next: '', repeat: '' });
+    }
+    setPasswordBusy(false);
+  };
 
   const handleSave = async () => {
     if (!profileId) {
@@ -618,6 +661,48 @@ export default function ProfileModal({
                 )}
               </div>
             )}
+
+            <div className="rounded-xl border border-slate-300/60 bg-white/70 px-3 py-2.5 dark:border-white/10 dark:bg-white/5">
+              <p className="flex items-center gap-1.5 text-xs font-medium text-slate-700 dark:text-slate-200">
+                <KeyRound size={12} /> Пароль для входа
+              </p>
+              <p className="mt-0.5 text-[0.68rem] text-slate-500 dark:text-slate-400">
+                Почта: {user?.email || 'не указана'}. Пароль можно изменить в любой момент.
+              </p>
+              <div className="mt-2 grid gap-2 sm:grid-cols-3">
+                <input
+                  type="password"
+                  value={passwordForm.current}
+                  onChange={(event) => setPasswordForm({ ...passwordForm, current: event.target.value })}
+                  placeholder="Текущий пароль"
+                  autoComplete="current-password"
+                  className="glass-input !py-1.5 !text-xs"
+                />
+                <input
+                  type="password"
+                  value={passwordForm.next}
+                  onChange={(event) => setPasswordForm({ ...passwordForm, next: event.target.value })}
+                  placeholder="Новый пароль"
+                  autoComplete="new-password"
+                  className="glass-input !py-1.5 !text-xs"
+                />
+                <input
+                  type="password"
+                  value={passwordForm.repeat}
+                  onChange={(event) => setPasswordForm({ ...passwordForm, repeat: event.target.value })}
+                  placeholder="Повторите новый"
+                  autoComplete="new-password"
+                  className="glass-input !py-1.5 !text-xs"
+                />
+              </div>
+              <div className="mt-2 flex flex-wrap items-center gap-2">
+                <button type="button" onClick={changePassword} disabled={passwordBusy} className="glass-btn !px-2.5 !py-1.5 !text-[0.68rem]">
+                  {passwordBusy ? <Loader2 size={12} className="animate-spin" /> : <KeyRound size={12} />} Сменить пароль
+                </button>
+                {passwordError && <span className="text-[0.65rem] text-rose-600 dark:text-rose-300">{passwordError}</span>}
+                {passwordNotice && <span className="text-[0.65rem] text-emerald-600 dark:text-emerald-300">{passwordNotice}</span>}
+              </div>
+            </div>
           </section>
 
           {errorMsg && (
