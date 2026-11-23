@@ -662,6 +662,21 @@ export default function WhiteboardView({ project, userId, profile, authorById, c
     setSelectedId(null);
   };
 
+  const deleteAllDrawings = async () => {
+    const drawings = objectsRef.current.filter((item) => item.type === 'drawing');
+    if (!drawings.length) {
+      showToast('На доске нет рисунков');
+      setShowSettings(false);
+      return;
+    }
+    if (!window.confirm(`Удалить все рисунки (${drawings.length})?`)) return;
+    for (const drawing of drawings) {
+      await deleteWithHistory(drawing);
+    }
+    setShowSettings(false);
+    showToast('Рисунки удалены');
+  };
+
   useEffect(() => {
     let cancelled = false;
     (async () => {
@@ -1617,6 +1632,11 @@ export default function WhiteboardView({ project, userId, profile, authorById, c
               <p className="mt-2 text-[0.6rem] text-slate-500">
                 Комментировать и голосовать могут все участники проекта.
               </p>
+              {canEdit && objects.some((item) => item.type === 'drawing') && (
+                <button type="button" onClick={deleteAllDrawings} className="mt-2 flex w-full items-center justify-center gap-1 rounded-lg border border-rose-300/50 px-2 py-1 text-[0.62rem] font-medium text-rose-600 hover:bg-rose-500/10 dark:border-rose-300/20 dark:text-rose-300">
+                  <Trash2 size={11} /> Удалить все рисунки
+                </button>
+              )}
               <button type="button" onClick={() => setShowSettings(false)} className="mt-2 text-[0.65rem] text-indigo-600 dark:text-indigo-300">Закрыть</button>
             </div>
           )}
@@ -1956,6 +1976,7 @@ export default function WhiteboardView({ project, userId, profile, authorById, c
             return (
               <Fragment key={item.id}>
                 <svg
+                  data-drawing-object
                   className={`absolute overflow-visible ${selected ? 'z-20' : ''}`}
                   style={{ left: item.x, top: item.y }}
                   width={Math.max(1, item.width)}
@@ -1969,7 +1990,7 @@ export default function WhiteboardView({ project, userId, profile, authorById, c
                     points={points}
                     fill="none"
                     stroke="transparent"
-                    strokeWidth={Math.max(18, (item.data?.strokeWidth || 3) + 14)}
+                    strokeWidth={Math.max(24, (item.data?.strokeWidth || 3) + 20)}
                     strokeLinecap="round"
                     strokeLinejoin="round"
                     pointerEvents="stroke"
@@ -1979,7 +2000,10 @@ export default function WhiteboardView({ project, userId, profile, authorById, c
                       if (tool === 'eraser') deleteWithHistory(item);
                       else setSelectedId(item.id);
                     }}
-                    onClick={(event) => event.stopPropagation()}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      if (tool !== 'eraser') setSelectedId(item.id);
+                    }}
                   >
                     <title>Нажмите, чтобы выбрать рисунок; Delete — удалить</title>
                   </polyline>
