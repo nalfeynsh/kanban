@@ -273,7 +273,7 @@ export default function MemberProfileModal({
           </div>
 
           {member.deleted_at && canManageMembers && !isSelf && (
-            <div className="mt-3 rounded-xl border border-emerald-400/35 bg-emerald-500/8 px-3 py-2.5">
+            <div id="member-restore-panel" className="mt-3 rounded-xl border border-emerald-400/35 bg-emerald-500/8 px-3 py-2.5">
               <p className="mb-1 flex items-center gap-1.5 text-[0.62rem] font-semibold tracking-[0.1em] text-emerald-800 uppercase dark:text-emerald-200">
                 <RotateCcw size={12} /> Восстановить доступ
               </p>
@@ -339,7 +339,7 @@ export default function MemberProfileModal({
           )}
 
           {!member.deleted_at && canManageMembers && !isSelf && (
-            <div className="mt-3 rounded-xl border border-rose-400/30 bg-rose-500/8 px-3 py-2.5">
+            <div id="member-delete-panel" className="mt-3 rounded-xl border border-rose-400/30 bg-rose-500/8 px-3 py-2.5">
               {!deleteOpen ? (
                 <button
                   type="button"
@@ -402,6 +402,27 @@ export default function MemberProfileModal({
           {isSelf && onEditSelf && (
             <button type="button" onClick={onEditSelf} className="glass-btn">
               Изменить
+            </button>
+          )}
+          {!isSelf && canManageMembers && !member.deleted_at && (
+            <button
+              type="button"
+              onClick={() => {
+                setDeleteOpen(true);
+                setTimeout(() => document.getElementById('member-delete-panel')?.scrollIntoView({ block: 'center', behavior: 'smooth' }), 30);
+              }}
+              className="glass-btn glass-btn-danger"
+            >
+              <Trash2 size={14} /> Удалить
+            </button>
+          )}
+          {!isSelf && canManageMembers && member.deleted_at && (
+            <button
+              type="button"
+              onClick={() => document.getElementById('member-restore-panel')?.scrollIntoView({ block: 'center', behavior: 'smooth' })}
+              className="glass-btn glass-btn-primary"
+            >
+              <RotateCcw size={14} /> Восстановить
             </button>
           )}
           <button type="button" onClick={onClose} className="glass-btn">
