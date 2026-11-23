@@ -584,6 +584,8 @@ export default function WhiteboardView({ project, userId, profile, authorById, c
   const [shapeKind, setShapeKind] = useState('rect');
   const [selectedId, setSelectedId] = useState(null);
   const [allSelected, setAllSelected] = useState(false);
+  const [connectionDrag, setConnectionDrag] = useState(null);
+  const connectionDragRef = useRef(null);
   const [editingId, setEditingId] = useState(null);
   const [editValue, setEditValue] = useState('');
   const [connectorFrom, setConnectorFrom] = useState(null);
@@ -609,6 +611,10 @@ export default function WhiteboardView({ project, userId, profile, authorById, c
   useEffect(() => {
     objectsRef.current = objects;
   }, [objects]);
+
+  useEffect(() => {
+    connectionDragRef.current = connectionDrag;
+  }, [connectionDrag]);
 
   useEffect(() => {
     historyRef.current = { undo: [], redo: [] };
@@ -970,6 +976,100 @@ export default function WhiteboardView({ project, userId, profile, authorById, c
     };
     event.currentTarget.setPointerCapture?.(event.pointerId);
   };
+
+  const startConnectionDrag = (event, object) => {
+    if (!canEdit) return;
+    event.stopPropagation();
+    event.preventDefault();
+    stopFollowing();
+    const world = screenToWorld(event.clientX, event.clientY);
+    setSelectedId(object.id);
+    setAllSelected(false);
+    setConnectionDrag({
+      from: object.id,
+      x: world.x,
+      y: world.y,
+      startX: world.x,
+      startY: world.y,
+      targetId: null,
+    });
+  };
+
+  const finishConnectionDrag = async (event) => {
+    const drag = connectionDragRef.current;
+    if (!drag) return;
+    setConnectionDrag(null);
+    const world = screenToWorld(event.clientX, event.clientY);
+    const distance = Math.hypot(world.x - drag.startX, world.y - drag.startY);
+    if (distance < 12) return;
+    const targetElement = document.elementFromPoint(event.clientX, event.clientY)?.closest?.('[data-object-id]');
+    const targetId = targetElement?.dataset?.objectId;
+    const target = targetId && targetId !== drag.from
+      ? objectsRef.current.find((item) => item.id === targetId)
+      : null;
+    if (target) {
+      await addObject(
+        'connector',
+        { from: drag.from, to: target.id, variant: 'bpmn' },
+        { x: 0, y: 0, width: 1, height: 1 },
+      );
+      showToast('Связь прикреплена к элементу');
+      return;
+    }
+    const source = objectsRef.current.find((item) => item.id === drag.from);
+    if (source?.type !== 'bpmn') {
+      showToast('Отпустите на элементе, чтобы создать связь');
+      return;
+    }
+    const spec = BPMN_ELEMENTS.find((item) => item.key === 'task');
+    const node = await addObject(
+      'bpmn',
+      { bpmnType: spec.key, text: spec.label },
+      {
+        x: world.x - spec.width / 2,
+        y: world.y - spec.height / 2,
+        width: spec.width,
+        height: spec.height,
+        recordHistory: false,
+      },
+    );
+    if (!node) return;
+    const connector = await addObject(
+      'connector',
+      { from: drag.from, to: node.id, variant: 'bpmn' },
+      { x: 0, y: 0, width: 1, height: 1, recordHistory: false },
+    );
+    if (connector) pushHistory({ type: 'deleteMany', ids: [node.id, connector.id] });
+    setSelectedId(node.id);
+    setTool('select');
+    showToast('Задача создана и прикреплена');
+  };
+
+  useEffect(() => {
+    if (!connectionDrag?.from) return undefined;
+    const onMove = (event) => {
+      const world = screenToWorld(event.clientX, event.clientY);
+      const targetElement = document.elementFromPoint(event.clientX, event.clientY)?.closest?.('[data-object-id]');
+      const targetId = targetElement?.dataset?.objectId;
+      setConnectionDrag((prev) => (prev ? {
+        ...prev,
+        x: world.x,
+        y: world.y,
+        targetId: targetId && targetId !== prev.from ? targetId : null,
+      } : prev));
+    };
+    const onUp = (event) => { finishConnectionDrag(event); };
+    const onCancel = () => setConnectionDrag(null);
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onUp);
+    window.addEventListener('pointercancel', onCancel);
+    return () => {
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', onUp);
+      window.removeEventListener('pointercancel', onCancel);
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [connectionDrag?.from]);
 
   useEffect(() => {
     const onMove = (event) => {
@@ -2154,6 +2254,22 @@ export default function WhiteboardView({ project, userId, profile, authorById, c
             );
           })()}
 
+          {connectionDrag && (() => {
+            const source = objectById.get(connectionDrag.from);
+            if (!source) return null;
+            const target = connectionDrag.targetId ? objectById.get(connectionDrag.targetId) : null;
+            const x1 = source.x + source.width / 2;
+            const y1 = source.y + source.height / 2;
+            const x2 = target ? target.x + target.width / 2 : connectionDrag.x;
+            const y2 = target ? target.y + target.height / 2 : connectionDrag.y;
+            return (
+              <svg className="pointer-events-none absolute top-0 left-0 z-50 overflow-visible" width="1" height="1" aria-hidden="true">
+                <line x1={x1} y1={y1} x2={x2} y2={y2} stroke="#6366f1" strokeWidth="2.5" strokeDasharray="6 4" markerEnd="url(#board-arrow)" />
+                <circle cx={x2} cy={y2} r="5" fill="#6366f1" />
+              </svg>
+            );
+          })()}
+
           {objects.filter((item) => item.type === 'drawing').map((item) => {
             const points = (item.data?.points || []).map((point) => `${point.x},${point.y}`).join(' ');
             const selected = selectedId === item.id || allSelected;
@@ -2161,6 +2277,7 @@ export default function WhiteboardView({ project, userId, profile, authorById, c
               <Fragment key={item.id}>
                 <svg
                   data-drawing-object
+                  data-object-id={item.id}
                   className={`absolute overflow-visible ${selected ? 'z-20' : ''}`}
                   style={{ left: item.x, top: item.y }}
                   width={Math.max(1, item.width)}
@@ -2228,7 +2345,9 @@ export default function WhiteboardView({ project, userId, profile, authorById, c
               <div
                 key={item.id}
                 data-board-object
-                className={`absolute select-none ${isSelected || allSelected ? 'ring-2 ring-indigo-500 ring-offset-1' : ''}`}
+                data-object-id={item.id}
+                data-bpmn-type={bpmn ? item.data?.bpmnType : undefined}
+                className={`absolute select-none ${connectionDrag?.targetId === item.id ? 'ring-2 ring-emerald-400 ring-offset-1' : isSelected || allSelected ? 'ring-2 ring-indigo-500 ring-offset-1' : ''}`}
                 style={{
                   left: item.x,
                   top: item.y,
@@ -2304,6 +2423,16 @@ export default function WhiteboardView({ project, userId, profile, authorById, c
                 )}
                 {isSelected && canEdit && (
                   <>
+                    {item.type === 'bpmn' && !bpmnContainer && (
+                      <button
+                        type="button"
+                        title="Потяните, чтобы прикрепить связь к другому элементу"
+                        onPointerDown={(event) => startConnectionDrag(event, item)}
+                        className="absolute top-1/2 -right-2 z-20 flex h-5 w-5 -translate-y-1/2 cursor-crosshair items-center justify-center rounded-full border-2 border-white bg-indigo-500 text-white shadow-md hover:bg-indigo-600"
+                      >
+                        <Link2 size={10} />
+                      </button>
+                    )}
                     <span
                       data-resize
                       onPointerDown={(event) => { event.stopPropagation(); beginDrag(event, item, 'resize'); }}
