@@ -974,9 +974,13 @@ export default function WhiteboardView({ project, userId, profile, authorById, c
     };
     window.addEventListener('pointermove', onMove);
     window.addEventListener('pointerup', onUp);
+    window.addEventListener('pointercancel', onUp);
+    window.addEventListener('blur', onUp);
     return () => {
       window.removeEventListener('pointermove', onMove);
       window.removeEventListener('pointerup', onUp);
+      window.removeEventListener('pointercancel', onUp);
+      window.removeEventListener('blur', onUp);
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [canEdit, setCameraSafe]);
@@ -1285,17 +1289,24 @@ export default function WhiteboardView({ project, userId, profile, authorById, c
   const handleWheel = (event) => {
     event.preventDefault();
     stopFollowing();
+    const deltaY = event.deltaY * (event.deltaMode === 1 ? 16 : 1);
+    const deltaX = event.deltaX * (event.deltaMode === 1 ? 16 : 1);
     if (event.ctrlKey || event.metaKey) {
       const rect = viewportRef.current.getBoundingClientRect();
       const px = event.clientX - rect.left;
       const py = event.clientY - rect.top;
-      const nextZoom = clamp(cameraRef.current.zoom * (event.deltaY > 0 ? 0.9 : 1.1), 0.2, 3);
+      const nextZoom = clamp(cameraRef.current.zoom * (deltaY > 0 ? 0.9 : 1.1), 0.2, 3);
       const worldX = (px - cameraRef.current.x) / cameraRef.current.zoom;
       const worldY = (py - cameraRef.current.y) / cameraRef.current.zoom;
       setCameraSafe({ zoom: nextZoom, x: px - worldX * nextZoom, y: py - worldY * nextZoom });
-    } else {
-      setCameraSafe((prev) => ({ ...prev, x: prev.x - event.deltaX, y: prev.y - event.deltaY }));
+      return;
     }
+    if (event.shiftKey) {
+      const horizontalDelta = Math.abs(deltaX) > Math.abs(deltaY) ? deltaX : deltaY;
+      setCameraSafe((prev) => ({ ...prev, x: prev.x - horizontalDelta }));
+      return;
+    }
+    setCameraSafe((prev) => ({ ...prev, x: prev.x - deltaX, y: prev.y - deltaY }));
   };
 
   const stopFollowing = () => {
