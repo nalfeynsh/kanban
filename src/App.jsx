@@ -1782,6 +1782,12 @@ export default function App() {
     const due = taskToSave.due_at || null;
     const isNew = !taskToSave.id;
     const startValue = taskToSave.start_at || (isNew ? new Date().toISOString() : null);
+    const effortForActual = Number(taskToSave.effort_hours);
+    const progressForActual = Math.max(0, Math.min(100, Number(taskToSave.progress_percent) || 0));
+    const computedActualHours =
+      Number.isFinite(effortForActual) && effortForActual > 0
+        ? Math.round(effortForActual * (progressForActual / 100) * 100) / 100
+        : null;
 
     const payloadBase = {
       title: taskToSave.title.trim(),
@@ -1830,7 +1836,7 @@ export default function App() {
         ? {
             actual_hours:
               taskToSave.actual_hours === '' || taskToSave.actual_hours == null
-                ? null
+                ? computedActualHours
                 : Math.max(0, Number(taskToSave.actual_hours)),
           }
         : {}),
