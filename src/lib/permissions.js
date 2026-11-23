@@ -55,6 +55,18 @@ export const PERMISSIONS = [
     roles: ['admin', 'manager', 'deputy', 'member'],
   },
   {
+    key: 'team.remove',
+    label: 'Удалять сотрудников',
+    hint: 'Мягкое удаление с возможностью восстановления',
+    roles: ['admin', 'manager', 'deputy'],
+  },
+  {
+    key: 'team.restore',
+    label: 'Восстанавливать сотрудников',
+    hint: 'Вернуть доступ и изменить роль при восстановлении',
+    roles: ['admin', 'manager', 'deputy'],
+  },
+  {
     key: 'roles.manage',
     label: 'Управлять ролями',
     hint: 'Создавать роли, менять права и назначать их сотрудникам',

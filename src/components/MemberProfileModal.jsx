@@ -15,6 +15,10 @@ import {
   Check,
   KeyRound,
   MessageSquare,
+  Trash2,
+  RotateCcw,
+  AlertTriangle,
+  Loader2,
 } from 'lucide-react';
 import { roleLabel } from '../lib/priority';
 import { roleOptions, roleOf, roleRank } from '../lib/permissions';
@@ -61,12 +65,20 @@ export default function MemberProfileModal({
   onEditSelf,
   onOpenChat,
   canManageRoles = false,
+  canManageMembers = false,
   onRoleChange,
   roleSaving = false,
   roles = [],
   currentRole = 'member',
+  onDeleteMember,
+  onRestoreMember,
 }) {
   const [copied, setCopied] = useState(false);
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [deleteReason, setDeleteReason] = useState('');
+  const [memberBusy, setMemberBusy] = useState(false);
+  const [memberError, setMemberError] = useState('');
+  const [restoreRole, setRestoreRole] = useState(member?.role || 'member');
 
   if (!isOpen || !member) return null;
 
@@ -83,6 +95,25 @@ export default function MemberProfileModal({
     } catch {
       setCopied(false);
     }
+  };
+
+  const handleDelete = async () => {
+    if (!onDeleteMember) return;
+    setMemberBusy(true);
+    setMemberError('');
+    const ok = await onDeleteMember(member.id, deleteReason);
+    if (!ok) setMemberError('Не удалось удалить сотрудника.');
+    else setDeleteOpen(false);
+    setMemberBusy(false);
+  };
+
+  const handleRestore = async () => {
+    if (!onRestoreMember) return;
+    setMemberBusy(true);
+    setMemberError('');
+    const ok = await onRestoreMember(member.id, restoreRole || member.role);
+    if (!ok) setMemberError('Не удалось восстановить сотрудника.');
+    setMemberBusy(false);
   };
 
   return createPortal(
@@ -151,9 +182,23 @@ export default function MemberProfileModal({
               </span>
             )}
             <span className="glass-chip">
-              <UserRound size={11} /> {member.is_active === false ? 'неактивен' : 'активен'}
+              <UserRound size={11} /> {member.deleted_at ? 'удалён' : member.is_active === false ? 'неактивен' : 'активен'}
             </span>
+            {member.deleted_at && (
+              <span className="rounded-full border border-rose-400/40 bg-rose-500/10 px-2 py-1 text-[0.62rem] font-medium text-rose-700 dark:text-rose-300">
+                доступ приостановлен
+              </span>
+            )}
           </div>
+
+          {member.deleted_at && (
+            <div className="mt-3 rounded-xl border border-rose-400/30 bg-rose-500/8 px-3 py-2 text-[0.68rem] text-rose-700 dark:text-rose-300">
+              <p className="font-semibold">Сотрудник удалён из сервиса</p>
+              <p className="mt-0.5">
+                Причина: {member.deleted_reason || 'не указана'}.
+              </p>
+            </div>
+          )}
 
           <div className="mt-4 space-y-2">
             <ContactRow
@@ -227,7 +272,43 @@ export default function MemberProfileModal({
             )}
           </div>
 
-          {canManageRoles && !isSelf && (
+          {member.deleted_at && canManageMembers && !isSelf && (
+            <div className="mt-3 rounded-xl border border-emerald-400/35 bg-emerald-500/8 px-3 py-2.5">
+              <p className="mb-1 flex items-center gap-1.5 text-[0.62rem] font-semibold tracking-[0.1em] text-emerald-800 uppercase dark:text-emerald-200">
+                <RotateCcw size={12} /> Восстановить доступ
+              </p>
+              <label className="block text-[0.65rem] text-slate-600 dark:text-slate-300">
+                Роль после восстановления
+                <select
+                  value={restoreRole || member.role || 'member'}
+                  onChange={(event) => setRestoreRole(event.target.value)}
+                  className="glass-input mt-1 !py-1.5 !text-xs"
+                >
+                  {roleOptions(roles).map((option) => (
+                    <option
+                      key={option.value}
+                      value={option.value}
+                      disabled={roleOf(currentRole) !== 'admin' && roleRank(option.value) >= roleRank(currentRole)}
+                    >
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <button
+                type="button"
+                onClick={handleRestore}
+                disabled={memberBusy}
+                className="glass-btn glass-btn-primary mt-2 w-full !justify-center !py-1.5 !text-[0.68rem]"
+              >
+                {memberBusy ? <Loader2 size={12} className="animate-spin" /> : <RotateCcw size={12} />}
+                Восстановить сотрудника
+              </button>
+              {memberError && <p className="mt-1 text-[0.65rem] text-rose-600 dark:text-rose-300">{memberError}</p>}
+            </div>
+          )}
+
+          {canManageRoles && !isSelf && !member.deleted_at && (
             <div className="mt-3 rounded-xl border border-indigo-400/35 bg-indigo-500/8 px-3 py-2.5">
               <label className="mb-1 flex items-center gap-1.5 text-[0.62rem] font-semibold tracking-[0.1em] text-indigo-800 uppercase dark:text-indigo-200">
                 <KeyRound size={12} /> Роль в команде
@@ -254,6 +335,45 @@ export default function MemberProfileModal({
               <p className="mt-1 text-[0.62rem] text-indigo-700/80 dark:text-indigo-300/80">
                 Менять роли может только администратор. Роль влияет на права в базе.
               </p>
+            </div>
+          )}
+
+          {!member.deleted_at && canManageMembers && !isSelf && (
+            <div className="mt-3 rounded-xl border border-rose-400/30 bg-rose-500/8 px-3 py-2.5">
+              {!deleteOpen ? (
+                <button
+                  type="button"
+                  onClick={() => setDeleteOpen(true)}
+                  className="flex items-center gap-1.5 text-[0.68rem] font-medium text-rose-700 hover:underline dark:text-rose-300"
+                >
+                  <Trash2 size={12} /> Удалить сотрудника из сервиса
+                </button>
+              ) : (
+                <>
+                  <p className="flex items-center gap-1.5 text-[0.68rem] font-semibold text-rose-800 dark:text-rose-200">
+                    <AlertTriangle size={12} /> Удалить доступ?
+                  </p>
+                  <textarea
+                    value={deleteReason}
+                    onChange={(event) => setDeleteReason(event.target.value)}
+                    rows={2}
+                    placeholder="Причина (необязательно): увольнение, давно не пользовался…"
+                    className="glass-input mt-1.5 !py-1.5 !text-xs"
+                  />
+                  <p className="mt-1 text-[0.62rem] text-rose-700/80 dark:text-rose-300/80">
+                    Аккаунт и данные сохранятся. Восстановить можно в «Команда → Удалённые».
+                  </p>
+                  <div className="mt-2 flex gap-1.5">
+                    <button type="button" onClick={handleDelete} disabled={memberBusy} className="glass-btn glass-btn-danger !px-2.5 !py-1.5 !text-[0.65rem]">
+                      {memberBusy ? <Loader2 size={12} className="animate-spin" /> : <Trash2 size={12} />} Удалить
+                    </button>
+                    <button type="button" onClick={() => { setDeleteOpen(false); setMemberError(''); }} className="glass-btn !px-2.5 !py-1.5 !text-[0.65rem]">
+                      Отмена
+                    </button>
+                  </div>
+                  {memberError && <p className="mt-1 text-[0.65rem] text-rose-600 dark:text-rose-300">{memberError}</p>}
+                </>
+              )}
             </div>
           )}
         </div>

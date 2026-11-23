@@ -18,6 +18,7 @@ export default function TeamModal({
   onSelectMember,
   onOpenChat,
   currentRole = 'member',
+  canManageMembers = false,
   onRoleChange,
   roleSaving = false,
   roles = [],
@@ -40,6 +41,8 @@ export default function TeamModal({
     features.analytics !== false;
 
   const matchesRole = (member) => {
+    if (member.deleted_at) return roleFilter === 'deleted';
+    if (roleFilter === 'deleted') return false;
     if (roleFilter === 'admin') return member.role === 'admin';
     if (roleFilter === 'lead') return member.role === 'manager' || member.role === 'deputy';
     if (roleFilter === 'member') return !member.role || member.role === 'member';
@@ -54,6 +57,7 @@ export default function TeamModal({
     { key: 'admin', label: 'Админы' },
     { key: 'lead', label: 'Руководители' },
     { key: 'member', label: 'Сотрудники' },
+    ...(canManageMembers ? [{ key: 'deleted', label: 'Удалённые' }] : []),
     ...roles
       .filter((role) => !role.is_system)
       .map((role) => ({ key: `custom:${role.key}`, label: role.name })),
@@ -78,7 +82,8 @@ export default function TeamModal({
 
   if (!isOpen) return null;
 
-  const activeCount = members.filter((member) => member.is_active !== false).length;
+  const activeCount = members.filter((member) => !member.deleted_at && member.is_active !== false).length;
+  const deletedCount = members.filter((member) => member.deleted_at).length;
 
   return createPortal(
     <div
@@ -101,7 +106,7 @@ export default function TeamModal({
                   ? 'API-токены и обмен задачами с внешними системами'
                   : tab === 'analytics'
                     ? 'Сроки, статусы и нагрузка по сотрудникам за период'
-                    : `${activeCount} из ${members.length} активны · нажмите на сотрудника, чтобы открыть профиль`}
+                    : `${activeCount} из ${members.length} активны${deletedCount ? ` · ${deletedCount} удалено` : ''} · нажмите на сотрудника, чтобы открыть профиль`}
             </p>
           </div>
           <button
@@ -242,7 +247,11 @@ export default function TeamModal({
                               это вы
                             </span>
                           )}
-                          {member.is_active === false && (
+                          {member.deleted_at ? (
+                            <span className="rounded-full bg-rose-500/15 px-1.5 py-0.5 text-[0.55rem] font-bold tracking-wide text-rose-700 uppercase dark:text-rose-300">
+                              удалён
+                            </span>
+                          ) : member.is_active === false && (
                             <span className="rounded-full bg-slate-500/15 px-1.5 py-0.5 text-[0.55rem] font-bold tracking-wide text-slate-600 uppercase dark:text-slate-300">
                               неактивен
                             </span>

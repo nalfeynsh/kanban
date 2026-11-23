@@ -318,6 +318,11 @@ export default function App() {
       }
 
       if (data) {
+        if (data.deleted_at) {
+          await supabase.auth.signOut();
+          window.location.assign('/?deleted=1');
+          return;
+        }
         let merged = data;
         const localTelegram = getLocalTelegram(userId);
 
@@ -852,6 +857,10 @@ export default function App() {
 
   // --- Производные данные ---
   const authorById = useMemo(() => new Map(allProfiles.map((item) => [item.id, item])), [allProfiles]);
+  const activeProfiles = useMemo(
+    () => allProfiles.filter((item) => !item.deleted_at && item.is_active !== false),
+    [allProfiles],
+  );
 
   const numberById = useMemo(() => {
     const ordered = [...tasks, ...archivedTasks].sort(
@@ -972,6 +981,15 @@ export default function App() {
     () => projects.find((project) => project.id === currentProjectId) || null,
     [projects, currentProjectId],
   );
+
+  const projectFeatures = useMemo(() => ({
+    ...features,
+    meetings: features.meetings !== false && currentProject?.module_meetings_enabled !== false,
+    whiteboard: features.whiteboard !== false && currentProject?.module_whiteboard_enabled !== false,
+    gantt: features.gantt !== false && currentProject?.module_gantt_enabled !== false,
+    secret_santa: features.secret_santa !== false && currentProject?.module_secret_santa_enabled !== false,
+    analytics: features.analytics !== false && currentProject?.module_analytics_enabled !== false,
+  }), [features, currentProject]);
 
   const taskFeatures = useMemo(
     () => ({
@@ -1119,6 +1137,7 @@ export default function App() {
   );
 
   const canManageRoles = can(profile, 'roles.manage');
+  const canManageMembers = can(profile, 'team.remove') || currentProject?.owner_id === userId;
 
   const handleGanttSettingsChange = async (patch) => {
     if (!currentProjectId) return;
@@ -1133,6 +1152,15 @@ export default function App() {
       return;
     }
     if (data) setProjects((prev) => prev.map((project) => (project.id === data.id ? { ...project, ...data } : project)));
+    if (data) {
+      if (patch.module_gantt_enabled === false && currentView === 'gantt') setCurrentView('board');
+      if (patch.module_whiteboard_enabled === false && currentView === 'whiteboard') setCurrentView('board');
+      if (patch.module_meetings_enabled === false) setIsMeetingsOpen(false);
+      if (patch.module_secret_santa_enabled === false) {
+        setIsSecretSantaOpen(false);
+        setSecretSantaGameId(null);
+      }
+    }
   };
 
   const refreshGanttSprints = useCallback(async () => {
@@ -2090,9 +2118,9 @@ export default function App() {
   };
 
   const changeView = (view) => {
-    if (view === 'calendar' && features.calendar === false) return;
-    if (view === 'gantt' && features.gantt === false) return;
-    if (view === 'whiteboard' && features.whiteboard === false) return;
+    if (view === 'calendar' && projectFeatures.calendar === false) return;
+    if (view === 'gantt' && projectFeatures.gantt === false) return;
+    if (view === 'whiteboard' && projectFeatures.whiteboard === false) return;
     exitSelection();
     setCurrentView(view);
   };
@@ -2117,7 +2145,7 @@ export default function App() {
 
   /** Открыть модуль «Тайный Санта»; gameId — конкретная игра из уведомления */
   const openSecretSanta = (gameId = null) => {
-    if (features.secret_santa === false) return;
+    if (projectFeatures.secret_santa === false) return;
     exitSelection();
     setSecretSantaGameId(gameId);
     setIsSecretSantaOpen(true);
@@ -2498,6 +2526,45 @@ export default function App() {
     setProfileSchema((prev) => mergeFields(prev, collectFields([next])));
   };
 
+  const handleDeleteMember = async (memberId, reason = '') => {
+    const { error } = await supabase.rpc('delete_member', {
+      p_member_id: memberId,
+      p_reason: reason.trim() || null,
+    });
+    if (error) {
+      setBanner(`Не удалось удалить сотрудника: ${error.message}`);
+      return false;
+    }
+    const now = new Date().toISOString();
+    setAllProfiles((prev) => prev.map((item) => (item.id === memberId
+      ? { ...item, is_active: false, deleted_at: now, deleted_reason: reason.trim() || null, deleted_by: userId }
+      : item)));
+    setSelectedMember((prev) => (prev?.id === memberId
+      ? { ...prev, is_active: false, deleted_at: now, deleted_reason: reason.trim() || null, deleted_by: userId }
+      : prev));
+    setBanner('Сотрудник удалён. Восстановить можно в «Команда → Удалённые».');
+    return true;
+  };
+
+  const handleRestoreMember = async (memberId, role = null) => {
+    const { error } = await supabase.rpc('restore_member', {
+      p_member_id: memberId,
+      p_role: role || null,
+    });
+    if (error) {
+      setBanner(`Не удалось восстановить сотрудника: ${error.message}`);
+      return false;
+    }
+    setAllProfiles((prev) => prev.map((item) => (item.id === memberId
+      ? { ...item, is_active: true, deleted_at: null, deleted_reason: null, deleted_by: null, role: role || item.role }
+      : item)));
+    setSelectedMember((prev) => (prev?.id === memberId
+      ? { ...prev, is_active: true, deleted_at: null, deleted_reason: null, deleted_by: null, role: role || prev.role }
+      : prev));
+    setBanner('Сотрудник восстановлен.');
+    return true;
+  };
+
   /** Смена роли сотрудника — через серверную проверку иерархии. */
   const handleRoleChange = async (memberId, role) => {
     const previous = allProfiles.find((item) => item.id === memberId);
@@ -2588,8 +2655,8 @@ export default function App() {
         onHome={goHome}
         project={currentProject}
         onProjectsClick={() => setIsProjectsOpen(true)}
-        features={features}
-        teamCount={allProfiles.length}
+        features={projectFeatures}
+        teamCount={activeProfiles.length}
         memberFilter={memberFilter}
         onClearMemberFilter={() => setMemberFilter(null)}
         overdueOnly={overdueOnly}
@@ -2752,7 +2819,7 @@ export default function App() {
         {currentView === 'calendar' && (
           <CalendarView
             tasks={visibleTasks}
-            meetings={features.meetings === false ? [] : meetings}
+            meetings={projectFeatures.meetings === false ? [] : meetings}
             numberById={numberById}
             onTaskClick={setSelectedTask}
             onMeetingClick={handleOpenMeeting}
@@ -2763,7 +2830,7 @@ export default function App() {
           />
         )}
 
-        {currentView === 'gantt' && (
+        {currentView === 'gantt' && projectFeatures.gantt !== false && (
           <GanttView
             tasks={visibleTasks}
             columns={columns}
@@ -2795,7 +2862,7 @@ export default function App() {
           />
         )}
 
-        {currentView === 'whiteboard' && currentProject && (
+        {currentView === 'whiteboard' && currentProject && projectFeatures.whiteboard !== false && (
           <WhiteboardView
             project={currentProject}
             userId={userId}
@@ -2817,7 +2884,7 @@ export default function App() {
           count={selectedIds.size}
           total={visibleTasks.length}
           columns={columns}
-          members={allProfiles}
+          members={activeProfiles}
           canAssign={supports(taskSchema, 'assignee_id')}
           canPriority={supports(taskSchema, 'priority')}
           onSelectAll={selectAllVisible}
@@ -2839,7 +2906,7 @@ export default function App() {
           number={selectedTask.id ? numberById.get(selectedTask.id) : undefined}
           onSaveTask={handleSaveTask}
           onDeleteTask={handleDeleteTask}
-          allProfiles={allProfiles}
+          allProfiles={activeProfiles}
           allowedFields={taskSchema}
           currentUserId={userId}
           onQuoteToChat={handleQuoteToChat}
@@ -2930,7 +2997,7 @@ export default function App() {
           currentProjectId={currentProjectId}
           currentRole={profile?.role || 'member'}
           currentUserId={userId}
-          members={allProfiles}
+          members={activeProfiles}
           onClose={() => setIsProjectsOpen(false)}
           onSelect={handleSelectProject}
           onCreated={handleProjectCreated}
@@ -2945,7 +3012,7 @@ export default function App() {
       {workflowProject && (
         <ProjectWorkflowModal
           project={workflowProject}
-          members={allProfiles}
+          members={activeProfiles}
           onBack={() => {
             setWorkflowProject(null);
             setIsProjectsOpen(true);
@@ -2963,6 +3030,7 @@ export default function App() {
         taskCountByUser={taskCountByUser}
         onSelectMember={setSelectedMember}
         currentRole={profile?.role || 'member'}
+        canManageMembers={canManageMembers}
         onRoleChange={handleRoleChange}
         roleSaving={roleSaving}
         roles={roles}
@@ -2973,7 +3041,7 @@ export default function App() {
         columns={columns}
         projects={projects}
         currentProjectId={currentProjectId}
-        features={features}
+        features={projectFeatures}
         onFeatureChange={handleFeatureChange}
         onOpenChat={(member) => {
           setIsTeamOpen(false);
@@ -3023,11 +3091,11 @@ export default function App() {
         />
       )}
 
-      {isMeetingsOpen && meetingsSupported && (
+      {isMeetingsOpen && meetingsSupported && projectFeatures.meetings !== false && (
         <MeetingsModal
           meetings={meetings}
           participants={meetingParticipants}
-          members={allProfiles}
+          members={activeProfiles}
           currentUserId={userId}
           onClose={() => setIsMeetingsOpen(false)}
           onCreate={() => {
@@ -3050,7 +3118,7 @@ export default function App() {
                   .map((item) => item.user_id)
               : []
           }
-          members={allProfiles}
+          members={activeProfiles}
           currentUserId={userId}
           onClose={() => {
             setIsMeetingModalOpen(false);
@@ -3070,7 +3138,7 @@ export default function App() {
           participants={meetingParticipants.filter((item) => item.meeting_id === selectedMeeting.id)}
           attendance={meetingAttendance}
           recordings={meetingRecordings}
-          members={allProfiles}
+          members={activeProfiles}
           currentUserId={userId}
           onClose={() => {
             setSelectedMeeting(null);
@@ -3161,7 +3229,7 @@ export default function App() {
         />
       )}
 
-      {isSecretSantaOpen && currentProject && (
+      {isSecretSantaOpen && currentProject && projectFeatures.secret_santa !== false && (
         <Suspense
           fallback={
             <div className="modal-overlay !z-[85]">
@@ -3178,7 +3246,7 @@ export default function App() {
               setSecretSantaGameId(null);
             }}
             project={currentProject}
-            members={allProfiles}
+            members={activeProfiles}
             currentUserId={userId}
             initialGameId={secretSantaGameId}
           />
@@ -3213,14 +3281,18 @@ export default function App() {
       />
 
       <MemberProfileModal
+        key={selectedMember?.id || 'member-profile'}
         isOpen={Boolean(selectedMember)}
         onClose={() => setSelectedMember(null)}
         member={selectedMember}
         isSelf={selectedMember?.id === userId}
         taskCount={selectedMember ? taskCountByUser.get(selectedMember.id) ?? 0 : 0}
         canManageRoles={canManageRoles}
+        canManageMembers={canManageMembers}
         currentRole={profile?.role || 'member'}
         onRoleChange={handleRoleChange}
+        onDeleteMember={handleDeleteMember}
+        onRestoreMember={handleRestoreMember}
         roleSaving={roleSaving}
         roles={roles}
         onOpenChat={(member) => {

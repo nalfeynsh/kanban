@@ -31,6 +31,14 @@ const TASK_FEATURE_TOGGLES = [
   { key: 'task_checklist_enabled', label: 'Чек-лист', hint: 'Пункты и прогресс по чек-листу' },
 ];
 
+const PROJECT_MODULE_TOGGLES = [
+  { key: 'module_meetings_enabled', label: 'Встречи и ВКС', hint: 'Вкладка «Встречи», комнаты и календарь встреч' },
+  { key: 'module_whiteboard_enabled', label: 'Командная доска', hint: 'Вкладка «Доска» и BPMN-схемы' },
+  { key: 'module_gantt_enabled', label: 'Диаграмма Ганта', hint: 'Планирование и ресурсы проекта' },
+  { key: 'module_secret_santa_enabled', label: 'Тайный Санта', hint: 'Модуль обмена подарками' },
+  { key: 'module_analytics_enabled', label: 'Аналитика', hint: 'KPI и отчёты по проекту' },
+];
+
 export default function ProjectsModal({
   projects = [],
   trashedProjects = [],
@@ -67,7 +75,8 @@ export default function ProjectsModal({
 
   const canCreate = CREATE_ROLES.includes(roleOf(currentRole));
   const currentProject = projects.find((project) => project.id === currentProjectId) || null;
-  const canManageWorkflow = Boolean(currentProject) && CREATE_ROLES.includes(roleOf(currentRole));
+  const canManageWorkflow = Boolean(currentProject)
+    && (CREATE_ROLES.includes(roleOf(currentRole)) || currentProject.owner_id === currentUserId);
   const me = members.find((member) => member.id === currentUserId);
   const unreadNotices = projectNotices.filter((notice) => !notice.read_at);
   const canDeleteProject = (project) =>
@@ -397,6 +406,30 @@ export default function ProjectsModal({
                   </p>
                   <div className="grid gap-1.5 sm:grid-cols-2">
                     {TASK_FEATURE_TOGGLES.map((feature) => (
+                      <label key={feature.key} className="flex cursor-pointer items-start gap-2 rounded-lg px-1.5 py-1 hover:bg-white/50 dark:hover:bg-white/10">
+                        <input
+                          type="checkbox"
+                          checked={currentProject[feature.key] !== false}
+                          onChange={(event) => onUpdateSettings?.({ [feature.key]: event.target.checked })}
+                          className="mt-0.5 h-3.5 w-3.5 accent-indigo-500"
+                        />
+                        <span>
+                          <span className="block text-[0.68rem] font-medium text-slate-700 dark:text-slate-200">{feature.label}</span>
+                          <span className="block text-[0.58rem] text-slate-500">{feature.hint}</span>
+                        </span>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {currentProject && canManageWorkflow && (
+                <div className="mt-2 rounded-2xl border border-white/45 bg-white/35 p-3 dark:border-white/10 dark:bg-white/5">
+                  <p className="mb-2 text-[0.65rem] font-semibold tracking-[0.1em] text-slate-500 uppercase dark:text-slate-400">
+                    Модули проекта
+                  </p>
+                  <div className="grid gap-1.5 sm:grid-cols-2">
+                    {PROJECT_MODULE_TOGGLES.map((feature) => (
                       <label key={feature.key} className="flex cursor-pointer items-start gap-2 rounded-lg px-1.5 py-1 hover:bg-white/50 dark:hover:bg-white/10">
                         <input
                           type="checkbox"
