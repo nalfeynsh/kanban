@@ -1181,7 +1181,7 @@ export default function WhiteboardView({ project, userId, profile, authorById, c
                 {frame && (
                   <div className="absolute -top-7 left-0 flex items-center gap-1 rounded-lg bg-indigo-500/90 px-2 py-0.5 text-[0.68rem] font-semibold text-white">
                     <Frame size={11} /> {item.data?.title || 'Фрейм'}
-                    <button type="button" onClick={(event) => { event.stopPropagation(); copyFrameLink(item); }} className="ml-1 text-white/80 hover:text-white" title="Ссылка на фрейм"><Copy size={10} /></button>
+                    <button type="button" onPointerDown={(event) => event.stopPropagation()} onClick={(event) => { event.stopPropagation(); copyFrameLink(item); }} className="ml-1 text-white/80 hover:text-white" title="Ссылка на фрейм"><Copy size={10} /></button>
                   </div>
                 )}
                 {image && item.data?.url && (
@@ -1230,8 +1230,8 @@ export default function WhiteboardView({ project, userId, profile, authorById, c
                       className="absolute right-0 bottom-0 h-3 w-3 cursor-se-resize rounded-tl bg-indigo-500"
                     />
                     <div className="absolute -bottom-10 left-0 flex items-center gap-1 rounded-xl border border-white/50 bg-white/90 p-1 shadow-lg dark:border-white/10 dark:bg-slate-900/90">
-                      {frame && <button type="button" onClick={(event) => { event.stopPropagation(); copyFrameLink(item); }} className="rounded-lg p-1 text-slate-500 hover:bg-indigo-500/10 hover:text-indigo-600" title="Ссылка"><Copy size={12} /></button>}
-                      <button type="button" onClick={(event) => { event.stopPropagation(); deleteWithHistory(item); }} className="rounded-lg p-1 text-slate-500 hover:bg-rose-500/10 hover:text-rose-600" title="Удалить"><Trash2 size={12} /></button>
+                      {frame && <button type="button" onPointerDown={(event) => event.stopPropagation()} onClick={(event) => { event.stopPropagation(); copyFrameLink(item); }} className="rounded-lg p-1 text-slate-500 hover:bg-indigo-500/10 hover:text-indigo-600" title="Ссылка"><Copy size={12} /></button>}
+                      <button type="button" onPointerDown={(event) => { event.stopPropagation(); event.preventDefault(); deleteWithHistory(item); }} onClick={(event) => event.stopPropagation()} className="rounded-lg p-1 text-slate-500 hover:bg-rose-500/10 hover:text-rose-600" title="Удалить"><Trash2 size={12} /></button>
                     </div>
                   </>
                 )}
