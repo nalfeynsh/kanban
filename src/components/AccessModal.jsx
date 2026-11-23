@@ -58,6 +58,7 @@ export default function AccessModal({
   const [formError, setFormError] = useState('');
   const [copied, setCopied] = useState('');
   const [lastInvite, setLastInvite] = useState(null);
+  const [sendingInviteId, setSendingInviteId] = useState('');
   const [ownerHintOpen, setOwnerHintOpen] = useState(false);
   const [roleList, setRoleList] = useState(roles);
   const [roleEditor, setRoleEditor] = useState(null);
@@ -181,6 +182,31 @@ export default function AccessModal({
   };
 
   const inviteUrl = (id) => `${window.location.origin}/?invite=${id}`;
+
+  const sendInviteEmail = async (invite) => {
+    setSendingInviteId(invite.id);
+    setFormError('');
+    setNotice('');
+    const { error } = await supabase.auth.signInWithOtp({
+      email: invite.email,
+      options: {
+        shouldCreateUser: true,
+        emailRedirectTo: `${window.location.origin}/?invite=${invite.id}&welcome=1`,
+        data: {
+          invite_id: invite.id,
+          invite_code: invite.code || null,
+          welcome: true,
+        },
+      },
+    });
+    setSendingInviteId('');
+    if (error) {
+      setFormError(`Письмо не отправлено: ${error.message}. Скопируйте ссылку и отправьте вручную.`);
+      return false;
+    }
+    setNotice(`Приглашение отправлено на ${invite.email}.`);
+    return true;
+  };
 
   const startCreateRole = () => {
     setRoleError('');
@@ -313,6 +339,7 @@ export default function AccessModal({
     setLastInvite({ url, email });
     await copy(`link-${data.id}`, url);
     setNotice(`Приглашение для ${email} создано. Ссылка скопирована — отправьте её сотруднику.`);
+    await sendInviteEmail(data);
     setCreating(false);
   };
 
@@ -538,7 +565,7 @@ export default function AccessModal({
                     </button>
                   </div>
                   <p className="mt-1.5 text-[0.65rem] text-slate-500 dark:text-slate-400">
-                    После создания ссылка скопируется. Отправьте её сотруднику: он задаст пароль и войдёт. Код доступа — по желанию.
+                    Ссылка копируется и отправляется на почту через встроенную почту. Если письмо не пришло, отправьте ссылку вручную. Код доступа — по желанию.
                   </p>
                   {formError && (
                     <p className="mt-2 flex items-start gap-1.5 rounded-lg border border-rose-400/40 bg-rose-500/10 px-2 py-1.5 text-[0.68rem] text-rose-700 dark:text-rose-300">
@@ -623,6 +650,17 @@ export default function AccessModal({
                         >
                           {copied === `link-${invite.id}` ? <Check size={12} className="text-emerald-500" /> : <Copy size={12} />}
                         </button>
+                        {!used && (
+                          <button
+                            type="button"
+                            onClick={() => sendInviteEmail(invite)}
+                            disabled={sendingInviteId === invite.id}
+                            className="glass-btn !px-2 !py-1 !text-[0.65rem]"
+                            title="Отправить приглашение на почту"
+                          >
+                            {sendingInviteId === invite.id ? <Loader2 size={12} className="animate-spin" /> : <Mail size={12} />}
+                          </button>
+                        )}
 
                         {mayRevokeInvites && !used && (
                           <button

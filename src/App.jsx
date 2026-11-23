@@ -22,6 +22,7 @@ import GanttCalendarModal from './components/GanttCalendarModal';
 import TaskDetailModal from './components/TaskDetailModal';
 import LoginPage from './components/LoginPage';
 import ProfileModal from './components/ProfileModal';
+import WelcomePasswordModal from './components/WelcomePasswordModal';
 import ArchiveModal from './components/ArchiveModal';
 import TeamModal from './components/TeamModal';
 import ProjectsModal from './components/ProjectsModal';
@@ -137,6 +138,9 @@ export default function App() {
   const [draftKey, setDraftKey] = useState(0);
   const [selectedMember, setSelectedMember] = useState(null);
   const [isProfileOpen, setIsProfileOpen] = useState(false);
+  const [welcomePasswordOpen, setWelcomePasswordOpen] = useState(() => (
+    new URLSearchParams(window.location.search).get('welcome') === '1'
+  ));
   const [isArchiveOpen, setIsArchiveOpen] = useState(false);
   const [isTeamOpen, setIsTeamOpen] = useState(false);
   const [isHelpOpen, setIsHelpOpen] = useState(false);
@@ -2963,6 +2967,16 @@ export default function App() {
           onOpenExistingTask={(taskId) => {
             const existing = tasks.find((item) => item.id === taskId);
             if (existing) setSelectedTask(existing);
+          }}
+        />
+      )}
+
+      {welcomePasswordOpen && (
+        <WelcomePasswordModal
+          isOpen={welcomePasswordOpen}
+          onDone={() => {
+            setWelcomePasswordOpen(false);
+            window.history.replaceState({}, '', window.location.pathname);
           }}
         />
       )}
