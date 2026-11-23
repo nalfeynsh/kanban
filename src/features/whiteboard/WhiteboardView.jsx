@@ -65,6 +65,18 @@ const BPMN_ELEMENTS = [
   { key: 'pool', label: 'Пул', width: 760, height: 380 },
   { key: 'lane', label: 'Дорожка', width: 700, height: 160 },
 ];
+
+const NEXT_BPMN = {
+  start: ['task', 'userTask', 'serviceTask', 'gatewayX', 'end'],
+  intermediate: ['task', 'userTask', 'serviceTask', 'gatewayX', 'end'],
+  task: ['task', 'userTask', 'serviceTask', 'gatewayX', 'end'],
+  userTask: ['task', 'userTask', 'serviceTask', 'gatewayX', 'end'],
+  serviceTask: ['task', 'userTask', 'serviceTask', 'gatewayX', 'end'],
+  subprocess: ['task', 'userTask', 'serviceTask', 'gatewayX', 'end'],
+  gatewayX: ['task', 'userTask', 'end'],
+  gatewayPlus: ['task', 'userTask', 'end'],
+  gatewayO: ['task', 'userTask', 'end'],
+};
 const REACTIONS = ['👍', '❤️', '🔥', '👏', '🎉', '🤔'];
 
 const nowMs = () => Date.now();
@@ -422,6 +434,28 @@ async function renderBoardToCanvas(objects) {
   return canvas;
 }
 
+function BpmnIcon({ type, className = 'h-5 w-5' }) {
+  const common = { fill: 'none', stroke: 'currentColor', strokeWidth: 1.7, strokeLinecap: 'round', strokeLinejoin: 'round' };
+  return (
+    <svg viewBox="0 0 24 24" className={className} aria-hidden="true" {...common}>
+      {type === 'start' && <><circle cx="12" cy="12" r="8" stroke="#10b981" /><circle cx="12" cy="12" r="2" fill="#10b981" stroke="none" /></>}
+      {type === 'end' && <circle cx="12" cy="12" r="8" strokeWidth="3" />}
+      {type === 'intermediate' && <><circle cx="12" cy="12" r="8" stroke="#10b981" /><circle cx="12" cy="12" r="5" stroke="#10b981" /></>}
+      {type === 'task' && <rect x="3" y="7" width="18" height="10" rx="2" />}
+      {type === 'userTask' && <><rect x="3" y="7" width="18" height="10" rx="2" /><circle cx="7.5" cy="11" r="1.5" /><path d="M5 16c.4-2 1.3-3 2.5-3s2.1 1 2.5 3" /></>}
+      {type === 'serviceTask' && <><rect x="3" y="7" width="18" height="10" rx="2" /><circle cx="12" cy="12" r="2.3" /><path d="M12 8.5v1M12 14.5v1M8.5 12h1M14.5 12h1" /></>}
+      {type === 'gatewayX' && <><path d="M12 3l9 9-9 9-9-9z" stroke="#f59e0b" /><path d="M9.5 9.5l5 5M14.5 9.5l-5 5" /></>}
+      {type === 'gatewayPlus' && <><path d="M12 3l9 9-9 9-9-9z" stroke="#f59e0b" /><path d="M12 8v8M8 12h8" /></>}
+      {type === 'gatewayO' && <><path d="M12 3l9 9-9 9-9-9z" stroke="#f59e0b" /><circle cx="12" cy="12" r="3" /></>}
+      {type === 'subprocess' && <><rect x="3" y="6" width="18" height="12" rx="2" stroke="#6366f1" /><path d="M11 15v-5M9 13l2 2 2-2" /></>}
+      {type === 'dataObject' && <><path d="M6 3h8l4 4v14H6z" stroke="#3b82f6" /><path d="M14 3v4h4" stroke="#3b82f6" /></>}
+      {type === 'annotation' && <><path d="M5 4v16M5 5h11M5 12h8" stroke="#94a3b8" /></>}
+      {type === 'pool' && <><rect x="3" y="4" width="18" height="16" rx="1.5" /><path d="M7 4v16" /><path d="M13 8h5M13 12h5M13 16h5" /></>}
+      {type === 'lane' && <><rect x="3" y="6" width="18" height="12" rx="1" /><path d="M7 6v12" /><path d="M13 10h5M13 14h5" /></>}
+    </svg>
+  );
+}
+
 function BpmnShape({ object }) {
   const type = object.data?.bpmnType || 'task';
   const width = Math.max(1, object.width);
@@ -623,6 +657,31 @@ export default function WhiteboardView({ project, userId, profile, authorById, c
       }
       setObjects((prev) => (prev.some((item) => item.id === object.id) ? prev : [...prev, object]));
       return { type: 'delete', id: object.id };
+    }
+    if (action.type === 'deleteMany') {
+      const items = objectsRef.current.filter((item) => action.ids.includes(item.id));
+      if (!items.length) return null;
+      setObjects((prev) => prev.filter((item) => !action.ids.includes(item.id)));
+      for (const item of items) {
+        await deleteBoardObject(item.id);
+      }
+      return { type: 'restoreMany', objects: items };
+    }
+    if (action.type === 'restoreMany') {
+      const restored = [];
+      for (const item of [...action.objects].sort((a, b) => (a.type === 'connector' ? 1 : 0) - (b.type === 'connector' ? 1 : 0))) {
+        const { object, error: restoreError } = await restoreBoardObject(item);
+        if (restoreError || !object) {
+          setError(restoreError?.message || 'Не удалось восстановить объект');
+          continue;
+        }
+        restored.push(object);
+      }
+      setObjects((prev) => {
+        const seen = new Set(prev.map((item) => item.id));
+        return [...prev, ...restored.filter((item) => !seen.has(item.id))];
+      });
+      return { type: 'deleteMany', ids: restored.map((item) => item.id) };
     }
     if (action.type === 'patch') {
       const { error: patchError } = await updateBoardObject(action.id, action.before);
@@ -857,7 +916,7 @@ export default function WhiteboardView({ project, userId, profile, authorById, c
     }
     setObjects((prev) => prev.map((item) => (item.id === tempId ? saved : item)));
     setSelectedId(saved.id);
-    pushHistory({ type: 'delete', id: saved.id });
+    if (options.recordHistory !== false) pushHistory({ type: 'delete', id: saved.id });
     return saved;
   };
 
@@ -1127,6 +1186,54 @@ export default function WhiteboardView({ project, userId, profile, authorById, c
       setShowComments(true);
       setTool('select');
     }
+  };
+
+  const quickAddBpmn = async (type) => {
+    const source = objectsRef.current.find((item) => item.id === selectedId && item.type === 'bpmn');
+    const sourceType = source?.data?.bpmnType;
+    if (!source || !sourceType || !['start', 'end', 'intermediate', 'task', 'userTask', 'serviceTask', 'gatewayX', 'gatewayPlus', 'subprocess'].includes(sourceType)) return;
+    const spec = BPMN_ELEMENTS.find((item) => item.key === type);
+    if (!spec || !NEXT_BPMN[sourceType]?.includes(type)) return;
+    const outgoing = objectsRef.current.filter(
+      (item) => item.type === 'connector' && item.data?.from === source.id,
+    ).length;
+    const offsetY = sourceType.startsWith('gateway') ? outgoing * 120 : 0;
+    const node = await addObject(
+      'bpmn',
+      { bpmnType: spec.key, text: spec.label },
+      {
+        x: source.x + source.width + 80,
+        y: source.y + offsetY,
+        width: spec.width,
+        height: spec.height,
+        recordHistory: false,
+      },
+    );
+    if (!node) return;
+    const connector = await addObject(
+      'connector',
+      { from: source.id, to: node.id, variant: 'bpmn' },
+      { x: 0, y: 0, width: 1, height: 1, recordHistory: false },
+    );
+    if (connector) pushHistory({ type: 'deleteMany', ids: [node.id, connector.id] });
+    setSelectedId(node.id);
+    setTool('select');
+    showToast(`Добавлено: ${spec.label}`);
+  };
+
+  const handleCanvasDrop = async (event) => {
+    const type = event.dataTransfer?.getData('application/x-bpmn-type') || event.dataTransfer?.getData('text/plain');
+    if (!type || !BPMN_ELEMENTS.some((item) => item.key === type)) return;
+    event.preventDefault();
+    if (!canEdit) return;
+    const spec = BPMN_ELEMENTS.find((item) => item.key === type);
+    const world = screenToWorld(event.clientX, event.clientY);
+    await addObject(
+      'bpmn',
+      { bpmnType: spec.key, text: spec.label },
+      { x: world.x - spec.width / 2, y: world.y - spec.height / 2, width: spec.width, height: spec.height },
+    );
+    setTool('select');
   };
 
   const handleObjectClick = async (event, object) => {
@@ -1851,12 +1958,20 @@ export default function WhiteboardView({ project, userId, profile, authorById, c
             <button
               key={element.key}
               type="button"
+              draggable={canEdit}
+              onDragStart={(event) => {
+                event.dataTransfer.setData('application/x-bpmn-type', element.key);
+                event.dataTransfer.setData('text/plain', element.key);
+                event.dataTransfer.effectAllowed = 'copy';
+                setBpmnKind(element.key);
+              }}
               onClick={() => { setBpmnKind(element.key); setTool('bpmn'); setConnectorFrom(null); }}
               disabled={!canEdit}
-              className={`rounded-lg border px-1.5 py-1 text-[0.6rem] transition disabled:opacity-40 ${tool === 'bpmn' && bpmnKind === element.key ? 'border-indigo-400 bg-indigo-500 text-white' : 'border-slate-300/70 bg-white/60 text-slate-600 hover:border-indigo-300 hover:text-indigo-600 dark:border-white/10 dark:bg-white/5 dark:text-slate-300'}`}
-              title={`Добавить: ${element.label}`}
+              className={`flex h-8 w-8 items-center justify-center rounded-lg border transition disabled:opacity-40 ${tool === 'bpmn' && bpmnKind === element.key ? 'border-indigo-400 bg-indigo-500 text-white' : 'border-slate-300/70 bg-white/60 text-slate-600 hover:border-indigo-300 hover:text-indigo-600 dark:border-white/10 dark:bg-white/5 dark:text-slate-300'}`}
+              title={`${element.label} — клик или перетащите на доску`}
+              aria-label={element.label}
             >
-              {element.label}
+              <BpmnIcon type={element.key} />
             </button>
           ))}
           <span className="mx-1 h-5 w-px bg-slate-300/70 dark:bg-white/10" />
@@ -1888,6 +2003,8 @@ export default function WhiteboardView({ project, userId, profile, authorById, c
         onPointerDown={handleCanvasPointerDown}
         onPointerMove={broadcastCursor}
         onWheel={handleWheel}
+        onDragOver={(event) => { if (event.dataTransfer?.types?.includes('application/x-bpmn-type')) { event.preventDefault(); event.dataTransfer.dropEffect = 'copy'; } }}
+        onDrop={handleCanvasDrop}
       >
         <div
           className="absolute origin-top-left"
@@ -2156,6 +2273,39 @@ export default function WhiteboardView({ project, userId, profile, authorById, c
               </div>
             );
           })}
+
+          {canEdit && selectedId && (() => {
+            const source = objectById.get(selectedId);
+            const nextTypes = source?.type === 'bpmn' ? NEXT_BPMN[source.data?.bpmnType] : null;
+            if (!source || !nextTypes?.length || editingId === source.id) return null;
+            return (
+              <div
+                className="absolute z-40 flex items-center gap-1 rounded-xl border border-indigo-300/60 bg-white/95 p-1 shadow-xl dark:border-indigo-300/20 dark:bg-slate-900/95"
+                style={{ left: source.x + source.width + 10, top: source.y }}
+                onPointerDown={(event) => event.stopPropagation()}
+              >
+                <span className="px-1 text-[0.55rem] font-semibold tracking-wide text-indigo-500 uppercase">Далее</span>
+                {nextTypes.map((type) => {
+                  const spec = BPMN_ELEMENTS.find((item) => item.key === type);
+                  return (
+                    <button
+                      key={type}
+                      type="button"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        // eslint-disable-next-line react-hooks/refs
+                        quickAddBpmn(type);
+                      }}
+                      className="flex h-7 w-7 items-center justify-center rounded-lg text-slate-600 hover:bg-indigo-500/10 hover:text-indigo-600 dark:text-slate-300"
+                      title={`Добавить: ${spec?.label || type}`}
+                    >
+                      <BpmnIcon type={type} className="h-4 w-4" />
+                    </button>
+                  );
+                })}
+              </div>
+            );
+          })()}
 
           {drawing && (
             <svg className="pointer-events-none absolute top-0 left-0 overflow-visible" width="1" height="1">
