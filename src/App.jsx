@@ -973,6 +973,19 @@ export default function App() {
     [projects, currentProjectId],
   );
 
+  const taskFeatures = useMemo(
+    () => ({
+      planning: currentProject?.task_planning_enabled !== false,
+      milestones: currentProject?.task_milestones_enabled !== false,
+      effort: currentProject?.task_effort_enabled !== false,
+      sprint: currentProject?.task_sprint_enabled !== false,
+      dependencies: currentProject?.task_dependencies_enabled !== false,
+      relations: currentProject?.task_relations_enabled !== false,
+      checklist: currentProject?.task_checklist_enabled !== false,
+    }),
+    [currentProject],
+  );
+
   const handleSelectProject = (projectId) => {
     setIsProjectsOpen(false);
     setWorkflowProject(null);
@@ -2695,6 +2708,7 @@ export default function App() {
                         onToggleSelect={toggleTaskSelection}
                         onSelectColumn={selectColumn}
                         dropPreview={dropPreview}
+                        taskFeatures={taskFeatures}
                       />
                     ))}
                   </div>
@@ -2711,6 +2725,7 @@ export default function App() {
                     author={authorById.get(activeTask.created_by)}
                     assignee={activeTask.assignee_id ? authorById.get(activeTask.assignee_id) : null}
                     isOverlay
+                    taskFeatures={taskFeatures}
                   />
                 </div>
               ) : null}
@@ -2845,6 +2860,7 @@ export default function App() {
             ['admin', 'manager', 'deputy'].includes(profile?.role) ||
             currentProject?.owner_id === userId
           }
+          taskFeatures={taskFeatures}
           onSaveRelations={handleSaveRelations}
           onSaveDependencies={handleSaveDependencies}
           onOpenExistingTask={(taskId) => {

@@ -26,6 +26,7 @@ export default function Column({
   onToggleSelect,
   onSelectColumn,
   dropPreview = null,
+  taskFeatures = {},
 }) {
   const { setNodeRef, isOver } = useDroppable({
     id: column.id,
@@ -115,6 +116,7 @@ export default function Column({
                 onDelete={onDeleteTask}
                 selectionMode={selectionMode}
                 selected={Boolean(selectedIds?.has(task.id))}
+                taskFeatures={taskFeatures}
                 onToggleSelect={onToggleSelect}
                 suppressSortableTransform={previewInColumn}
               />

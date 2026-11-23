@@ -29,6 +29,7 @@ export function TaskCardView({
   onToggleSelect,
   isDragging = false,
   isOverlay = false,
+  taskFeatures = {},
   innerRef,
   style,
   listeners,
@@ -128,7 +129,7 @@ export function TaskCardView({
         {task.title || 'Без названия'}
       </p>
 
-      {(Number(task.progress_percent) || 0) > 0 && (
+      {taskFeatures.planning !== false && (Number(task.progress_percent) || 0) > 0 && (
         <div className="mb-2 pl-1">
           <div className="flex items-center justify-between text-[0.6rem] font-medium text-slate-500 dark:text-slate-400">
             <span>Выполнено</span>
@@ -232,6 +233,7 @@ export default function TaskCard({
   selected = false,
   onToggleSelect,
   suppressSortableTransform = false,
+  taskFeatures = {},
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: task.id,
@@ -259,6 +261,7 @@ export default function TaskCard({
       selected={selected}
       onToggleSelect={onToggleSelect}
       isDragging={isDragging}
+      taskFeatures={taskFeatures}
       innerRef={setNodeRef}
       style={style}
       listeners={listeners}

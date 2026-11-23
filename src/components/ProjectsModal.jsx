@@ -21,6 +21,16 @@ import { roleOf } from '../lib/permissions';
 
 const CREATE_ROLES = ['admin', 'manager', 'deputy'];
 
+const TASK_FEATURE_TOGGLES = [
+  { key: 'task_planning_enabled', label: 'Планирование', hint: 'Прогресс и блок планирования' },
+  { key: 'task_milestones_enabled', label: 'Вехи', hint: 'Веха и отдельная дата вехи' },
+  { key: 'task_effort_enabled', label: 'Трудозатраты', hint: 'Трудозатраты и факт часов' },
+  { key: 'task_sprint_enabled', label: 'Спринты', hint: 'Выбор спринта в задаче' },
+  { key: 'task_dependencies_enabled', label: 'Зависимости', hint: 'Зависимости и критический путь' },
+  { key: 'task_relations_enabled', label: 'Связанные задачи', hint: 'Смысловые связи задач' },
+  { key: 'task_checklist_enabled', label: 'Чек-лист', hint: 'Пункты и прогресс по чек-листу' },
+];
+
 export default function ProjectsModal({
   projects = [],
   trashedProjects = [],
@@ -378,6 +388,30 @@ export default function ProjectsModal({
                     </span>
                   </span>
                 </label>
+              )}
+
+              {currentProject && canManageWorkflow && (
+                <div className="mt-2 rounded-2xl border border-white/45 bg-white/35 p-3 dark:border-white/10 dark:bg-white/5">
+                  <p className="mb-2 text-[0.65rem] font-semibold tracking-[0.1em] text-slate-500 uppercase dark:text-slate-400">
+                    Функции в задачах
+                  </p>
+                  <div className="grid gap-1.5 sm:grid-cols-2">
+                    {TASK_FEATURE_TOGGLES.map((feature) => (
+                      <label key={feature.key} className="flex cursor-pointer items-start gap-2 rounded-lg px-1.5 py-1 hover:bg-white/50 dark:hover:bg-white/10">
+                        <input
+                          type="checkbox"
+                          checked={currentProject[feature.key] !== false}
+                          onChange={(event) => onUpdateSettings?.({ [feature.key]: event.target.checked })}
+                          className="mt-0.5 h-3.5 w-3.5 accent-indigo-500"
+                        />
+                        <span>
+                          <span className="block text-[0.68rem] font-medium text-slate-700 dark:text-slate-200">{feature.label}</span>
+                          <span className="block text-[0.58rem] text-slate-500">{feature.hint}</span>
+                        </span>
+                      </label>
+                    ))}
+                  </div>
+                </div>
               )}
 
               {canCreate && (

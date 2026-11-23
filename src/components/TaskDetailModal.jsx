@@ -108,6 +108,7 @@ export default function TaskDetailModal({
   onSaveRelations,
   onSaveChecklist,
   canManageLag = false,
+  taskFeatures = {},
 }) {
   const [editedTask, setEditedTask] = useState(() => toEditableTask(task, dependencyIds, relatedTaskIds));
   const [checklist, setChecklist] = useState(() =>
@@ -151,6 +152,13 @@ export default function TaskDetailModal({
   const actualHoursSupported = supports(allowedFields, 'actual_hours');
   const milestoneDateSupported = supports(allowedFields, 'milestone_date');
   const dependencyLagSupported = supports(allowedFields, 'dependency_lag_days');
+  const planningEnabled = taskFeatures.planning !== false;
+  const milestonesEnabled = taskFeatures.milestones !== false;
+  const effortEnabled = taskFeatures.effort !== false;
+  const sprintEnabled = taskFeatures.sprint !== false;
+  const dependenciesEnabled = taskFeatures.dependencies !== false;
+  const relationsEnabled = taskFeatures.relations !== false;
+  const checklistEnabled = taskFeatures.checklist !== false;
   const dependenciesSupported = Boolean(onSaveDependencies) && Boolean(task?.id);
 
   const authorProfile = useMemo(
@@ -813,6 +821,7 @@ export default function TaskDetailModal({
                 )}
               </div>
 
+              {checklistEnabled && (
               <div className="rounded-2xl border border-emerald-400/25 bg-emerald-500/[0.045] p-3 dark:border-emerald-300/15 dark:bg-emerald-400/[0.06]">
                 <div className="flex items-center justify-between gap-2">
                   <p className="flex items-center gap-1.5 text-[0.68rem] font-semibold tracking-[0.1em] text-slate-500 uppercase dark:text-slate-400">
@@ -951,6 +960,7 @@ export default function TaskDetailModal({
                   Прогресс задачи считается автоматически: выполнено пунктов / всего пунктов.
                 </p>
               </div>
+              )}
 
               {task?.id && (
                 <div className="rounded-2xl border border-sky-400/25 bg-sky-500/[0.045] p-3 dark:border-sky-300/15 dark:bg-sky-400/[0.06]">
@@ -1033,7 +1043,7 @@ export default function TaskDetailModal({
                 </div>
               )}
 
-              {(progressSupported || milestoneSupported || (storyPointsEnabled && storyPointsSupported) || (methodology === 'agile' && sprintSupported) || dependenciesSupported) && (
+              {planningEnabled && (progressSupported || milestoneSupported || (storyPointsEnabled && storyPointsSupported) || (methodology === 'agile' && sprintSupported) || dependenciesSupported) && (
                 <div className="rounded-2xl border border-indigo-400/25 bg-indigo-500/[0.045] p-3 dark:border-indigo-300/15 dark:bg-indigo-400/[0.06]">
                   <p className="mb-2 flex items-center gap-1.5 text-[0.68rem] font-semibold tracking-[0.1em] text-slate-500 uppercase dark:text-slate-400">
                     <Gauge size={12} /> Планирование
@@ -1086,7 +1096,7 @@ export default function TaskDetailModal({
                         </label>
                       )}
 
-                      {milestoneSupported && (
+                      {milestoneSupported && milestonesEnabled && (
                         <label className="flex items-center gap-1.5 text-[0.68rem] text-slate-600 dark:text-slate-300">
                           <input
                             type="checkbox"
@@ -1097,7 +1107,7 @@ export default function TaskDetailModal({
                           <Diamond size={12} className="text-amber-500" /> Веха
                         </label>
                       )}
-                      {effortSupported && !editedTask.is_milestone && (
+                      {effortSupported && effortEnabled && !editedTask.is_milestone && (
                         <label className="flex items-center gap-1.5 text-[0.68rem] text-slate-600 dark:text-slate-300">
                           <Clock size={12} /> Трудозатраты, ч
                           <input
@@ -1111,7 +1121,7 @@ export default function TaskDetailModal({
                           />
                         </label>
                       )}
-                      {actualHoursSupported && !editedTask.is_milestone && (
+                      {actualHoursSupported && effortEnabled && !editedTask.is_milestone && (
                         <label className="flex items-center gap-1.5 text-[0.68rem] text-slate-600 dark:text-slate-300">
                           <Clock size={12} /> Факт, ч
                           <input
@@ -1128,7 +1138,7 @@ export default function TaskDetailModal({
                       )}
                     </div>
 
-                    {editedTask.is_milestone && milestoneDateSupported && (
+                    {editedTask.is_milestone && milestonesEnabled && milestoneDateSupported && (
                       <label className="block text-[0.68rem] font-medium text-slate-600 dark:text-slate-300">
                         Дата вехи
                         <input
@@ -1149,7 +1159,7 @@ export default function TaskDetailModal({
                       </p>
                     )}
 
-                    {methodology === 'agile' && sprintSupported && (
+                    {methodology === 'agile' && sprintSupported && sprintEnabled && (
                       <label className="block text-[0.68rem] font-medium text-slate-600 dark:text-slate-300">
                         Спринт
                         <select
@@ -1167,7 +1177,7 @@ export default function TaskDetailModal({
                       </label>
                     )}
 
-                    {dependenciesSupported && (
+                    {dependenciesSupported && dependenciesEnabled && (
                       <div>
                         <p className="flex items-center gap-1.5 text-[0.68rem] font-medium text-slate-600 dark:text-slate-300">
                           <GitBranch size={12} /> Зависит от
@@ -1226,7 +1236,7 @@ export default function TaskDetailModal({
                       </div>
                     )}
 
-                    {onSaveRelations && (
+                    {onSaveRelations && relationsEnabled && (
                       <div>
                         <p className="flex items-center gap-1.5 text-[0.68rem] font-medium text-slate-600 dark:text-slate-300">
                           <Link2 size={12} /> Связанные задачи
