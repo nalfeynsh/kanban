@@ -545,6 +545,7 @@ function BpmnShape({ object }) {
 
 export default function WhiteboardView({ project, userId, profile, authorById, canManageProject = false, tasks = [], numberById = new Map(), onOpenTask }) {
   const viewportRef = useRef(null);
+  const wheelHandlerRef = useRef(null);
   const cameraRef = useRef({ x: 0, y: 0, zoom: 1 });
   const objectsRef = useRef([]);
   const channelRef = useRef(null);
@@ -1076,6 +1077,8 @@ export default function WhiteboardView({ project, userId, profile, authorById, c
 
   useEffect(() => {
     const onKeyDown = (event) => {
+      const typingTarget = event.target instanceof Element
+        && Boolean(event.target.closest('input, textarea, [contenteditable]'));
       if (presentIndex >= 0) {
         if (event.key === 'Escape') { setPresentIndex(-1); return; }
         if (event.key === 'ArrowRight') {
@@ -1097,20 +1100,20 @@ export default function WhiteboardView({ project, userId, profile, authorById, c
           return;
         }
       }
-      if ((event.ctrlKey || event.metaKey) && !event.target.closest('input, textarea, [contenteditable]')) {
-        const key = event.key.toLowerCase();
-        if (key === 'z') {
+      if ((event.ctrlKey || event.metaKey) && !typingTarget) {
+        const code = event.code;
+        if (code === 'KeyZ') {
           event.preventDefault();
           if (event.shiftKey) redo();
           else undo();
           return;
         }
-        if (key === 'y') {
+        if (code === 'KeyY') {
           event.preventDefault();
           redo();
           return;
         }
-        if (key === 'a') {
+        if (code === 'KeyA') {
           event.preventDefault();
           setAllSelected(true);
           setSelectedId(null);
@@ -1119,7 +1122,7 @@ export default function WhiteboardView({ project, userId, profile, authorById, c
           return;
         }
       }
-      if (event.code === 'Space' && !event.target.closest('input, textarea, [contenteditable]')) {
+      if (event.code === 'Space' && !typingTarget) {
         spaceRef.current = true;
         setSpaceDown(true);
         event.preventDefault();
@@ -1131,7 +1134,7 @@ export default function WhiteboardView({ project, userId, profile, authorById, c
         setSelectedId(null);
         setAllSelected(false);
       }
-      if ((event.key === 'Delete' || event.key === 'Backspace') && canEdit && !event.target.closest('input, textarea, [contenteditable]') && (allSelected || selectedId)) {
+      if ((event.key === 'Delete' || event.key === 'Backspace') && canEdit && !typingTarget && (allSelected || selectedId)) {
         event.preventDefault();
         if (allSelected) {
           deleteAllObjects();
@@ -1157,6 +1160,13 @@ export default function WhiteboardView({ project, userId, profile, authorById, c
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [canEdit, selectedId, allSelected, presentIndex]);
+
+  const stopFollowing = () => {
+    if (followRef.current) {
+      followRef.current = null;
+      setFollowingId(null);
+    }
+  };
 
   const handleCanvasPointerDown = async (event) => {
     stopFollowing();
@@ -1453,12 +1463,17 @@ export default function WhiteboardView({ project, userId, profile, authorById, c
     setCameraSafe((prev) => ({ ...prev, x: prev.x - deltaX, y: prev.y - deltaY }));
   };
 
-  const stopFollowing = () => {
-    if (followRef.current) {
-      followRef.current = null;
-      setFollowingId(null);
-    }
-  };
+  useEffect(() => {
+    wheelHandlerRef.current = handleWheel;
+  });
+
+  useEffect(() => {
+    const node = viewportRef.current;
+    if (!node) return undefined;
+    const onWheel = (event) => wheelHandlerRef.current?.(event);
+    node.addEventListener('wheel', onWheel, { passive: false });
+    return () => node.removeEventListener('wheel', onWheel);
+  }, [board?.id, loading]);
 
   useEffect(() => {
     if (!objects.length) return;
@@ -2044,7 +2059,6 @@ export default function WhiteboardView({ project, userId, profile, authorById, c
         }}
         onPointerDown={handleCanvasPointerDown}
         onPointerMove={broadcastCursor}
-        onWheel={handleWheel}
         onDragOver={(event) => { if (event.dataTransfer?.types?.includes('application/x-bpmn-type')) { event.preventDefault(); event.dataTransfer.dropEffect = 'copy'; } }}
         onDrop={handleCanvasDrop}
       >
