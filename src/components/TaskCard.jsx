@@ -38,6 +38,11 @@ export function TaskCardView({
   const priority = getPriority(task.priority);
   const due = getDueValue(task);
   const overdue = due ? isOverdue(due) : false;
+  const progress = Math.max(0, Math.min(100, Number(task.progress_percent) || 0));
+  const progressOverdue = overdue && !task.completed_at && progress < 100;
+  const progressGradient = progressOverdue
+    ? 'linear-gradient(90deg, #d8aaa5 0%, #e4c4a8 55%, #c7d8c0 100%)'
+    : 'linear-gradient(90deg, #a9bfae 0%, #d6e2d2 100%)';
   const linksCount = Array.isArray(task.links) ? task.links.length : 0;
   const filesCount = Array.isArray(task.files) ? task.files.length : 0;
   const person = assignee || author;
@@ -129,16 +134,16 @@ export function TaskCardView({
         {task.title || 'Без названия'}
       </p>
 
-      {taskFeatures.planning !== false && (Number(task.progress_percent) || 0) > 0 && (
-        <div className="mb-2 pl-1">
-          <div className="flex items-center justify-between text-[0.6rem] font-medium text-slate-500 dark:text-slate-400">
-            <span>Выполнено</span>
-            <span className="tabular-nums">{Number(task.progress_percent)}%</span>
-          </div>
-          <div className="mt-0.5 h-1.5 overflow-hidden rounded-full bg-slate-400/20">
+      {taskFeatures.planning !== false && (
+        <div
+          className="mb-2 pl-1"
+          title={progressOverdue ? `Выполнено ${progress}% · срок пропущен` : `Выполнено ${progress}%`}
+          aria-label={`Выполнено ${progress}%`}
+        >
+          <div className="h-[2px] overflow-hidden rounded-full bg-slate-400/15 dark:bg-white/10">
             <div
-              className="h-full rounded-full bg-emerald-500 transition-all"
-              style={{ width: `${Math.min(100, Number(task.progress_percent) || 0)}%` }}
+              className="h-full rounded-full transition-all duration-300"
+              style={{ width: `${progress}%`, background: progressGradient }}
             />
           </div>
         </div>

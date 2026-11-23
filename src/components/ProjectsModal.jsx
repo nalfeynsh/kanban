@@ -22,7 +22,7 @@ import { roleOf } from '../lib/permissions';
 const CREATE_ROLES = ['admin', 'manager', 'deputy'];
 
 const TASK_FEATURE_TOGGLES = [
-  { key: 'task_planning_enabled', label: 'Планирование', hint: 'Прогресс и блок планирования' },
+  { key: 'task_planning_enabled', label: 'Планирование', hint: 'Только прогресс задачи' },
   { key: 'task_milestones_enabled', label: 'Вехи', hint: 'Веха и отдельная дата вехи' },
   { key: 'task_effort_enabled', label: 'Трудозатраты', hint: 'Трудозатраты и факт часов' },
   { key: 'task_sprint_enabled', label: 'Спринты', hint: 'Выбор спринта в задаче' },

@@ -1058,14 +1058,14 @@ export default function TaskDetailModal({
                 </div>
               )}
 
-              {planningEnabled && (progressSupported || milestoneSupported || (storyPointsEnabled && storyPointsSupported) || (methodology === 'agile' && sprintSupported) || dependenciesSupported) && (
+              {((planningEnabled && progressSupported) || milestoneSupported || (storyPointsEnabled && storyPointsSupported) || (methodology === 'agile' && sprintSupported) || dependenciesSupported) && (
                 <div className="rounded-2xl border border-indigo-400/25 bg-indigo-500/[0.045] p-3 dark:border-indigo-300/15 dark:bg-indigo-400/[0.06]">
                   <p className="mb-2 flex items-center gap-1.5 text-[0.68rem] font-semibold tracking-[0.1em] text-slate-500 uppercase dark:text-slate-400">
                     <Gauge size={12} /> Планирование
                   </p>
 
                   <div className="space-y-2.5">
-                    {progressSupported && (
+                    {planningEnabled && progressSupported && (
                       checklistTotal > 0 ? (
                         <div className="text-[0.68rem] font-medium text-slate-600 dark:text-slate-300">
                           <span className="flex items-center justify-between">
