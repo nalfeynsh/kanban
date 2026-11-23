@@ -10,6 +10,7 @@ import {
   AlertCircle,
   Check,
   Repeat,
+  CornerDownRight,
 } from 'lucide-react';
 import { formatDueBadge, getDueValue, isOverdue } from '../lib/format';
 import { getPriority } from '../lib/priority';
@@ -93,6 +94,11 @@ export function TaskCardView({
               title="Номер задачи"
             >
               №{number}
+            </span>
+          )}
+          {task.parent_task_id && (
+            <span className="flex items-center gap-0.5 rounded-full bg-sky-500/15 px-1.5 py-0.5 text-[0.6rem] font-semibold text-sky-700 dark:text-sky-300" title="Подзадача">
+              <CornerDownRight size={10} /> подзадача
             </span>
           )}
           {task.tags?.map((tag, index) => (

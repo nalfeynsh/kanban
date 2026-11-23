@@ -1174,16 +1174,39 @@ export default function App() {
     const total = saved.length;
     const done = saved.filter((item) => item.is_done).length;
     const progress = total > 0 ? Math.round((done / total) * 100) : 0;
+    const currentTask = tasks.find((task) => task.id === taskId);
+    const shouldComplete =
+      progress === 100 && total > 0 && doneColumnId && currentTask && currentTask.column_id !== doneColumnId;
+    const patch = {
+      progress_percent: progress,
+      ...(shouldComplete
+        ? {
+            column_id: doneColumnId,
+            position: tasks.filter((task) => task.column_id === doneColumnId && !task.deleted_at).length,
+          }
+        : {}),
+    };
     const { error: progressError } = await supabase
       .from('tasks')
-      .update({ progress_percent: progress })
+      .update(patch)
       .eq('id', taskId);
     if (progressError) {
       setBanner(`Не удалось обновить прогресс: ${progressError.message}`);
       return;
     }
     setChecklistByTask((prev) => ({ ...prev, [taskId]: saved }));
-    setTasks((prev) => prev.map((task) => (task.id === taskId ? { ...task, progress_percent: progress } : task)));
+    setTasks((prev) =>
+      prev.map((task) =>
+        task.id === taskId
+          ? {
+              ...task,
+              progress_percent: progress,
+              ...(shouldComplete ? { column_id: doneColumnId, position: patch.position } : {}),
+            }
+          : task,
+      ),
+    );
+    if (shouldComplete) setBanner('Чек-лист выполнен на 100% — задача перемещена в «Готово».');
   };
 
   const handleSaveRelations = async (taskId, ids = []) => {
@@ -1207,6 +1230,38 @@ export default function App() {
       return;
     }
     setTaskRelations((prev) => [...prev.filter((item) => item.task_id !== taskId), ...(data ?? [])]);
+  };
+
+  const handleAddSubtask = async (parentTaskId, { title, assignee_id, due_at }) => {
+    if (!parentTaskId || !title?.trim() || !columns[0]?.id) return null;
+    const targetColumn = columns[0].id;
+    const position = tasks.filter((task) => task.column_id === targetColumn && !task.deleted_at).length;
+    const payload = pickFields(
+      {
+        title: title.trim(),
+        description: '',
+        links: [],
+        files: [],
+        is_private: false,
+        column_id: targetColumn,
+        position,
+        created_by: userId,
+        parent_task_id: parentTaskId,
+        assignee_id: assignee_id || null,
+        due_at: due_at ? new Date(`${due_at}T18:00:00`).toISOString() : null,
+        start_at: new Date().toISOString(),
+        priority: 0,
+      },
+      taskSchema,
+    );
+    const { data, error } = await supabase.from('tasks').insert([payload]).select().single();
+    if (error) {
+      setBanner(`Не удалось создать подзадачу: ${error.message}`);
+      return null;
+    }
+    const created = sanitizeTask(data);
+    setTasks((prev) => [...prev, created]);
+    return created;
   };
 
   const handleSaveBaseline = async (name = 'Базовый план') => {    if (!currentProjectId || tasks.length === 0) return;
@@ -1728,6 +1783,9 @@ export default function App() {
         : {}),
       ...(supports(taskSchema, 'sprint_id')
         ? { sprint_id: taskToSave.sprint_id || null }
+        : {}),
+      ...(supports(taskSchema, 'parent_task_id')
+        ? { parent_task_id: taskToSave.parent_task_id || null }
         : {}),
       ...(supports(taskSchema, 'recurrence_freq')
         ? { recurrence_freq: due ? taskToSave.recurrence_freq || null : null }
@@ -2709,6 +2767,17 @@ export default function App() {
               : []
           }
           checklistItems={selectedTask.id ? checklistByTask[selectedTask.id] || [] : []}
+          subtasks={
+            selectedTask.id
+              ? tasks.filter((task) => task.parent_task_id === selectedTask.id && !task.deleted_at)
+              : []
+          }
+          parentTask={
+            selectedTask.parent_task_id
+              ? tasks.find((task) => task.id === selectedTask.parent_task_id) || null
+              : null
+          }
+          onAddSubtask={handleAddSubtask}
           onSaveChecklist={handleSaveChecklist}
           onSaveRelations={handleSaveRelations}
           onSaveDependencies={handleSaveDependencies}

@@ -27,6 +27,10 @@ import {
   Layers3,
   ListChecks,
   Link2,
+  GripVertical,
+  ListTree,
+  CornerDownRight,
+  Pencil,
 } from 'lucide-react';
 import TipTapEditor from './TipTapEditor';
 import DateTimeField from './DateTimeField';
@@ -72,6 +76,7 @@ function toEditableTask(task, dependencyIds = [], relatedIds = []) {
     sprint_id: task.sprint_id || '',
     depends_on_ids: dependencyIds,
     related_task_ids: relatedIds,
+    parent_task_id: task.parent_task_id || null,
   };
 }
 
@@ -95,6 +100,9 @@ export default function TaskDetailModal({
   dependencyIds = [],
   relatedTaskIds = [],
   checklistItems = [],
+  subtasks = [],
+  parentTask = null,
+  onAddSubtask,
   onSaveDependencies,
   onSaveRelations,
   onSaveChecklist,
@@ -108,6 +116,11 @@ export default function TaskDetailModal({
     })),
   );
   const [newChecklistTitle, setNewChecklistTitle] = useState('');
+  const [editingChecklistIndex, setEditingChecklistIndex] = useState(null);
+  const [checklistEditValue, setChecklistEditValue] = useState('');
+  const [draggingChecklistIndex, setDraggingChecklistIndex] = useState(null);
+  const [dragOverChecklistIndex, setDragOverChecklistIndex] = useState(null);
+  const [newSubtask, setNewSubtask] = useState({ title: '', assignee_id: '', due_at: '' });
   const [isCopied, setIsCopied] = useState(false);
   const [newLinkTitle, setNewLinkTitle] = useState('');
   const [newLinkUrl, setNewLinkUrl] = useState('');
@@ -211,6 +224,33 @@ export default function TaskDetailModal({
 
   const removeChecklistItem = (index) => {
     persistChecklist(checklist.filter((_, i) => i !== index));
+  };
+
+  const saveChecklistTitle = (index) => {
+    const value = checklistEditValue.trim();
+    setEditingChecklistIndex(null);
+    if (!value) return;
+    persistChecklist(checklist.map((item, i) => (i === index ? { ...item, title: value } : item)));
+  };
+
+  const moveChecklistItem = (from, to) => {
+    if (from == null || to == null || from === to) return;
+    const next = [...checklist];
+    const [moved] = next.splice(from, 1);
+    next.splice(to, 0, moved);
+    persistChecklist(next);
+  };
+
+  const addSubtask = async () => {
+    if (!newSubtask.title.trim() || !onAddSubtask) return;
+    const created = await onAddSubtask({
+      title: newSubtask.title.trim(),
+      assignee_id: newSubtask.assignee_id || null,
+      due_at: newSubtask.due_at || null,
+    });
+    if (created) {
+      setNewSubtask({ title: '', assignee_id: '', due_at: '' });
+    }
   };
 
   const saveTask = async () => {
@@ -380,6 +420,17 @@ export default function TaskDetailModal({
                 placeholder="Название задачи"
                 autoFocus={isNewTask}
               />
+
+              {parentTask && (
+                <button
+                  type="button"
+                  onClick={() => onOpenExistingTask?.(parentTask.id)}
+                  className="mt-1 flex max-w-full items-center gap-1 truncate rounded-lg bg-sky-500/10 px-2 py-1 text-[0.62rem] font-medium text-sky-700 hover:bg-sky-500/20 dark:text-sky-300"
+                  title="Открыть родительскую задачу"
+                >
+                  <CornerDownRight size={11} /> Родительская: {parentTask.title}
+                </button>
+              )}
 
               <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-[0.7rem] text-slate-500 dark:text-slate-400">
                 {authorProfile ? (
@@ -782,17 +833,80 @@ export default function TaskDetailModal({
                   {checklist.map((item, index) => (
                     <div
                       key={item.id || `new-${index}`}
-                      className="flex items-center gap-2 rounded-lg border border-white/45 bg-white/45 px-2 py-1.5 dark:border-white/10 dark:bg-white/5"
+                      draggable={editingChecklistIndex !== index}
+                      onDragStart={(event) => {
+                        setDraggingChecklistIndex(index);
+                        event.dataTransfer.effectAllowed = 'move';
+                        event.dataTransfer.setData('text/plain', String(index));
+                      }}
+                      onDragOver={(event) => {
+                        event.preventDefault();
+                        setDragOverChecklistIndex(index);
+                      }}
+                      onDrop={(event) => {
+                        event.preventDefault();
+                        const from = Number(event.dataTransfer.getData('text/plain'));
+                        moveChecklistItem(from, index);
+                        setDraggingChecklistIndex(null);
+                        setDragOverChecklistIndex(null);
+                      }}
+                      onDragEnd={() => {
+                        setDraggingChecklistIndex(null);
+                        setDragOverChecklistIndex(null);
+                      }}
+                      className={`flex items-center gap-1.5 rounded-lg border bg-white/45 px-2 py-1.5 transition dark:bg-white/5 ${
+                        dragOverChecklistIndex === index && draggingChecklistIndex !== index
+                          ? 'border-indigo-400 bg-indigo-500/10'
+                          : 'border-white/45 dark:border-white/10'
+                      } ${draggingChecklistIndex === index ? 'opacity-40' : ''}`}
                     >
+                      <span className="cursor-grab text-slate-300 active:cursor-grabbing dark:text-slate-600" title="Перетащите, чтобы изменить порядок">
+                        <GripVertical size={13} />
+                      </span>
                       <input
                         type="checkbox"
                         checked={item.is_done}
                         onChange={() => toggleChecklistItem(index)}
                         className="h-3.5 w-3.5 shrink-0 accent-emerald-500"
                       />
-                      <span className={`min-w-0 flex-1 text-[0.7rem] ${item.is_done ? 'text-slate-400 line-through' : 'text-slate-700 dark:text-slate-200'}`}>
-                        {item.title}
-                      </span>
+                      {editingChecklistIndex === index ? (
+                        <input
+                          autoFocus
+                          value={checklistEditValue}
+                          onChange={(event) => setChecklistEditValue(event.target.value)}
+                          onBlur={() => saveChecklistTitle(index)}
+                          onKeyDown={(event) => {
+                            if (event.key === 'Enter') {
+                              event.preventDefault();
+                              saveChecklistTitle(index);
+                            }
+                            if (event.key === 'Escape') setEditingChecklistIndex(null);
+                          }}
+                          className="glass-input !min-w-0 flex-1 !py-0.5 !text-[0.68rem]"
+                        />
+                      ) : (
+                        <span
+                          onDoubleClick={() => {
+                            setEditingChecklistIndex(index);
+                            setChecklistEditValue(item.title);
+                          }}
+                          className={`min-w-0 flex-1 text-[0.7rem] ${item.is_done ? 'text-slate-400 line-through' : 'text-slate-700 dark:text-slate-200'}`}
+                          title="Двойной клик — редактировать"
+                        >
+                          {item.title}
+                        </span>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setEditingChecklistIndex(index);
+                          setChecklistEditValue(item.title);
+                        }}
+                        className="text-slate-400 hover:text-indigo-500"
+                        title="Редактировать пункт"
+                      >
+                        <Pencil size={12} />
+                      </button>
                       <button
                         type="button"
                         onClick={() => removeChecklistItem(index)}
@@ -834,6 +948,87 @@ export default function TaskDetailModal({
                   Прогресс задачи считается автоматически: выполнено пунктов / всего пунктов.
                 </p>
               </div>
+
+              {task?.id && (
+                <div className="rounded-2xl border border-sky-400/25 bg-sky-500/[0.045] p-3 dark:border-sky-300/15 dark:bg-sky-400/[0.06]">
+                  <div className="flex items-center justify-between">
+                    <p className="flex items-center gap-1.5 text-[0.68rem] font-semibold tracking-[0.1em] text-slate-500 uppercase dark:text-slate-400">
+                      <ListTree size={13} /> Подзадачи
+                    </p>
+                    <span className="text-[0.62rem] text-slate-500">{subtasks.length}</span>
+                  </div>
+                  <p className="mt-0.5 text-[0.6rem] text-slate-500 dark:text-slate-400">
+                    Полноценные задачи со своим исполнителем и сроком. Откройте подзадачу, чтобы заполнить описание.
+                  </p>
+
+                  <div className="mt-2 space-y-1">
+                    {subtasks.map((subtask) => {
+                      const assignee = subtask.assignee_id ? allProfiles.find((profile) => profile.id === subtask.assignee_id) : null;
+                      return (
+                        <button
+                          key={subtask.id}
+                          type="button"
+                          onClick={() => onOpenExistingTask?.(subtask.id)}
+                          className="flex w-full items-center gap-2 rounded-lg border border-white/45 bg-white/45 px-2 py-1.5 text-left transition hover:border-sky-300 hover:bg-white/70 dark:border-white/10 dark:bg-white/5 dark:hover:bg-white/10"
+                        >
+                          <CornerDownRight size={11} className="shrink-0 text-sky-500" />
+                          <span className="min-w-0 flex-1 truncate text-[0.68rem] text-slate-700 dark:text-slate-200">{subtask.title}</span>
+                          {assignee && <Avatar name={assignee.full_name} color={assignee.color} src={assignee.avatar_url} className="h-4 w-4 text-[0.4rem]" />}
+                          {subtask.due_at && <span className="shrink-0 text-[0.58rem] text-slate-400">{formatDueLong(subtask.due_at)}</span>}
+                          <span className="w-12 shrink-0">
+                            <span className="block h-1 overflow-hidden rounded-full bg-slate-400/20">
+                              <span className="block h-full rounded-full bg-sky-500" style={{ width: `${Number(subtask.progress_percent) || 0}%` }} />
+                            </span>
+                          </span>
+                        </button>
+                      );
+                    })}
+                    {subtasks.length === 0 && (
+                      <p className="px-1 py-2 text-[0.62rem] text-slate-400">Подзадач пока нет.</p>
+                    )}
+                  </div>
+
+                  {onAddSubtask && (
+                    <div className="mt-2 space-y-1.5 rounded-xl border border-white/50 bg-white/35 p-2 dark:border-white/10 dark:bg-white/5">
+                      <input
+                        value={newSubtask.title}
+                        onChange={(event) => setNewSubtask((prev) => ({ ...prev, title: event.target.value }))}
+                        onKeyDown={(event) => {
+                          if (event.key === 'Enter') {
+                            event.preventDefault();
+                            addSubtask();
+                          }
+                        }}
+                        placeholder="Название подзадачи"
+                        spellCheck="true"
+                        lang="ru"
+                        className="glass-input !py-1 !text-[0.68rem]"
+                      />
+                      <div className="flex flex-wrap gap-1.5">
+                        <select
+                          value={newSubtask.assignee_id}
+                          onChange={(event) => setNewSubtask((prev) => ({ ...prev, assignee_id: event.target.value }))}
+                          className="glass-input !w-auto !py-1 !text-[0.62rem]"
+                        >
+                          <option value="">Исполнитель</option>
+                          {allProfiles.map((profile) => (
+                            <option key={profile.id} value={profile.id}>{profile.full_name || profile.work_email || 'Сотрудник'}</option>
+                          ))}
+                        </select>
+                        <input
+                          type="date"
+                          value={newSubtask.due_at}
+                          onChange={(event) => setNewSubtask((prev) => ({ ...prev, due_at: event.target.value }))}
+                          className="glass-input !w-auto !py-1 !text-[0.62rem]"
+                        />
+                        <button type="button" onClick={addSubtask} disabled={!newSubtask.title.trim()} className="glass-btn glass-btn-primary !ml-auto !px-2 !py-1 !text-[0.62rem] disabled:opacity-40">
+                          <Plus size={12} /> Добавить
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
 
               {(progressSupported || milestoneSupported || (storyPointsEnabled && storyPointsSupported) || (methodology === 'agile' && sprintSupported) || dependenciesSupported) && (
                 <div className="rounded-2xl border border-indigo-400/25 bg-indigo-500/[0.045] p-3 dark:border-indigo-300/15 dark:bg-indigo-400/[0.06]">
