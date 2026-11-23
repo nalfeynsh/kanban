@@ -72,6 +72,7 @@ function toEditableTask(task, dependencyIds = [], relatedIds = []) {
     is_milestone: task.is_milestone === true,
     milestone_date: task.milestone_date ? String(task.milestone_date).slice(0, 10) : '',
     effort_hours: task.effort_hours ?? '',
+    actual_hours: task.actual_hours ?? '',
     dependency_lag_days: Number(task.dependency_lag_days) || 0,
     sprint_id: task.sprint_id || '',
     depends_on_ids: dependencyIds,
@@ -106,6 +107,7 @@ export default function TaskDetailModal({
   onSaveDependencies,
   onSaveRelations,
   onSaveChecklist,
+  canManageLag = false,
 }) {
   const [editedTask, setEditedTask] = useState(() => toEditableTask(task, dependencyIds, relatedTaskIds));
   const [checklist, setChecklist] = useState(() =>
@@ -146,6 +148,7 @@ export default function TaskDetailModal({
   const milestoneSupported = supports(allowedFields, 'is_milestone');
   const sprintSupported = supports(allowedFields, 'sprint_id');
   const effortSupported = supports(allowedFields, 'effort_hours');
+  const actualHoursSupported = supports(allowedFields, 'actual_hours');
   const milestoneDateSupported = supports(allowedFields, 'milestone_date');
   const dependencyLagSupported = supports(allowedFields, 'dependency_lag_days');
   const dependenciesSupported = Boolean(onSaveDependencies) && Boolean(task?.id);
@@ -1108,6 +1111,21 @@ export default function TaskDetailModal({
                           />
                         </label>
                       )}
+                      {actualHoursSupported && !editedTask.is_milestone && (
+                        <label className="flex items-center gap-1.5 text-[0.68rem] text-slate-600 dark:text-slate-300">
+                          <Clock size={12} /> Факт, ч
+                          <input
+                            type="number"
+                            min="0"
+                            step="0.5"
+                            value={editedTask.actual_hours}
+                            onChange={(event) => setField('actual_hours', event.target.value)}
+                            className="glass-input ml-1 !w-20 !py-1 !text-xs"
+                            placeholder={`≈ ${Math.round(((Number(editedTask.effort_hours) || 0) * ((checklistProgress ?? Number(editedTask.progress_percent)) || 0)) / 100)}`}
+                            title="Пусто — факт считается по проценту выполнения"
+                          />
+                        </label>
+                      )}
                     </div>
 
                     {editedTask.is_milestone && milestoneDateSupported && (
@@ -1199,8 +1217,10 @@ export default function TaskDetailModal({
                               step="1"
                               value={editedTask.dependency_lag_days}
                               onChange={(event) => setField('dependency_lag_days', Number(event.target.value))}
-                              className="glass-input !w-16 !py-1 !text-xs"
+                              disabled={!canManageLag}
+                              className="glass-input !w-16 !py-1 !text-xs disabled:opacity-50"
                             />
+                            {!canManageLag && <span className="text-[0.58rem] text-slate-400">меняет руководитель</span>}
                           </label>
                         )}
                       </div>

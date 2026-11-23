@@ -18,6 +18,7 @@ import GanttView from './components/GanttView';
 import WhiteboardView from './features/whiteboard/WhiteboardView';
 import GanttSprintsModal from './components/GanttSprintsModal';
 import GanttScrumModal from './components/GanttScrumModal';
+import GanttCalendarModal from './components/GanttCalendarModal';
 import TaskDetailModal from './components/TaskDetailModal';
 import LoginPage from './components/LoginPage';
 import ProfileModal from './components/ProfileModal';
@@ -111,6 +112,8 @@ export default function App() {
   const [activeBaselineId, setActiveBaselineId] = useState(null);
   const [checklistByTask, setChecklistByTask] = useState({});
   const [taskRelations, setTaskRelations] = useState([]);
+  const [projectCalendar, setProjectCalendar] = useState(null);
+  const [memberHoursByUser, setMemberHoursByUser] = useState({});
   const [allProfiles, setAllProfiles] = useState([]);
   const [projects, setProjects] = useState([]);
   const [trashedProjects, setTrashedProjects] = useState([]);
@@ -141,6 +144,7 @@ export default function App() {
   const [isMeetingsOpen, setIsMeetingsOpen] = useState(false);
   const [isGanttSprintsOpen, setIsGanttSprintsOpen] = useState(false);
   const [isGanttScrumOpen, setIsGanttScrumOpen] = useState(false);
+  const [isGanttCalendarOpen, setIsGanttCalendarOpen] = useState(false);
   const [isMeetingModalOpen, setIsMeetingModalOpen] = useState(false);
   const [selectedMeeting, setSelectedMeeting] = useState(null);
   const [editingMeeting, setEditingMeeting] = useState(null);
@@ -549,6 +553,17 @@ export default function App() {
           ? supabase.from('task_relations').select('*').in('task_id', taskIds)
           : Promise.resolve({ data: [] }),
       ]);
+      const [{ data: calendarRow }, { data: memberHourRows }] = await Promise.all([
+        supabase.from('project_calendars').select('*').eq('project_id', currentProjectId).maybeSingle(),
+        supabase.from('project_members').select('profile_id,workday_hours').eq('project_id', currentProjectId),
+      ]);
+      const hourMap = {};
+      (profileRows ?? []).forEach((profileRow) => {
+        if (profileRow.workday_hours != null) hourMap[profileRow.id] = Number(profileRow.workday_hours);
+      });
+      (memberHourRows ?? []).forEach((row) => {
+        if (row.workday_hours != null) hourMap[row.profile_id] = Number(row.workday_hours);
+      });
       const checklistMap = {};
       (checklistRows ?? []).forEach((item) => {
         if (!checklistMap[item.task_id]) checklistMap[item.task_id] = [];
@@ -565,6 +580,8 @@ export default function App() {
       setGanttBaselineTasks(baselineTaskRows ?? []);
       setChecklistByTask(checklistMap);
       setTaskRelations(relationRows ?? []);
+      setProjectCalendar(calendarRow || null);
+      setMemberHoursByUser(hourMap);
       setActiveBaselineId((prev) =>
         (baselineRows ?? []).some((baseline) => baseline.id === prev)
           ? prev
@@ -1264,6 +1281,34 @@ export default function App() {
     return created;
   };
 
+  const handleSaveCalendar = async (calendar) => {
+    if (!currentProjectId) return;
+    const { data, error } = await supabase
+      .from('project_calendars')
+      .upsert(
+        {
+          project_id: currentProjectId,
+          year: Number(calendar.year) || new Date().getFullYear(),
+          workdays: calendar.workdays || [1, 2, 3, 4, 5],
+          holidays: calendar.holidays || [],
+          short_days: calendar.shortDays || calendar.short_days || {},
+          source: calendar.source || 'manual',
+          updated_by: userId,
+          updated_at: new Date().toISOString(),
+        },
+        { onConflict: 'project_id' },
+      )
+      .select()
+      .maybeSingle();
+    if (error) {
+      setBanner(`Не удалось сохранить календарь: ${error.message}`);
+      return null;
+    }
+    setProjectCalendar(data);
+    setBanner('Производственный календарь сохранён.');
+    return data;
+  };
+
   const handleSaveBaseline = async (name = 'Базовый план') => {    if (!currentProjectId || tasks.length === 0) return;
     const { data: baseline, error: baselineError } = await supabase
       .from('gantt_baselines')
@@ -1780,6 +1825,14 @@ export default function App() {
         : {}),
       ...(supports(taskSchema, 'dependency_lag_days')
         ? { dependency_lag_days: Math.max(0, Number(taskToSave.dependency_lag_days) || 0) }
+        : {}),
+      ...(supports(taskSchema, 'actual_hours')
+        ? {
+            actual_hours:
+              taskToSave.actual_hours === '' || taskToSave.actual_hours == null
+                ? null
+                : Math.max(0, Number(taskToSave.actual_hours)),
+          }
         : {}),
       ...(supports(taskSchema, 'sprint_id')
         ? { sprint_id: taskToSave.sprint_id || null }
@@ -2699,6 +2752,9 @@ export default function App() {
             onDeleteBaseline={handleDeleteBaseline}
             onSprintsClick={() => setIsGanttSprintsOpen(true)}
             onScrumClick={() => setIsGanttScrumOpen(true)}
+            onCalendarClick={() => setIsGanttCalendarOpen(true)}
+            calendar={projectCalendar}
+            hoursByUser={memberHoursByUser}
           />
         )}
 
@@ -2779,6 +2835,10 @@ export default function App() {
           }
           onAddSubtask={handleAddSubtask}
           onSaveChecklist={handleSaveChecklist}
+          canManageLag={
+            ['admin', 'manager', 'deputy'].includes(profile?.role) ||
+            currentProject?.owner_id === userId
+          }
           onSaveRelations={handleSaveRelations}
           onSaveDependencies={handleSaveDependencies}
           onOpenExistingTask={(taskId) => {
@@ -3015,6 +3075,19 @@ export default function App() {
         />
       )}
 
+      {isGanttCalendarOpen && currentProject && (
+        <GanttCalendarModal
+          isOpen={isGanttCalendarOpen}
+          onClose={() => setIsGanttCalendarOpen(false)}
+          calendar={projectCalendar}
+          canManage={
+            ['admin', 'manager', 'deputy'].includes(profile?.role) ||
+            currentProject.owner_id === userId
+          }
+          onSave={handleSaveCalendar}
+        />
+      )}
+
       {isGanttScrumOpen && currentProject && (
         <GanttScrumModal
           isOpen={isGanttScrumOpen}
@@ -3022,6 +3095,7 @@ export default function App() {
           sprints={ganttSprints}
           tasks={tasks}
           doneColumnId={doneColumnId}
+          calendar={projectCalendar}
           canManage={
             ['admin', 'manager', 'deputy'].includes(profile?.role) ||
             currentProject.owner_id === userId

@@ -1,4 +1,5 @@
 import { addDays, daysBetween, getTaskSchedule, startOfDay } from './gantt.js';
+import { dayHours, isWorkingDay } from './productionCalendar.js';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -20,18 +21,27 @@ export function taskStoryPoints(task) {
 /** Загрузка исполнителей: человеко-часы по рабочим дням + story points. */
 export function buildResourceLoad(
   tasks = [],
-  { storyPointsEnabled = false, dailyHours = 8, storyPointsPerDay = 2 } = {},
+  {
+    storyPointsEnabled = false,
+    dailyHours = 8,
+    storyPointsPerDay = 2,
+    hoursByUser = {},
+    defaultWorkdayHours = 8,
+    calendar = null,
+  } = {},
 ) {
-  const capacity = Number(dailyHours) || 8;
+  const defaultCapacity = Number(defaultWorkdayHours) || Number(dailyHours) || 8;
   const spCapacity = Number(storyPointsPerDay) || 2;
   const byUser = new Map();
   const loadByDay = new Map();
   const spByDay = new Map();
+  const dayDates = new Map();
 
   tasks.forEach((task) => {
     if (!task?.assignee_id) return;
     const schedule = getTaskSchedule(task);
     if (!schedule) return;
+    const capacity = Number(hoursByUser[task.assignee_id]) || defaultCapacity;
 
     if (!byUser.has(task.assignee_id)) {
       byUser.set(task.assignee_id, {
@@ -44,6 +54,7 @@ export function buildResourceLoad(
         maxSp: 0,
         overloadDays: 0,
         activeDays: 0,
+        capacity,
       });
     }
     const entry = byUser.get(task.assignee_id);
@@ -56,12 +67,11 @@ export function buildResourceLoad(
     const totalDays = Math.max(0, daysBetween(first, last));
     for (let i = 0; i <= totalDays; i += 1) {
       const date = addDays(first, i);
-      const dow = date.getDay();
-      if (dow !== 0 && dow !== 6) workdays.push(date);
+      if (isWorkingDay(date, calendar)) workdays.push(date);
     }
 
     const effort = Number(task.effort_hours);
-    const taskHours = Number.isFinite(effort) && effort > 0 ? effort : workdays.length * 8;
+    const taskHours = Number.isFinite(effort) && effort > 0 ? effort : workdays.length * capacity;
     const hoursPerDay = workdays.length > 0 ? taskHours / workdays.length : 0;
     const points = taskStoryPoints(task);
     const spPerDay = workdays.length > 0 ? points / workdays.length : 0;
@@ -71,10 +81,13 @@ export function buildResourceLoad(
     const rowKey = task.assignee_id;
     if (!loadByDay.has(rowKey)) loadByDay.set(rowKey, new Map());
     if (!spByDay.has(rowKey)) spByDay.set(rowKey, new Map());
+    if (!dayDates.has(rowKey)) dayDates.set(rowKey, new Map());
     const days = loadByDay.get(rowKey);
     const spDays = spByDay.get(rowKey);
+    const dates = dayDates.get(rowKey);
     workdays.forEach((date) => {
       const key = dayKey(date);
+      dates.set(key, date);
       days.set(key, (days.get(key) || 0) + hoursPerDay);
       spDays.set(key, (spDays.get(key) || 0) + spPerDay);
     });
@@ -84,6 +97,7 @@ export function buildResourceLoad(
     .map((entry) => {
       const days = loadByDay.get(entry.id) || new Map();
       const spDays = spByDay.get(entry.id) || new Map();
+      const dates = dayDates.get(entry.id) || new Map();
       let maxHours = 0;
       let maxSp = 0;
       let overloadDays = 0;
@@ -93,11 +107,12 @@ export function buildResourceLoad(
         const sp = spDays.get(key) || 0;
         maxHours = Math.max(maxHours, hours);
         maxSp = Math.max(maxSp, sp);
-        if (storyPointsEnabled ? sp > spCapacity + 0.01 : hours > capacity + 0.01) overloadDays += 1;
+        const capacityForDay = dates.has(key) ? dayHours(dates.get(key), calendar, entry.capacity) : entry.capacity;
+        if (storyPointsEnabled ? sp > spCapacity + 0.01 : hours > capacityForDay + 0.01) overloadDays += 1;
       });
       return {
         ...entry,
-        capacity: storyPointsEnabled ? spCapacity : capacity,
+        capacity: storyPointsEnabled ? spCapacity : entry.capacity,
         unit: storyPointsEnabled ? 'sp' : 'hours',
         maxHours,
         maxSp,

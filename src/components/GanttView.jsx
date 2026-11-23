@@ -35,10 +35,10 @@ import {
   shiftSchedule,
   startOfDay,
   daysBetween,
-  durationDays,
   getTaskSchedule,
 } from '../lib/gantt';
 import { buildResourceLoad, computeCriticalPath, sprintLabel, taskProgress, taskStoryPoints } from '../lib/ganttAdvanced';
+import { workingDaysBetween } from '../lib/productionCalendar';
 import { getPriority } from '../lib/priority';
 import Avatar from './Avatar';
 import { formatDueLong } from '../lib/format';
@@ -92,6 +92,9 @@ export default function GanttView({
   onDeleteBaseline,
   onSprintsClick,
   onScrumClick,
+  onCalendarClick,
+  calendar = null,
+  hoursByUser = {},
 }) {
   const [scaleKey, setScaleKey] = useState('week');
   const [isExportOpen, setIsExportOpen] = useState(false);
@@ -160,8 +163,11 @@ export default function GanttView({
         storyPointsEnabled,
         dailyHours: Number(project?.daily_hours) || 8,
         storyPointsPerDay: Number(project?.story_points_per_day) || 2,
+        hoursByUser,
+        defaultWorkdayHours: Number(project?.default_workday_hours) || 8,
+        calendar,
       }),
-    [filteredTasks, storyPointsEnabled, project?.daily_hours, project?.story_points_per_day],
+    [filteredTasks, storyPointsEnabled, project?.daily_hours, project?.story_points_per_day, project?.default_workday_hours, hoursByUser, calendar],
   );
 
   const activeBaseline = useMemo(
@@ -366,6 +372,14 @@ export default function GanttView({
           >
             <GitBranch size={13} /> Критический путь
           </button>
+          <button
+            type="button"
+            onClick={onCalendarClick}
+            className="glass-btn !px-2 !py-1.5 !text-[0.68rem]"
+            title="Производственный календарь"
+          >
+            <CalendarClock size={13} /> Календарь
+          </button>
           {canManageProject && (
             <button
               type="button"
@@ -443,13 +457,13 @@ export default function GanttView({
               value={
                 storyPointsEnabled
                   ? Number(project?.story_points_per_day) || 2
-                  : Number(project?.daily_hours) || 8
+                  : Number(project?.default_workday_hours) || Number(project?.daily_hours) || 8
               }
               onChange={(event) =>
                 updateSetting(
                   storyPointsEnabled
                     ? { story_points_per_day: Number(event.target.value) }
-                    : { daily_hours: Number(event.target.value) },
+                    : { default_workday_hours: Number(event.target.value) },
                 )
               }
               disabled={!canManageProject}
@@ -637,7 +651,7 @@ export default function GanttView({
               finishDay: startOfDay(schedule.finish),
             };
             const geometry = barGeometry(preview, range, scale.px);
-            const days = durationDays(schedule);
+            const days = workingDaysBetween(schedule.start, schedule.finish, calendar);
             const priority = getPriority(task.priority);
             const author = authorById?.get(task.created_by);
             const assignee = task.assignee_id ? authorById?.get(task.assignee_id) : null;

@@ -559,6 +559,46 @@ function apiErrorStatus(error) {
 const SPELLCHECK_CACHE = new Map();
 const SPELLCHECK_CACHE_MS = 10 * 60 * 1000;
 
+const CALENDAR_CACHE = new Map();
+
+async function handleRfCalendar(req, res, url) {
+  const year = Number(url.searchParams.get('year')) || new Date().getFullYear();
+  if (year < 2020 || year > 2035) {
+    sendJson(res, 400, { error: 'invalid_year' });
+    return;
+  }
+  const cached = CALENDAR_CACHE.get(year);
+  if (cached && Date.now() - cached.at < 24 * 60 * 60 * 1000) {
+    sendJson(res, 200, cached.data);
+    return;
+  }
+  try {
+    const response = await fetch(`https://isdayoff.ru/api/getdata?year=${year}&pre=1`, {
+      signal: AbortSignal.timeout(12000),
+    });
+    if (!response.ok) {
+      sendJson(res, 502, { error: 'calendar_upstream' });
+      return;
+    }
+    const raw = (await response.text()).trim();
+    const holidays = [];
+    const shortDays = {};
+    const start = new Date(Date.UTC(year, 0, 1));
+    for (let index = 0; index < raw.length; index += 1) {
+      const date = new Date(start.getTime() + index * 86400000);
+      const iso = date.toISOString().slice(0, 10);
+      if (raw[index] === '1') holidays.push(iso);
+      if (raw[index] === '2') shortDays[iso] = 7;
+    }
+    const data = { year, holidays, shortDays, source: 'isdayoff.ru', workdays: [1, 2, 3, 4, 5] };
+    CALENDAR_CACHE.set(year, { at: Date.now(), data });
+    sendJson(res, 200, data);
+  } catch (error) {
+    console.error(`[calendar] ${error?.message || error}`);
+    sendJson(res, 502, { error: 'calendar_unavailable' });
+  }
+}
+
 async function handleSpellcheck(req, res) {
   if (req.method === 'OPTIONS') {
     res.writeHead(204, {
@@ -884,6 +924,11 @@ async function serveCalendarFeed(req, res, token) {
 
 const server = http.createServer((req, res) => {
   const urlPath = (req.url || '/').split('?')[0];
+
+  if (urlPath === '/api/calendar/rf') {
+    handleRfCalendar(req, res, new URL(req.url || '/', 'http://localhost'));
+    return;
+  }
 
   if (urlPath === '/api/spellcheck') {
     handleSpellcheck(req, res);

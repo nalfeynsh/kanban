@@ -2,6 +2,8 @@ import { useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { BarChart3, CalendarDays, CheckCircle2, Layers3, X } from 'lucide-react';
 import { supabase } from '../supabaseClient';
+import { getTaskSchedule } from '../lib/gantt';
+import { workingDaysBetween } from '../lib/productionCalendar';
 
 function taskPoints(task) {
   const value = Number(task?.story_points);
@@ -21,6 +23,7 @@ export default function GanttScrumModal({
   canManage = false,
   onChanged,
   onOpenSprints,
+  calendar = null,
 }) {
   const [movingId, setMovingId] = useState(null);
 
@@ -37,9 +40,25 @@ export default function GanttScrumModal({
         const doneSp = items
           .filter((task) => isDone(task, doneColumnId))
           .reduce((sum, task) => sum + taskPoints(task), 0);
-        return { sprint, items, totalSp, doneSp, remainingSp: Math.max(0, totalSp - doneSp) };
+        const plannedHours = items.reduce((sum, task) => {
+          const effort = Number(task.effort_hours);
+          if (Number.isFinite(effort) && effort > 0) return sum + effort;
+          const schedule = getTaskSchedule(task);
+          return sum + (schedule ? Math.max(1, workingDaysBetween(schedule.start, schedule.finish, calendar)) * 8 : 0);
+        }, 0);
+        const capacity = Number(sprint.capacity_hours) || 0;
+        return {
+          sprint,
+          items,
+          totalSp,
+          doneSp,
+          remainingSp: Math.max(0, totalSp - doneSp),
+          plannedHours,
+          capacity,
+          overCapacity: capacity > 0 && plannedHours > capacity,
+        };
       }),
-    [sprints, tasks, doneColumnId],
+    [sprints, tasks, doneColumnId, calendar],
   );
 
   const completed = sprintStats.filter((item) => item.sprint.status === 'completed');
@@ -127,6 +146,12 @@ export default function GanttScrumModal({
         <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-slate-400/20">
           <div className="h-full rounded-full bg-emerald-500" style={{ width: `${totalSp ? (doneSp / totalSp) * 100 : 0}%` }} />
         </div>
+        {item.capacity > 0 && (
+          <p className={`mt-1 text-[0.58rem] ${item.overCapacity ? 'font-semibold text-rose-600 dark:text-rose-300' : 'text-slate-500 dark:text-slate-400'}`}>
+            План {Math.round(item.plannedHours * 10) / 10} из {item.capacity} ч
+            {item.overCapacity ? ' · перегрузка ёмкости' : ''}
+          </p>
+        )}
         <div className="mt-2 max-h-64 space-y-1 overflow-y-auto">
           {items.map((task) => (
             <div key={task.id} className="flex items-center gap-1.5 rounded-lg border border-white/40 bg-white/50 px-2 py-1.5 dark:border-white/10 dark:bg-white/5">

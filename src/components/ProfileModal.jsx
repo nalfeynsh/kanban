@@ -17,6 +17,7 @@ import {
   Camera,
   Trash2,
   KeyRound,
+  Clock,
 } from 'lucide-react';
 import { supabase, authRedirectUrl } from '../supabaseClient';
 import { pickFields, supports } from '../lib/schema';
@@ -37,6 +38,7 @@ const EMPTY_FORM = {
   color: '#6366f1',
   show_personal_data: false,
   avatar_url: '',
+  workday_hours: 8,
 };
 
 /** Кэш-бастер для публичной ссылки: один и тот же путь, но новое фото */
@@ -55,6 +57,7 @@ function toForm(profile) {
     color: profile.color || '#6366f1',
     show_personal_data: Boolean(profile.show_personal_data),
     avatar_url: profile.avatar_url || '',
+    workday_hours: Number(profile.workday_hours) || 8,
   };
 }
 
@@ -236,6 +239,7 @@ export default function ProfileModal({
       color: formData.color,
       show_personal_data: formData.show_personal_data,
       avatar_url: formData.avatar_url || null,
+      workday_hours: Math.max(1, Math.min(24, Number(formData.workday_hours) || 8)),
     };
 
     const migrationHint = telegramSupported
@@ -483,6 +487,21 @@ export default function ProfileModal({
                 />
               </label>
             </div>
+
+            <label className="mt-3 flex items-center gap-2 text-xs text-slate-600 dark:text-slate-300">
+              <Clock size={13} className="text-indigo-500" />
+              Рабочих часов в день
+              <input
+                type="number"
+                min="1"
+                max="24"
+                step="0.5"
+                value={formData.workday_hours}
+                onChange={(event) => setField('workday_hours', event.target.value)}
+                className="glass-input ml-auto !w-24 !py-1 !text-xs"
+                title="Индивидуальная ставка: 4 = 0,5 ставки"
+              />
+            </label>
 
             <div>
               <span className="mb-1 flex items-center gap-1 text-xs font-medium text-slate-600 dark:text-slate-300">
