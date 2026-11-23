@@ -10,12 +10,14 @@ import {
   MousePointer2,
   Pencil,
   Plus,
+  Redo2,
   Settings2,
   Square,
   StickyNote,
   Timer,
   Trash2,
   Type,
+  Undo2,
   Users,
   Vote,
   X,
@@ -32,6 +34,7 @@ import {
   fetchBoardData,
   getOrCreateBoard,
   resolveBoardComment,
+  restoreBoardObject,
   toggleBoardVote,
   updateBoard,
   updateBoardObject,
@@ -85,6 +88,8 @@ export default function WhiteboardView({ project, userId, profile, authorById, c
   const followRef = useRef(null);
   const lastCursorRef = useRef(0);
   const movedRef = useRef(false);
+  const historyRef = useRef({ undo: [], redo: [] });
+  const [historyTick, setHistoryTick] = useState(0);
 
   const [board, setBoard] = useState(null);
   const [objects, setObjects] = useState([]);
@@ -124,6 +129,10 @@ export default function WhiteboardView({ project, userId, profile, authorById, c
   }, [objects]);
 
   useEffect(() => {
+    historyRef.current = { undo: [], redo: [] };
+  }, [board?.id]);
+
+  useEffect(() => {
     cameraRef.current = camera;
   }, [camera]);
 
@@ -144,6 +153,68 @@ export default function WhiteboardView({ project, userId, profile, authorById, c
     setToast(message);
     window.setTimeout(() => setToast(''), 2200);
   }, []);
+
+  const pushHistory = (action) => {
+    historyRef.current.undo.push(action);
+    historyRef.current.redo = [];
+    setHistoryTick((value) => value + 1);
+  };
+
+  const applyHistoryAction = async (action) => {
+    if (!action) return null;
+    if (action.type === 'delete') {
+      const object = objectsRef.current.find((item) => item.id === action.id);
+      if (!object) return null;
+      setObjects((prev) => prev.filter((item) => item.id !== action.id));
+      await deleteBoardObject(action.id);
+      return { type: 'restore', object };
+    }
+    if (action.type === 'restore') {
+      const { object, error: restoreError } = await restoreBoardObject(action.object);
+      if (restoreError || !object) {
+        setError(restoreError?.message || 'Не удалось восстановить объект');
+        return null;
+      }
+      setObjects((prev) => (prev.some((item) => item.id === object.id) ? prev : [...prev, object]));
+      return { type: 'delete', id: object.id };
+    }
+    if (action.type === 'patch') {
+      const { error: patchError } = await updateBoardObject(action.id, action.before);
+      if (patchError) {
+        setError(patchError.message);
+        return null;
+      }
+      setObjects((prev) => prev.map((item) => (item.id === action.id ? { ...item, ...action.before } : item)));
+      return { type: 'patch', id: action.id, before: action.after, after: action.before };
+    }
+    return null;
+  };
+
+  const undo = async () => {
+    const action = historyRef.current.undo.pop();
+    if (!action) return;
+    const redoAction = await applyHistoryAction(action);
+    if (redoAction) historyRef.current.redo.push(redoAction);
+    setHistoryTick((value) => value + 1);
+    showToast('Действие отменено');
+  };
+
+  const redo = async () => {
+    const action = historyRef.current.redo.pop();
+    if (!action) return;
+    const undoAction = await applyHistoryAction(action);
+    if (undoAction) historyRef.current.undo.push(undoAction);
+    setHistoryTick((value) => value + 1);
+    showToast('Действие повторено');
+  };
+
+  const deleteWithHistory = async (object) => {
+    if (!object) return;
+    pushHistory({ type: 'restore', object });
+    setObjects((prev) => prev.filter((item) => item.id !== object.id));
+    await deleteBoardObject(object.id);
+    setSelectedId(null);
+  };
 
   useEffect(() => {
     let cancelled = false;
@@ -325,6 +396,7 @@ export default function WhiteboardView({ project, userId, profile, authorById, c
     }
     setObjects((prev) => prev.map((item) => (item.id === tempId ? saved : item)));
     setSelectedId(saved.id);
+    pushHistory({ type: 'delete', id: saved.id });
     return saved;
   };
 
@@ -351,6 +423,12 @@ export default function WhiteboardView({ project, userId, profile, authorById, c
       originY: object.y,
       originWidth: object.width,
       originHeight: object.height,
+      before: {
+        x: object.x,
+        y: object.y,
+        width: object.width,
+        height: object.height,
+      },
     };
     event.currentTarget.setPointerCapture?.(event.pointerId);
   };
@@ -394,6 +472,12 @@ export default function WhiteboardView({ project, userId, profile, authorById, c
         const current = objectsRef.current.find((item) => item.id === dragRef.current.id);
         if (current && movedRef.current) {
           saveObject(current.id, { x: current.x, y: current.y, width: current.width, height: current.height });
+          pushHistory({
+            type: 'patch',
+            id: current.id,
+            before: dragRef.current.before,
+            after: { x: current.x, y: current.y, width: current.width, height: current.height },
+          });
           channelRef.current?.send({
             type: 'broadcast',
             event: 'object-move',
@@ -438,6 +522,20 @@ export default function WhiteboardView({ project, userId, profile, authorById, c
 
   useEffect(() => {
     const onKeyDown = (event) => {
+      if ((event.ctrlKey || event.metaKey) && !event.target.closest('input, textarea, [contenteditable]')) {
+        const key = event.key.toLowerCase();
+        if (key === 'z') {
+          event.preventDefault();
+          if (event.shiftKey) redo();
+          else undo();
+          return;
+        }
+        if (key === 'y') {
+          event.preventDefault();
+          redo();
+          return;
+        }
+      }
       if (event.code === 'Space' && !event.target.closest('input, textarea, [contenteditable]')) {
         spaceRef.current = true;
         setSpaceDown(true);
@@ -453,9 +551,7 @@ export default function WhiteboardView({ project, userId, profile, authorById, c
         event.preventDefault();
         const target = objectsRef.current.find((item) => item.id === selectedId);
         if (target) {
-          setObjects((prev) => prev.filter((item) => item.id !== selectedId));
-          deleteBoardObject(selectedId);
-          setSelectedId(null);
+          deleteWithHistory(target);
         }
       }
     };
@@ -471,6 +567,7 @@ export default function WhiteboardView({ project, userId, profile, authorById, c
       window.removeEventListener('keydown', onKeyDown);
       window.removeEventListener('keyup', onKeyUp);
     };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [canEdit, selectedId]);
 
   const handleCanvasPointerDown = async (event) => {
@@ -536,8 +633,7 @@ export default function WhiteboardView({ project, userId, profile, authorById, c
       return;
     }
     if (tool === 'eraser') {
-      setObjects((prev) => prev.filter((item) => item.id !== object.id));
-      await deleteBoardObject(object.id);
+      await deleteWithHistory(object);
       return;
     }
     if (tool === 'connector') {
@@ -568,8 +664,14 @@ export default function WhiteboardView({ project, userId, profile, authorById, c
     const object = objectsRef.current.find((item) => item.id === editingId);
     setEditingId(null);
     if (!object) return;
-    if (object.type === 'frame') await saveObject(object.id, { data: { ...object.data, title: editValue } });
-    else await saveObject(object.id, { data: { ...object.data, text: editValue } });
+    const beforeData = object.data || {};
+    const afterData =
+      object.type === 'frame'
+        ? { ...beforeData, title: editValue }
+        : { ...beforeData, text: editValue };
+    if (JSON.stringify(beforeData) === JSON.stringify(afterData)) return;
+    pushHistory({ type: 'patch', id: object.id, before: { data: beforeData }, after: { data: afterData } });
+    await saveObject(object.id, { data: afterData });
   };
 
   const handleWheel = (event) => {
@@ -701,7 +803,10 @@ export default function WhiteboardView({ project, userId, profile, authorById, c
   }
 
   return (
-    <div className="whiteboard-shell relative flex h-[calc(100vh-150px)] min-h-[520px] flex-col overflow-hidden rounded-3xl border border-slate-300/50 bg-slate-100/60 dark:border-white/10 dark:bg-slate-950/60">
+    <div
+      className="whiteboard-shell relative flex h-[calc(100vh-150px)] min-h-[520px] flex-col overflow-hidden rounded-3xl border border-slate-300/50 bg-slate-100/60 dark:border-white/10 dark:bg-slate-950/60"
+      data-history-version={historyTick}
+    >
       <div className="no-print absolute top-3 left-1/2 z-30 flex -translate-x-1/2 flex-wrap items-center gap-1 rounded-2xl border border-white/60 bg-white/80 p-1 shadow-xl backdrop-blur-xl dark:border-white/10 dark:bg-slate-900/85">
         {TOOLS.map((item) => {
           const Icon = item.icon;
@@ -722,6 +827,12 @@ export default function WhiteboardView({ project, userId, profile, authorById, c
             </button>
           );
         })}
+        <button type="button" onClick={undo} className="rounded-xl p-2 text-slate-600 hover:bg-white/80 dark:text-slate-300 dark:hover:bg-white/10" title="Отменить (Ctrl+Z)">
+          <Undo2 size={16} />
+        </button>
+        <button type="button" onClick={redo} className="rounded-xl p-2 text-slate-600 hover:bg-white/80 dark:text-slate-300 dark:hover:bg-white/10" title="Повторить (Ctrl+Shift+Z)">
+          <Redo2 size={16} />
+        </button>
         {tool === 'shape' && (
           <select value={shapeKind} onChange={(event) => setShapeKind(event.target.value)} className="glass-input !w-auto !py-1 !text-[0.62rem]" title="Тип фигуры">
             <option value="rect">Прямоугольник</option>
@@ -950,7 +1061,7 @@ export default function WhiteboardView({ project, userId, profile, authorById, c
                     />
                     <div className="absolute -bottom-10 left-0 flex items-center gap-1 rounded-xl border border-white/50 bg-white/90 p-1 shadow-lg dark:border-white/10 dark:bg-slate-900/90">
                       {frame && <button type="button" onClick={(event) => { event.stopPropagation(); copyFrameLink(item); }} className="rounded-lg p-1 text-slate-500 hover:bg-indigo-500/10 hover:text-indigo-600" title="Ссылка"><Copy size={12} /></button>}
-                      <button type="button" onClick={(event) => { event.stopPropagation(); setObjects((prev) => prev.filter((entry) => entry.id !== item.id)); deleteBoardObject(item.id); setSelectedId(null); }} className="rounded-lg p-1 text-slate-500 hover:bg-rose-500/10 hover:text-rose-600" title="Удалить"><Trash2 size={12} /></button>
+                      <button type="button" onClick={(event) => { event.stopPropagation(); deleteWithHistory(item); }} className="rounded-lg p-1 text-slate-500 hover:bg-rose-500/10 hover:text-rose-600" title="Удалить"><Trash2 size={12} /></button>
                     </div>
                   </>
                 )}

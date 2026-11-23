@@ -54,6 +54,27 @@ export async function deleteBoardObject(objectId) {
   return { error };
 }
 
+export async function restoreBoardObject(object) {
+  const { data, error } = await supabase
+    .from('board_objects')
+    .insert({
+      id: object.id,
+      board_id: object.board_id,
+      type: object.type,
+      data: object.data || {},
+      x: object.x,
+      y: object.y,
+      width: object.width,
+      height: object.height,
+      rotation: object.rotation || 0,
+      z: object.z || 0,
+      created_by: object.created_by || null,
+    })
+    .select()
+    .single();
+  return { object: data, error };
+}
+
 export async function updateBoard(boardId, patch) {
   const { data, error } = await supabase
     .from('boards')
