@@ -11,6 +11,7 @@ export const FEATURE_KEYS = [
   'meetings',
   'chat',
   'gantt',
+  'whiteboard',
   'calendar',
   'analytics',
   'notifications',

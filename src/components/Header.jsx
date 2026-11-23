@@ -4,6 +4,7 @@ import {
   LayoutDashboard,
   CalendarDays,
   BarChart3,
+  PenTool,
   LogOut,
   User,
   Lock,
@@ -144,6 +145,18 @@ export default function Header({
               >
                 <BarChart3 size={15} />
                 <span className="hidden sm:inline">Гант</span>
+              </button>
+            )}
+            {features.whiteboard !== false && (
+              <button
+                type="button"
+                className="glass-segment-btn"
+                data-active={currentView === 'whiteboard'}
+                onClick={() => onViewChange('whiteboard')}
+                title="Командная доска"
+              >
+                <PenTool size={15} />
+                <span className="hidden sm:inline">Доска</span>
               </button>
             )}
           </div>

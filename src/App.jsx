@@ -15,6 +15,7 @@ import Header from './components/Header';
 import Column from './components/Column';
 import CalendarView from './components/CalendarView';
 import GanttView from './components/GanttView';
+import WhiteboardView from './features/whiteboard/WhiteboardView';
 import GanttSprintsModal from './components/GanttSprintsModal';
 import GanttScrumModal from './components/GanttScrumModal';
 import TaskDetailModal from './components/TaskDetailModal';
@@ -169,7 +170,9 @@ export default function App() {
   const [roleSaving, setRoleSaving] = useState(false);
   const [roles, setRoles] = useState([]);
 
-  const [currentView, setCurrentView] = useState('board');
+  const [currentView, setCurrentView] = useState(() =>
+    window.location.hash.startsWith('#whiteboard') ? 'whiteboard' : 'board',
+  );
   const [filterMode, setFilterMode] = useState('all');
   const [overdueOnly, setOverdueOnly] = useState(false);
   const [memberFilter, setMemberFilter] = useState(null);
@@ -1943,6 +1946,7 @@ export default function App() {
   const changeView = (view) => {
     if (view === 'calendar' && features.calendar === false) return;
     if (view === 'gantt' && features.gantt === false) return;
+    if (view === 'whiteboard' && features.whiteboard === false) return;
     exitSelection();
     setCurrentView(view);
   };
@@ -1952,6 +1956,7 @@ export default function App() {
     if (enabled) return;
     if (key === 'calendar' && currentView === 'calendar') setCurrentView('board');
     if (key === 'gantt' && currentView === 'gantt') setCurrentView('board');
+    if (key === 'whiteboard' && currentView === 'whiteboard') setCurrentView('board');
     if (key === 'chat') setIsChatOpen(false);
     if (key === 'meetings') {
       setIsMeetingsOpen(false);
@@ -2636,6 +2641,19 @@ export default function App() {
             onDeleteBaseline={handleDeleteBaseline}
             onSprintsClick={() => setIsGanttSprintsOpen(true)}
             onScrumClick={() => setIsGanttScrumOpen(true)}
+          />
+        )}
+
+        {currentView === 'whiteboard' && currentProject && (
+          <WhiteboardView
+            project={currentProject}
+            userId={userId}
+            profile={profile}
+            authorById={authorById}
+            canManageProject={
+              ['admin', 'manager', 'deputy'].includes(profile?.role) ||
+              currentProject.owner_id === userId
+            }
           />
         )}
       </main>

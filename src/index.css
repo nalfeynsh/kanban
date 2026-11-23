@@ -576,8 +576,17 @@ textarea.glass-input {
 /* ============================================================
    TIPTAP
    ============================================================ */
-.ProseMirror .spellcheck-issue {
-	text-decoration-line: underline;
+@keyframes board-reaction-float {
+	0% { transform: translateY(0) scale(0.8); opacity: 0; }
+	15% { opacity: 1; transform: translateY(-6px) scale(1.05); }
+	100% { transform: translateY(-90px) scale(0.9); opacity: 0; }
+}
+
+.board-reaction {
+	animation: board-reaction-float 2.6s ease-out forwards;
+}
+
+.ProseMirror .spellcheck-issue {	text-decoration-line: underline;
 	text-decoration-style: wavy;
 	text-decoration-color: #e11d48;
 	text-decoration-thickness: 1.5px;
