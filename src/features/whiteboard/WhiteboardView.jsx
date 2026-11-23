@@ -43,6 +43,19 @@ import {
 
 const STICKY_COLORS = ['#fef08a', '#fbcfe8', '#bfdbfe', '#bbf7d0', '#fed7aa', '#e9d5ff'];
 const SHAPE_COLORS = ['#6366f1', '#0ea5e9', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6'];
+const BPMN_ELEMENTS = [
+  { key: 'start', label: 'Старт', width: 84, height: 84 },
+  { key: 'end', label: 'Конец', width: 84, height: 84 },
+  { key: 'intermediate', label: 'Событие', width: 84, height: 84 },
+  { key: 'task', label: 'Задача', width: 190, height: 92 },
+  { key: 'userTask', label: 'Задача пользователя', width: 190, height: 92 },
+  { key: 'serviceTask', label: 'Сервисная задача', width: 190, height: 92 },
+  { key: 'gatewayX', label: 'Развилка «или»', width: 116, height: 116 },
+  { key: 'gatewayPlus', label: 'Развилка «и»', width: 116, height: 116 },
+  { key: 'subprocess', label: 'Подпроцесс', width: 200, height: 100 },
+  { key: 'dataObject', label: 'Данные', width: 120, height: 100 },
+  { key: 'annotation', label: 'Комментарий', width: 190, height: 76 },
+];
 const REACTIONS = ['👍', '❤️', '🔥', '👏', '🎉', '🤔'];
 
 const nowMs = () => Date.now();
@@ -76,6 +89,75 @@ function formatTimer(ms) {
   return `${String(Math.floor(total / 60)).padStart(2, '0')}:${String(total % 60).padStart(2, '0')}`;
 }
 
+function BpmnShape({ object }) {
+  const type = object.data?.bpmnType || 'task';
+  const width = Math.max(1, object.width);
+  const height = Math.max(1, object.height);
+  const stroke = '#475569';
+  const fill = 'rgba(248,250,252,.96)';
+  if (['start', 'end', 'intermediate'].includes(type)) {
+    const size = Math.min(width, height);
+    const center = size / 2;
+    return (
+      <svg viewBox={`0 0 ${width} ${height}`} className="absolute inset-0 h-full w-full overflow-visible">
+        <circle cx={width / 2} cy={height / 2} r={Math.max(8, size / 2 - 4)} fill={type === 'start' ? '#ecfdf5' : fill} stroke={type === 'end' ? '#334155' : '#10b981'} strokeWidth={type === 'end' ? 4 : 2.5} />
+        {type === 'intermediate' && (
+          <circle cx={width / 2} cy={height / 2} r={Math.max(6, size / 2 - 10)} fill="none" stroke="#10b981" strokeWidth="2" />
+        )}
+        {type === 'start' && <circle cx={center} cy={center} r="2.5" fill="#10b981" />}
+      </svg>
+    );
+  }
+  if (type.startsWith('gateway')) {
+    const symbol = type === 'gatewayPlus' ? '+' : type === 'gatewayO' ? '○' : '×';
+    return (
+      <svg viewBox={`0 0 ${width} ${height}`} className="absolute inset-0 h-full w-full overflow-visible">
+        <polygon points={`${width / 2},4 ${width - 4},${height / 2} ${width / 2},${height - 4} 4,${height / 2}`} fill={fill} stroke="#f59e0b" strokeWidth="2.5" />
+        <text x={width / 2} y={height / 2 + 5} textAnchor="middle" fontSize="18" fontWeight="700" fill="#b45309">{symbol}</text>
+      </svg>
+    );
+  }
+  if (type === 'dataObject') {
+    return (
+      <svg viewBox={`0 0 ${width} ${height}`} className="absolute inset-0 h-full w-full overflow-visible">
+        <path d={`M 10 4 H ${width - 32} L ${width - 8} 28 V ${height - 6} H 10 Z`} fill="#eff6ff" stroke="#3b82f6" strokeWidth="2" />
+        <path d={`M ${width - 32} 4 V 28 H ${width - 8}`} fill="none" stroke="#3b82f6" strokeWidth="2" />
+      </svg>
+    );
+  }
+  if (type === 'annotation') {
+    return (
+      <svg viewBox={`0 0 ${width} ${height}`} className="absolute inset-0 h-full w-full overflow-visible">
+        <path d={`M 12 6 H 4 V ${height - 6} H 12`} fill="none" stroke="#94a3b8" strokeWidth="2" />
+        <text x="18" y={height / 2 + 4} fontSize="11" fill="#64748b">Комментарий</text>
+      </svg>
+    );
+  }
+  return (
+    <svg viewBox={`0 0 ${width} ${height}`} className="absolute inset-0 h-full w-full overflow-visible">
+      <rect x="2" y="2" width={Math.max(1, width - 4)} height={Math.max(1, height - 4)} rx="10" fill={fill} stroke={type === 'subprocess' ? '#6366f1' : stroke} strokeWidth="2" />
+      {type === 'userTask' && (
+        <g transform={`translate(10 10) scale(.7)`} fill="none" stroke="#475569" strokeWidth="2">
+          <circle cx="8" cy="5" r="3" />
+          <path d="M 3 15 Q 3 9 8 9 Q 13 9 13 15" />
+        </g>
+      )}
+      {type === 'serviceTask' && (
+        <g transform={`translate(9 9)`} fill="none" stroke="#475569" strokeWidth="1.6">
+          <circle cx="7" cy="7" r="3" />
+          <path d="M 7 1 V 3 M 7 11 V 13 M 1 7 H 3 M 11 7 H 13 M 2.8 2.8 L 4.2 4.2 M 9.8 9.8 L 11.2 11.2 M 11.2 2.8 L 9.8 4.2 M 4.2 9.8 L 2.8 11.2" />
+        </g>
+      )}
+      {type === 'subprocess' && (
+        <g fill="none" stroke="#475569" strokeWidth="1.8">
+          <rect x={width / 2 - 12} y={height - 17} width="24" height="14" rx="2" fill={fill} />
+          <path d={`M ${width / 2} ${height - 14} V ${height - 6} M ${width / 2 - 5} ${height - 10} H ${width / 2 + 5}`} />
+        </g>
+      )}
+    </svg>
+  );
+}
+
 export default function WhiteboardView({ project, userId, profile, authorById, canManageProject = false }) {
   const viewportRef = useRef(null);
   const cameraRef = useRef({ x: 0, y: 0, zoom: 1 });
@@ -100,6 +182,8 @@ export default function WhiteboardView({ project, userId, profile, authorById, c
   const [error, setError] = useState('');
   const [camera, setCamera] = useState({ x: 0, y: 0, zoom: 1 });
   const [tool, setTool] = useState('select');
+  const [diagramMode, setDiagramMode] = useState('free');
+  const [bpmnKind, setBpmnKind] = useState('task');
   const [shapeKind, setShapeKind] = useState('rect');
   const [selectedId, setSelectedId] = useState(null);
   const [editingId, setEditingId] = useState(null);
@@ -598,6 +682,16 @@ export default function WhiteboardView({ project, userId, profile, authorById, c
       setTool('select');
       return;
     }
+    if (tool === 'bpmn') {
+      const spec = BPMN_ELEMENTS.find((item) => item.key === bpmnKind) || BPMN_ELEMENTS[3];
+      await addObject(
+        'bpmn',
+        { bpmnType: spec.key, text: spec.label },
+        { x: world.x - spec.width / 2, y: world.y - spec.height / 2, width: spec.width, height: spec.height },
+      );
+      setTool('select');
+      return;
+    }
     if (tool === 'shape') {
       await addObject('shape', { shape: shapeKind, text: '', fill: SHAPE_COLORS[objects.length % SHAPE_COLORS.length] }, { x: world.x, y: world.y, width: 180, height: 110 });
       setTool('select');
@@ -672,6 +766,40 @@ export default function WhiteboardView({ project, userId, profile, authorById, c
     if (JSON.stringify(beforeData) === JSON.stringify(afterData)) return;
     pushHistory({ type: 'patch', id: object.id, before: { data: beforeData }, after: { data: afterData } });
     await saveObject(object.id, { data: afterData });
+  };
+
+  const insertBpmnTemplate = async () => {
+    if (!canEdit) return;
+    const rect = viewportRef.current?.getBoundingClientRect();
+    const center = screenToWorld(
+      (rect?.left || 0) + (rect?.width || 900) / 2,
+      (rect?.top || 0) + (rect?.height || 600) / 2,
+    );
+    const baseX = center.x - 460;
+    const baseY = center.y - 190;
+    const addBpmn = (kind, text, x, y, width, height) =>
+      addObject('bpmn', { bpmnType: kind, text }, { x: baseX + x, y: baseY + y, width, height });
+    const start = await addBpmn('start', 'Заявка', 0, 110, 84, 84);
+    const task = await addBpmn('userTask', 'Согласовать', 150, 106, 190, 92);
+    const gateway = await addBpmn('gatewayX', 'Одобрено?', 410, 94, 116, 116);
+    const approve = await addBpmn('task', 'Одобрить', 600, 10, 190, 92);
+    const reject = await addBpmn('task', 'Отклонить', 600, 220, 190, 92);
+    const endApprove = await addBpmn('end', 'Готово', 860, 14, 84, 84);
+    const endReject = await addBpmn('end', 'Отказ', 860, 224, 84, 84);
+    for (const [from, to] of [
+      [start, task],
+      [task, gateway],
+      [gateway, approve],
+      [gateway, reject],
+      [approve, endApprove],
+      [reject, endReject],
+    ]) {
+      if (from && to) {
+        await addObject('connector', { from: from.id, to: to.id, variant: 'bpmn' }, { x: 0, y: 0, width: 1, height: 1 });
+      }
+    }
+    setTool('select');
+    showToast('BPMN-шаблон добавлен');
   };
 
   const handleWheel = (event) => {
@@ -833,6 +961,24 @@ export default function WhiteboardView({ project, userId, profile, authorById, c
         <button type="button" onClick={redo} className="rounded-xl p-2 text-slate-600 hover:bg-white/80 dark:text-slate-300 dark:hover:bg-white/10" title="Повторить (Ctrl+Shift+Z)">
           <Redo2 size={16} />
         </button>
+        <select
+          value={diagramMode}
+          onChange={(event) => {
+            const mode = event.target.value;
+            setDiagramMode(mode);
+            if (mode === 'bpmn') {
+              setTool('bpmn');
+              setBpmnKind('task');
+            } else {
+              setTool('select');
+            }
+          }}
+          className="glass-input !w-auto !py-1 !text-[0.62rem]"
+          title="Тип диаграммы"
+        >
+          <option value="free">Диаграмма: свободная</option>
+          <option value="bpmn">Диаграмма: BPMN</option>
+        </select>
         {tool === 'shape' && (
           <select value={shapeKind} onChange={(event) => setShapeKind(event.target.value)} className="glass-input !w-auto !py-1 !text-[0.62rem]" title="Тип фигуры">
             <option value="rect">Прямоугольник</option>
@@ -936,6 +1082,26 @@ export default function WhiteboardView({ project, userId, profile, authorById, c
         </div>
       )}
 
+      {diagramMode === 'bpmn' && (
+        <div className="no-print absolute top-20 left-1/2 z-30 flex max-w-[min(96vw,980px)] -translate-x-1/2 flex-wrap items-center gap-1 rounded-2xl border border-white/60 bg-white/90 p-1.5 shadow-xl backdrop-blur-xl dark:border-white/10 dark:bg-slate-900/90">
+          <span className="px-1 text-[0.58rem] font-bold tracking-[0.12em] text-indigo-500 uppercase">BPMN</span>
+          {BPMN_ELEMENTS.map((element) => (
+            <button
+              key={element.key}
+              type="button"
+              onClick={() => { setBpmnKind(element.key); setTool('bpmn'); setConnectorFrom(null); }}
+              disabled={!canEdit}
+              className={`rounded-lg border px-1.5 py-1 text-[0.6rem] transition disabled:opacity-40 ${tool === 'bpmn' && bpmnKind === element.key ? 'border-indigo-400 bg-indigo-500 text-white' : 'border-slate-300/70 bg-white/60 text-slate-600 hover:border-indigo-300 hover:text-indigo-600 dark:border-white/10 dark:bg-white/5 dark:text-slate-300'}`}
+              title={`Добавить: ${element.label}`}
+            >
+              {element.label}
+            </button>
+          ))}
+          <span className="mx-1 h-5 w-px bg-slate-300/70 dark:bg-white/10" />
+          <button type="button" onClick={insertBpmnTemplate} disabled={!canEdit} className="glass-btn !px-2 !py-1 !text-[0.6rem]">Шаблон</button>
+        </div>
+      )}
+
       <div
         ref={viewportRef}
         className="relative flex-1 touch-none overflow-hidden"
@@ -967,8 +1133,9 @@ export default function WhiteboardView({ project, userId, profile, authorById, c
               const y1 = from.y + from.height / 2;
               const x2 = to.x + to.width / 2;
               const y2 = to.y + to.height / 2;
+              const bpmnFlow = item.data?.variant === 'bpmn' || from.type === 'bpmn' || to.type === 'bpmn';
               return (
-                <line key={item.id} x1={x1} y1={y1} x2={x2} y2={y2} stroke="#64748b" strokeWidth="2" markerEnd="url(#board-arrow)" />
+                <line key={item.id} x1={x1} y1={y1} x2={x2} y2={y2} stroke={bpmnFlow ? '#334155' : '#64748b'} strokeWidth={bpmnFlow ? 2.5 : 2} markerEnd="url(#board-arrow)" />
               );
             })}
           </svg>
@@ -989,6 +1156,8 @@ export default function WhiteboardView({ project, userId, profile, authorById, c
             const shape = item.type === 'shape';
             const text = item.type === 'text';
             const image = item.type === 'image';
+            const bpmn = item.type === 'bpmn';
+            const bpmnLabelBelow = bpmn && ['start', 'end', 'intermediate', 'gatewayX', 'gatewayPlus'].includes(item.data?.bpmnType);
             return (
               <div
                 key={item.id}
@@ -1000,8 +1169,8 @@ export default function WhiteboardView({ project, userId, profile, authorById, c
                   width: item.width,
                   height: item.height,
                   zIndex: item.z,
-                  background: sticky ? item.data?.color || '#fef08a' : shape ? 'transparent' : frame ? 'rgba(255,255,255,0.28)' : 'transparent',
-                  borderRadius: sticky ? 4 : shape ? 12 : frame ? 14 : text ? 0 : 12,
+                  background: sticky ? item.data?.color || '#fef08a' : shape || bpmn ? 'transparent' : frame ? 'rgba(255,255,255,0.28)' : 'transparent',
+                  borderRadius: sticky ? 4 : shape ? 12 : bpmn ? 0 : frame ? 14 : text ? 0 : 12,
                   boxShadow: sticky ? '0 8px 20px rgba(15,23,42,.16)' : frame ? '0 0 0 1px rgba(99,102,241,.35)' : 'none',
                   border: frame ? '2px dashed rgba(99,102,241,.55)' : 'none',
                 }}
@@ -1029,7 +1198,8 @@ export default function WhiteboardView({ project, userId, profile, authorById, c
                     )}
                   </svg>
                 )}
-                {(sticky || shape || text || frame) && editingId === item.id ? (
+                {bpmn && <BpmnShape object={item} />}
+                {(sticky || shape || text || frame || bpmn) && editingId === item.id ? (
                   <textarea
                     autoFocus
                     value={editValue}
@@ -1043,12 +1213,12 @@ export default function WhiteboardView({ project, userId, profile, authorById, c
                         saveEditing();
                       }
                     }}
-                    className="relative z-10 h-full w-full resize-none bg-transparent p-3 text-sm font-medium text-slate-900 outline-none dark:text-slate-100"
+                    className="relative z-10 h-full w-full resize-none bg-transparent p-3 text-center text-xs font-medium text-slate-900 outline-none dark:text-slate-100"
                   />
                 ) : (
-                  <div className={`relative z-10 h-full w-full overflow-hidden p-3 ${sticky || text ? 'font-medium' : ''} ${shape || image ? 'flex items-center justify-center text-center' : ''}`}>
-                    <p className={`${sticky ? 'text-slate-900' : 'text-slate-700 dark:text-slate-100'} ${text ? 'text-lg' : 'text-sm'} leading-snug whitespace-pre-wrap`}>
-                      {item.data?.text || (sticky ? 'Двойной клик — текст' : '')}
+                  <div className={`relative z-10 h-full w-full ${bpmnLabelBelow ? 'overflow-visible' : 'overflow-hidden'} p-3 ${sticky || text ? 'font-medium' : ''} ${shape || image || bpmn ? 'flex items-center justify-center text-center' : ''}`}>
+                    <p className={`${sticky ? 'text-slate-900' : 'text-slate-700 dark:text-slate-100'} ${bpmnLabelBelow ? 'absolute -bottom-5 left-1/2 -translate-x-1/2 rounded bg-white/85 px-1 py-0.5 text-[0.58rem] font-semibold whitespace-nowrap dark:bg-slate-900/80' : text ? 'text-lg' : bpmn ? 'text-[0.68rem] leading-tight' : 'text-sm'} leading-snug whitespace-pre-wrap`}>
+                      {item.data?.text || (sticky ? 'Двойной клик — текст' : bpmn ? 'Двойной клик — название' : '')}
                     </p>
                   </div>
                 )}
