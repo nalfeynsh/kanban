@@ -4,6 +4,7 @@ import {
   Download,
   Eraser,
   ExternalLink,
+  FileCode2,
   FileText,
   Frame,
   Hand,
@@ -45,6 +46,7 @@ import {
   updateBoardObject,
   uploadBoardMedia,
 } from './boardApi';
+import { buildBpmnXml } from './bpmnExport';
 
 const STICKY_COLORS = ['#fef08a', '#fbcfe8', '#bfdbfe', '#bbf7d0', '#fed7aa', '#e9d5ff'];
 const SHAPE_COLORS = ['#6366f1', '#0ea5e9', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6'];
@@ -60,6 +62,8 @@ const BPMN_ELEMENTS = [
   { key: 'subprocess', label: 'Подпроцесс', width: 200, height: 100 },
   { key: 'dataObject', label: 'Данные', width: 120, height: 100 },
   { key: 'annotation', label: 'Комментарий', width: 190, height: 76 },
+  { key: 'pool', label: 'Пул', width: 760, height: 380 },
+  { key: 'lane', label: 'Дорожка', width: 700, height: 160 },
 ];
 const REACTIONS = ['👍', '❤️', '🔥', '👏', '🎉', '🤔'];
 
@@ -141,6 +145,46 @@ function drawBpmnOnCanvas(ctx, item) {
   ctx.lineWidth = 2;
   ctx.strokeStyle = '#475569';
   ctx.fillStyle = '#f8fafc';
+  if (type === 'pool') {
+    roundedRect(ctx, x + 2, y + 2, width - 4, height - 4, 7);
+    ctx.fillStyle = 'rgba(255,255,255,.72)';
+    ctx.fill();
+    ctx.strokeStyle = '#64748b';
+    ctx.stroke();
+    ctx.fillStyle = '#e2e8f0';
+    ctx.fillRect(x + 2, y + 2, 30, height - 4);
+    ctx.strokeRect(x + 2, y + 2, 30, height - 4);
+    ctx.save();
+    ctx.translate(x + 17, y + height / 2);
+    ctx.rotate(-Math.PI / 2);
+    ctx.fillStyle = '#475569';
+    ctx.font = '700 12px Inter, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText(item.data?.text || 'Пул', 0, 4);
+    ctx.restore();
+    ctx.restore();
+    return;
+  }
+  if (type === 'lane') {
+    ctx.fillStyle = 'rgba(255,255,255,.55)';
+    ctx.fillRect(x + 2, y + 2, width - 4, height - 4);
+    ctx.strokeStyle = '#94a3b8';
+    ctx.lineWidth = 1.5;
+    ctx.strokeRect(x + 2, y + 2, width - 4, height - 4);
+    ctx.fillStyle = '#f1f5f9';
+    ctx.fillRect(x + 2, y + 2, 30, height - 4);
+    ctx.strokeRect(x + 2, y + 2, 30, height - 4);
+    ctx.save();
+    ctx.translate(x + 17, y + height / 2);
+    ctx.rotate(-Math.PI / 2);
+    ctx.fillStyle = '#64748b';
+    ctx.font = '600 11px Inter, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText(item.data?.text || 'Дорожка', 0, 4);
+    ctx.restore();
+    ctx.restore();
+    return;
+  }
   if (['start', 'end', 'intermediate'].includes(type)) {
     const radius = Math.min(width, height) / 2 - 3;
     ctx.beginPath();
@@ -384,6 +428,24 @@ function BpmnShape({ object }) {
   const height = Math.max(1, object.height);
   const stroke = '#475569';
   const fill = 'rgba(248,250,252,.96)';
+  if (type === 'pool') {
+    return (
+      <svg viewBox={`0 0 ${width} ${height}`} className="absolute inset-0 h-full w-full overflow-visible">
+        <rect x="2" y="2" width={Math.max(1, width - 4)} height={Math.max(1, height - 4)} rx="7" fill="rgba(255,255,255,.7)" stroke="#64748b" strokeWidth="2" />
+        <rect x="2" y="2" width="30" height={Math.max(1, height - 4)} rx="7" fill="#e2e8f0" stroke="#64748b" strokeWidth="2" />
+        <text x="17" y={height / 2} transform={`rotate(-90 17 ${height / 2})`} textAnchor="middle" fontSize="12" fontWeight="700" fill="#475569">{object.data?.text || 'Пул'}</text>
+      </svg>
+    );
+  }
+  if (type === 'lane') {
+    return (
+      <svg viewBox={`0 0 ${width} ${height}`} className="absolute inset-0 h-full w-full overflow-visible">
+        <rect x="2" y="2" width={Math.max(1, width - 4)} height={Math.max(1, height - 4)} fill="rgba(255,255,255,.55)" stroke="#94a3b8" strokeWidth="1.5" />
+        <rect x="2" y="2" width="30" height={Math.max(1, height - 4)} fill="#f1f5f9" stroke="#94a3b8" strokeWidth="1.5" />
+        <text x="17" y={height / 2} transform={`rotate(-90 17 ${height / 2})`} textAnchor="middle" fontSize="11" fontWeight="600" fill="#64748b">{object.data?.text || 'Дорожка'}</text>
+      </svg>
+    );
+  }
   if (['start', 'end', 'intermediate'].includes(type)) {
     const size = Math.min(width, height);
     const center = size / 2;
@@ -481,6 +543,7 @@ export default function WhiteboardView({ project, userId, profile, authorById, c
   const [presentIndex, setPresentIndex] = useState(-1);
   const [artifactEditor, setArtifactEditor] = useState(null);
   const [showExport, setShowExport] = useState(false);
+  const [bpmnCheck, setBpmnCheck] = useState(null);
   const [taskPicker, setTaskPicker] = useState(null);
   const [taskSearch, setTaskSearch] = useState('');
   const [shapeKind, setShapeKind] = useState('rect');
@@ -1168,6 +1231,19 @@ export default function WhiteboardView({ project, userId, profile, authorById, c
         ],
         links: [[0, 1], [1, 2], [2, 3, 'Да'], [2, 4, 'Нет'], [3, 5], [4, 6]],
       },
+      pool: {
+        label: 'Пул с дорожками',
+        nodes: [
+          ['pool', 'Пул', 0, 0, 760, 380],
+          ['lane', 'Клиент', 34, 40, 710, 150],
+          ['lane', 'Менеджер', 34, 200, 710, 150],
+          ['start', 'Заявка', 70, 80, 64, 64],
+          ['userTask', 'Согласовать', 180, 62, 170, 84],
+          ['task', 'Обработать', 410, 222, 170, 84],
+          ['end', 'Готово', 650, 238, 64, 64],
+        ],
+        links: [[3, 4], [4, 5], [5, 6]],
+      },
     };
     const selectedTemplate = templates[template] || templates.approval;
     const created = [];
@@ -1308,8 +1384,27 @@ export default function WhiteboardView({ project, userId, profile, authorById, c
     }
   };
 
-  const saveTaskLink = async (task) => {
-    if (!taskPicker || !task) return;
+  const downloadBpmnXml = (xml) => {
+    const blob = new Blob([xml], { type: 'application/xml;charset=utf-8' });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = `bpmn-${new Date().toISOString().slice(0, 10)}.xml`;
+    link.click();
+    URL.revokeObjectURL(link.href);
+  };
+
+  const exportBpmnXml = () => {
+    setShowExport(false);
+    const { xml, issues } = buildBpmnXml(objectsRef.current, { name: project?.name || 'BPMN-диаграмма' });
+    if (issues.length > 0) {
+      setBpmnCheck({ xml, issues });
+      return;
+    }
+    downloadBpmnXml(xml);
+    showToast('BPMN 2.0 XML сформирован');
+  };
+
+  const saveTaskLink = async (task) => {    if (!taskPicker || !task) return;
     const object = objectsRef.current.find((item) => item.id === taskPicker.id);
     if (!object) {
       setTaskPicker(null);
@@ -1478,6 +1573,9 @@ export default function WhiteboardView({ project, userId, profile, authorById, c
               <button type="button" onClick={() => exportBoard('pdf')} className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-slate-700 hover:bg-white/60 dark:text-slate-200 dark:hover:bg-white/10">
                 <FileText size={13} /> PDF / печать
               </button>
+              <button type="button" onClick={exportBpmnXml} className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-slate-700 hover:bg-white/60 dark:text-slate-200 dark:hover:bg-white/10">
+                <FileCode2 size={13} /> BPMN 2.0 XML
+              </button>
             </div>
           )}
         </div>
@@ -1573,6 +1671,40 @@ export default function WhiteboardView({ project, userId, profile, authorById, c
       {followingId && (
         <div className="absolute top-16 left-1/2 z-20 -translate-x-1/2 rounded-full border border-indigo-400/40 bg-indigo-500/90 px-3 py-1 text-[0.65rem] font-medium text-white shadow-lg">
           Следим за {collaborators.find((item) => item.user_id === followingId)?.name || 'участником'} · нажмите на холст, чтобы остановить
+        </div>
+      )}
+
+      {bpmnCheck && (
+        <div className="absolute inset-0 z-50 flex items-center justify-center bg-slate-950/35 p-4 backdrop-blur-sm" onPointerDown={(event) => { if (event.target === event.currentTarget) setBpmnCheck(null); }}>
+          <div className="glass-panel flex max-h-[80vh] w-full max-w-lg flex-col rounded-3xl p-4">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <p className="flex items-center gap-1.5 text-sm font-bold text-slate-800 dark:text-slate-100"><FileCode2 size={15} /> Проверка BPMN</p>
+                <p className="mt-0.5 text-[0.65rem] text-slate-500">
+                  {bpmnCheck.issues.some((issue) => issue.level === 'error')
+                    ? 'Исправьте ошибки перед экспортом XML.'
+                    : 'Есть предупреждения. XML можно скачать, но проверьте схему.'}
+                </p>
+              </div>
+              <button type="button" onClick={() => setBpmnCheck(null)} className="rounded-lg p-1 text-slate-500 hover:bg-white/60 dark:hover:bg-white/10"><X size={16} /></button>
+            </div>
+            <div className="scrollbar-slim mt-3 min-h-0 flex-1 space-y-1 overflow-y-auto">
+              {bpmnCheck.issues.map((issue, index) => (
+                <div key={`${issue.level}-${index}`} className={`rounded-xl border px-2.5 py-1.5 text-[0.65rem] ${issue.level === 'error' ? 'border-rose-300/60 bg-rose-500/10 text-rose-700 dark:text-rose-300' : 'border-amber-300/60 bg-amber-500/10 text-amber-700 dark:text-amber-300'}`}>
+                  <span className="font-semibold">{issue.level === 'error' ? 'Ошибка' : 'Предупреждение'}: </span>
+                  {issue.message}
+                </div>
+              ))}
+            </div>
+            <div className="mt-3 flex justify-end gap-2">
+              <button type="button" onClick={() => setBpmnCheck(null)} className="glass-btn !px-3 !py-1.5 !text-xs">Закрыть</button>
+              {!bpmnCheck.issues.some((issue) => issue.level === 'error') && (
+                <button type="button" onClick={() => { downloadBpmnXml(bpmnCheck.xml); setBpmnCheck(null); showToast('BPMN 2.0 XML сформирован'); }} className="glass-btn glass-btn-primary !px-3 !py-1.5 !text-xs">
+                  <Download size={13} /> Скачать XML
+                </button>
+              )}
+            </div>
+          </div>
         </div>
       )}
 
@@ -1708,6 +1840,7 @@ export default function WhiteboardView({ project, userId, profile, authorById, c
             <option value="approval">Согласование</option>
             <option value="support">Обработка обращения</option>
             <option value="onboarding">Найм сотрудника</option>
+            <option value="pool">Пул с дорожками</option>
           </select>
         </div>
       )}
@@ -1875,6 +2008,7 @@ export default function WhiteboardView({ project, userId, profile, authorById, c
             const text = item.type === 'text';
             const image = item.type === 'image';
             const bpmn = item.type === 'bpmn';
+            const bpmnContainer = bpmn && ['pool', 'lane'].includes(item.data?.bpmnType);
             const bpmnLabelBelow = bpmn && ['start', 'end', 'intermediate', 'gatewayX', 'gatewayPlus'].includes(item.data?.bpmnType);
             return (
               <div
@@ -1886,7 +2020,7 @@ export default function WhiteboardView({ project, userId, profile, authorById, c
                   top: item.y,
                   width: item.width,
                   height: item.height,
-                  zIndex: item.z,
+                  zIndex: bpmnContainer ? 1 : item.z,
                   background: sticky ? item.data?.color || '#fef08a' : shape || bpmn ? 'transparent' : frame ? 'rgba(255,255,255,0.28)' : 'transparent',
                   borderRadius: sticky ? 4 : shape ? 12 : bpmn ? 0 : frame ? 14 : text ? 0 : 12,
                   boxShadow: sticky ? '0 8px 20px rgba(15,23,42,.16)' : frame ? '0 0 0 1px rgba(99,102,241,.35)' : 'none',
@@ -1948,7 +2082,7 @@ export default function WhiteboardView({ project, userId, profile, authorById, c
                   />
                 ) : (
                   <div className={`relative z-10 h-full w-full ${bpmnLabelBelow ? 'overflow-visible' : 'overflow-hidden'} p-3 ${sticky || text ? 'font-medium' : ''} ${shape || image || bpmn ? 'flex items-center justify-center text-center' : ''}`}>
-                    <p className={`${sticky ? 'text-slate-900' : 'text-slate-700 dark:text-slate-100'} ${bpmnLabelBelow ? 'absolute -bottom-5 left-1/2 -translate-x-1/2 rounded bg-white/85 px-1 py-0.5 text-[0.58rem] font-semibold whitespace-nowrap dark:bg-slate-900/80' : text ? 'text-lg' : bpmn ? 'text-[0.68rem] leading-tight' : 'text-sm'} leading-snug whitespace-pre-wrap`}>
+                    <p className={`${bpmnContainer ? 'hidden' : ''} ${sticky ? 'text-slate-900' : 'text-slate-700 dark:text-slate-100'} ${bpmnLabelBelow ? 'absolute -bottom-5 left-1/2 -translate-x-1/2 rounded bg-white/85 px-1 py-0.5 text-[0.58rem] font-semibold whitespace-nowrap dark:bg-slate-900/80' : text ? 'text-lg' : bpmn ? 'text-[0.68rem] leading-tight' : 'text-sm'} leading-snug whitespace-pre-wrap`}>
                       {item.data?.text || (sticky ? 'Двойной клик — текст' : bpmn ? 'Двойной клик — название' : '')}
                     </p>
                   </div>
