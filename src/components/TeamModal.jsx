@@ -263,6 +263,11 @@ export default function TeamModal({
                           {roleLabel(member.role)}
                           {member.position_title ? ` · ${member.position_title}` : ''}
                         </p>
+                        {member.deleted_at && (
+                          <p className="truncate text-[0.62rem] text-rose-600 dark:text-rose-300">
+                            Причина: {member.deleted_reason || 'не указана'}
+                          </p>
+                        )}
 
                         <div className="mt-1 flex flex-wrap items-center gap-1.5">
                           {tasksCount > 0 && (
