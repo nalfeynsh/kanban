@@ -50,7 +50,11 @@ export default function SecretSantaGame({
   members = [],
   currentUserId,
   canManage,
+  canDelete,
   busy,
+  invitations = [],
+  onInvite,
+  onRespondInvitation,
   onBack,
   onJoin,
   onLeave,
@@ -69,11 +73,24 @@ export default function SecretSantaGame({
   const [preferences, setPreferences] = useState(myParticipant?.preferences || '');
   const [exclusionA, setExclusionA] = useState('');
   const [exclusionB, setExclusionB] = useState('');
+  const [inviteUserId, setInviteUserId] = useState('');
   const [localError, setLocalError] = useState('');
 
   const participantById = useMemo(
     () => new Map(game.participants.map((participant) => [participant.id, participant])),
     [game.participants],
+  );
+  const participantUserIds = new Set(game.participants.map((participant) => participant.user_id));
+  const pendingInviteeIds = new Set(
+    invitations.filter((invitation) => invitation.status === 'pending').map((invitation) => invitation.invitee_id),
+  );
+  const inviteCandidates = members.filter((member) => (
+    member.id !== currentUserId
+    && !participantUserIds.has(member.id)
+    && !pendingInviteeIds.has(member.id)
+  ));
+  const myPendingInvitations = invitations.filter(
+    (invitation) => invitation.invitee_id === currentUserId && invitation.status === 'pending',
   );
 
   const saveWishlist = async (event) => {
@@ -122,6 +139,9 @@ export default function SecretSantaGame({
               <CalendarDays size={12} /> обмен: {formatDate(game.exchange_at)}
             </span>
             <span>{budgetLabel(game.budget_min, game.budget_max, game.currency)}</span>
+            <span>
+              ответственный: {members.find((member) => member.id === game.manager_id)?.full_name || 'организатор'}
+            </span>
           </div>
         </div>
         {canManage && (
@@ -135,15 +155,17 @@ export default function SecretSantaGame({
             >
               <Pencil size={13} /> Изменить
             </button>
-            <button
-              type="button"
-              onClick={() => onDelete?.()}
-              disabled={busy}
-              className="glass-btn glass-btn-danger !px-2.5 !py-1.5 !text-xs"
-              title="Удалить игру"
-            >
-              <Trash2 size={13} /> Удалить
-            </button>
+            {canDelete && (
+              <button
+                type="button"
+                onClick={() => onDelete?.()}
+                disabled={busy}
+                className="glass-btn glass-btn-danger !px-2.5 !py-1.5 !text-xs"
+                title="Удалить игру"
+              >
+                <Trash2 size={13} /> Удалить
+              </button>
+            )}
           </div>
         )}
       </div>
@@ -173,7 +195,7 @@ export default function SecretSantaGame({
                   className="glass-btn glass-btn-primary !px-2.5 !py-1.5 !text-xs"
                 >
                   {busy ? <Loader2 size={13} className="animate-spin" /> : <UserPlus size={13} />}
-                  Участвовать
+                  Подать заявку
                 </button>
               )}
               {myParticipant && ['draft', 'collecting'].includes(game.status) && (
@@ -183,7 +205,7 @@ export default function SecretSantaGame({
                   disabled={busy}
                   className="glass-btn !px-2.5 !py-1.5 !text-xs"
                 >
-                  Выйти из игры
+                  Отозвать участие
                 </button>
               )}
             </div>
@@ -218,6 +240,74 @@ export default function SecretSantaGame({
               </div>
             )}
           </div>
+
+          {myPendingInvitations.length > 0 && (
+            <div className="glass-card rounded-2xl border-amber-400/30 p-4">
+              <h4 className="flex items-center gap-1.5 text-sm font-semibold text-slate-800 dark:text-slate-100">
+                <UserPlus size={14} /> Приглашения для вас
+              </h4>
+              <div className="mt-2 space-y-2">
+                {myPendingInvitations.map((invitation) => (
+                  <div key={invitation.id} className="flex flex-wrap items-center gap-2 rounded-xl bg-white/40 px-2.5 py-2 dark:bg-white/5">
+                    <span className="min-w-0 flex-1 text-xs text-slate-700 dark:text-slate-200">
+                      Вас пригласили в игру «{game.title}»
+                    </span>
+                    <button type="button" onClick={() => onRespondInvitation?.(invitation.id, true)} disabled={busy} className="glass-btn glass-btn-primary !px-2 !py-1 !text-[0.65rem]">
+                      <CheckCircle2 size={11} /> Принять
+                    </button>
+                    <button type="button" onClick={() => onRespondInvitation?.(invitation.id, false)} disabled={busy} className="glass-btn !px-2 !py-1 !text-[0.65rem]">
+                      <XCircle size={11} /> Отклонить
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {canManage && ['draft', 'collecting'].includes(game.status) && (
+            <div className="glass-card rounded-2xl p-4">
+              <h4 className="flex items-center gap-1.5 text-sm font-semibold text-slate-800 dark:text-slate-100">
+                <UserPlus size={14} /> Пригласить сотрудника
+              </h4>
+              <p className="mt-0.5 text-[0.65rem] text-slate-500 dark:text-slate-400">
+                Приглашённый получит личное уведомление в сервисе и сможет принять или отклонить приглашение.
+              </p>
+              <div className="mt-2 flex flex-wrap gap-1.5">
+                <select
+                  value={inviteUserId}
+                  onChange={(event) => setInviteUserId(event.target.value)}
+                  className="glass-input min-w-0 flex-1 !py-1.5 !text-xs"
+                >
+                  <option value="">Выберите сотрудника</option>
+                  {inviteCandidates.map((member) => (
+                    <option key={member.id} value={member.id}>{member.full_name || member.work_email || 'Сотрудник'}</option>
+                  ))}
+                </select>
+                <button
+                  type="button"
+                  onClick={async () => {
+                    if (!inviteUserId) return;
+                    await onInvite?.(inviteUserId);
+                    setInviteUserId('');
+                  }}
+                  disabled={busy || !inviteUserId}
+                  className="glass-btn glass-btn-primary !px-2.5 !py-1.5 !text-xs"
+                >
+                  <UserPlus size={12} /> Пригласить
+                </button>
+              </div>
+              {invitations.length > 0 && (
+                <div className="mt-2 flex flex-wrap gap-1.5 text-[0.62rem] text-slate-500 dark:text-slate-400">
+                  {invitations.map((invitation) => (
+                    <span key={invitation.id} className="rounded-full bg-white/50 px-2 py-0.5 dark:bg-white/10">
+                      {members.find((member) => member.id === invitation.invitee_id)?.full_name || 'Сотрудник'}:{' '}
+                      {invitation.status === 'accepted' ? 'принял' : invitation.status === 'declined' ? 'отклонил' : 'ожидает'}
+                    </span>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
 
           {myParticipant && (
             <form onSubmit={saveWishlist} className="glass-card rounded-2xl p-4">

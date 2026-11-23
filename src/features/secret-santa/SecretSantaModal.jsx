@@ -9,11 +9,12 @@ import {
   drawSecretSanta,
   fetchSecretSantaGame,
   fetchSecretSantaGames,
+  inviteSecretSantaUser,
   joinSecretSantaGame,
   leaveSecretSantaGame,
   removeSecretSantaExclusion,
+  respondSecretSantaInvitation,
   saveSecretSantaWishlist,
-  secretSantaCanManage,
   secretSantaError,
   setSecretSantaStatus,
 } from './api';
@@ -25,12 +26,12 @@ export default function SecretSantaModal({
   project,
   members = [],
   currentUserId,
+  currentRole = 'member',
   initialGameId = null,
 }) {
   const [games, setGames] = useState([]);
   const [selectedGame, setSelectedGame] = useState(null);
   const [assignment, setAssignment] = useState(null);
-  const [canManage, setCanManage] = useState(false);
   const [loading, setLoading] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -38,7 +39,7 @@ export default function SecretSantaModal({
   const [isEditingGame, setIsEditingGame] = useState(false);
 
   useEffect(() => {
-    if (!isOpen || !project?.id) return undefined;
+    if (!isOpen) return undefined;
     let alive = true;
     Promise.resolve().then(() => {
       if (!alive) return;
@@ -52,12 +53,10 @@ export default function SecretSantaModal({
       }
     });
     Promise.all([
-      fetchSecretSantaGames(project.id),
-      secretSantaCanManage(project.id),
+      fetchSecretSantaGames(),
       initialGameId ? fetchSecretSantaGame(initialGameId) : Promise.resolve({ game: null, assignment: null }),
-    ]).then(([gamesResult, manageResult, gameResult]) => {
+    ]).then(([gamesResult, gameResult]) => {
       if (!alive) return;
-      setCanManage(manageResult);
       setGames(gamesResult.games);
       if (gamesResult.error) setError(secretSantaError(gamesResult.error));
       if (initialGameId && gameResult.game) {
@@ -71,11 +70,17 @@ export default function SecretSantaModal({
     return () => {
       alive = false;
     };
-  }, [isOpen, project?.id, initialGameId]);
+  }, [isOpen, initialGameId]);
+
+  const canManageGame = (game) => Boolean(game && (
+    game.manager_id === currentUserId
+    || game.created_by === currentUserId
+    || ['admin', 'manager', 'deputy'].includes(currentRole)
+  ));
+  const canDeleteGame = ['admin', 'manager', 'deputy'].includes(currentRole);
 
   const refreshGames = async () => {
-    if (!project?.id) return;
-    const { games: rows, error: loadError } = await fetchSecretSantaGames(project.id);
+    const { games: rows, error: loadError } = await fetchSecretSantaGames();
     if (loadError) setError(secretSantaError(loadError));
     else setGames(rows);
   };
@@ -140,6 +145,15 @@ export default function SecretSantaModal({
     await refreshGames();
   };
 
+  const handleInvite = async (userId) => {
+    if (!selectedGame) return;
+    await run(() => inviteSecretSantaUser(selectedGame.id, userId));
+  };
+
+  const handleRespondInvitation = async (invitationId, accept) => {
+    await run(() => respondSecretSantaInvitation(invitationId, accept));
+  };
+
   if (!isOpen) return null;
 
   return createPortal(
@@ -156,7 +170,7 @@ export default function SecretSantaModal({
               <Gift size={19} className="text-rose-500" /> Тайный Санта
             </h2>
             <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
-              {project?.name || 'Проект'} · обмен подарками внутри команды
+              Для всех сотрудников сервиса · обмен подарками
             </p>
           </div>
           <button
@@ -183,7 +197,7 @@ export default function SecretSantaModal({
           ) : selectedGame ? (
             isEditingGame ? (
               <SecretSantaCreateForm
-                project={project}
+                project={project || null}
                 game={selectedGame}
                 onCreated={handleCreate}
                 onCancel={() => setIsEditingGame(false)}
@@ -195,8 +209,12 @@ export default function SecretSantaModal({
                 assignment={assignment}
                 members={members}
                 currentUserId={currentUserId}
-                canManage={canManage}
+                canManage={canManageGame(selectedGame)}
+                canDelete={canDeleteGame}
                 busy={busy}
+                invitations={selectedGame.invitations || []}
+                onInvite={handleInvite}
+                onRespondInvitation={handleRespondInvitation}
                 onBack={() => {
                   setSelectedGame(null);
                   setAssignment(null);
@@ -219,7 +237,7 @@ export default function SecretSantaModal({
             )
           ) : isCreating ? (
             <SecretSantaCreateForm
-              project={project}
+              project={project || null}
               onCreated={handleCreate}
               onCancel={() => setIsCreating(false)}
             />
@@ -234,18 +252,16 @@ export default function SecretSantaModal({
                     Создайте игру, пригласите коллег и проведите жеребьёвку.
                   </p>
                 </div>
-                {canManage && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setIsCreating(true);
-                      setIsEditingGame(false);
-                    }}
-                    className="glass-btn glass-btn-primary !px-3 !py-1.5 !text-xs"
-                  >
-                    <Plus size={14} /> Создать игру
-                  </button>
-                )}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsCreating(true);
+                    setIsEditingGame(false);
+                  }}
+                  className="glass-btn glass-btn-primary !px-3 !py-1.5 !text-xs"
+                >
+                  <Plus size={14} /> Создать игру
+                </button>
               </div>
 
               {games.length === 0 ? (
@@ -255,9 +271,7 @@ export default function SecretSantaModal({
                     Пока нет игр
                   </p>
                   <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-                    {canManage
-                      ? 'Создайте первую игру для команды.'
-                      : 'Организатор проекта ещё не создал игру.'}
+                    Создайте первую игру для команды — участвовать могут все сотрудники.
                   </p>
                 </div>
               ) : (

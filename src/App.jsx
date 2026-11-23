@@ -987,7 +987,7 @@ export default function App() {
     meetings: features.meetings !== false && currentProject?.module_meetings_enabled !== false,
     whiteboard: features.whiteboard !== false && currentProject?.module_whiteboard_enabled !== false,
     gantt: features.gantt !== false && currentProject?.module_gantt_enabled !== false,
-    secret_santa: features.secret_santa !== false && currentProject?.module_secret_santa_enabled !== false,
+    secret_santa: features.secret_santa !== false,
     analytics: features.analytics !== false && currentProject?.module_analytics_enabled !== false,
   }), [features, currentProject]);
 
@@ -2355,7 +2355,7 @@ export default function App() {
       return;
     }
 
-    if (notification.entity_type === 'secret_santa_game' && notification.entity_id) {
+    if ((notification.entity_type === 'secret_santa_game' || notification.entity_type === 'secret_santa') && notification.entity_id) {
       openSecretSanta(notification.entity_id);
       return;
     }
@@ -3229,7 +3229,7 @@ export default function App() {
         />
       )}
 
-      {isSecretSantaOpen && currentProject && projectFeatures.secret_santa !== false && (
+      {isSecretSantaOpen && projectFeatures.secret_santa !== false && (
         <Suspense
           fallback={
             <div className="modal-overlay !z-[85]">
@@ -3245,9 +3245,10 @@ export default function App() {
               setIsSecretSantaOpen(false);
               setSecretSantaGameId(null);
             }}
-            project={currentProject}
+            project={null}
             members={activeProfiles}
             currentUserId={userId}
+            currentRole={profile?.role || 'member'}
             initialGameId={secretSantaGameId}
           />
         </Suspense>

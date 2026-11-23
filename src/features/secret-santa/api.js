@@ -25,28 +25,29 @@ export function secretSantaError(error) {
   return ERROR_MESSAGES[key] || error.details || key || 'Не удалось выполнить действие.';
 }
 
-export async function fetchSecretSantaGames(projectId) {
-  if (!projectId) return { games: [], error: null };
+export async function fetchSecretSantaGames() {
   const { data: games, error } = await supabase
     .from('secret_santa_games')
     .select('*')
-    .eq('project_id', projectId)
     .order('created_at', { ascending: false });
   if (error) return { games: [], error };
   if (!games?.length) return { games: [], error: null };
 
   const ids = games.map((game) => game.id);
-  const [{ data: participants, error: participantsError }, { data: exclusions, error: exclusionsError }] =
+  const [{ data: participants, error: participantsError }, { data: exclusions, error: exclusionsError }, { data: invitations, error: invitationsError }] =
     await Promise.all([
       supabase.from('secret_santa_participants').select('*').in('game_id', ids),
       supabase.from('secret_santa_exclusions').select('*').in('game_id', ids),
+      supabase.from('secret_santa_invitations').select('*').in('game_id', ids),
     ]);
   if (participantsError) return { games: [], error: participantsError };
   if (exclusionsError) return { games: [], error: exclusionsError };
+  if (invitationsError) return { games: [], error: invitationsError };
 
-  const byGame = new Map(ids.map((id) => [id, { participants: [], exclusions: [] }]));
+  const byGame = new Map(ids.map((id) => [id, { participants: [], exclusions: [], invitations: [] }]));
   (participants || []).forEach((participant) => byGame.get(participant.game_id)?.participants.push(participant));
   (exclusions || []).forEach((exclusion) => byGame.get(exclusion.game_id)?.exclusions.push(exclusion));
+  (invitations || []).forEach((invitation) => byGame.get(invitation.game_id)?.invitations.push(invitation));
 
   return {
     games: games.map((game) => ({ ...game, ...byGame.get(game.id) })),
@@ -80,8 +81,14 @@ export async function fetchSecretSantaGame(gameId) {
     assignment = Array.isArray(data) ? data[0] || null : data;
   }
 
+  const { data: invitations, error: invitationsError } = await supabase
+    .from('secret_santa_invitations')
+    .select('*')
+    .eq('game_id', gameId);
+  if (invitationsError) return { game: null, error: invitationsError };
+
   return {
-    game: { ...game, participants: participants || [], exclusions: exclusions || [] },
+    game: { ...game, participants: participants || [], exclusions: exclusions || [], invitations: invitations || [] },
     assignment,
     error: null,
   };
@@ -96,7 +103,7 @@ export async function secretSantaCanManage(projectId) {
 
 export async function createSecretSantaGame(input) {
   const { data, error } = await supabase.rpc('secret_santa_create_game', {
-    p_project_id: input.projectId,
+    p_project_id: null,
     p_title: input.title,
     p_description: input.description || null,
     p_rules: input.rules || null,
@@ -163,4 +170,15 @@ export async function removeSecretSantaExclusion(exclusionId) {
 
 export async function drawSecretSanta(gameId) {
   return supabase.rpc('secret_santa_draw', { p_game_id: gameId });
+}
+
+export async function inviteSecretSantaUser(gameId, userId) {
+  return supabase.rpc('secret_santa_invite', { p_game_id: gameId, p_user_id: userId });
+}
+
+export async function respondSecretSantaInvitation(invitationId, accept) {
+  return supabase.rpc('secret_santa_respond_invitation', {
+    p_invitation_id: invitationId,
+    p_accept: accept,
+  });
 }

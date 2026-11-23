@@ -32,7 +32,7 @@ export default function SecretSantaCreateForm({ project, game = null, onCreated,
     }
     setSaving(true);
     const payload = {
-      projectId: project.id,
+      projectId: project?.id || null,
       title: form.title,
       description: form.description,
       rules: form.rules,
@@ -60,7 +60,9 @@ export default function SecretSantaCreateForm({ project, game = null, onCreated,
           <h3 className="flex items-center gap-2 text-sm font-bold text-slate-900 dark:text-white">
             <Gift size={17} className="text-rose-500" /> {game ? 'Редактировать игру' : 'Новая игра'}
           </h3>
-          <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">{project?.name}</p>
+          <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
+            {project?.name || 'Для всех сотрудников сервиса'}
+          </p>
         </div>
         <button
           type="button"

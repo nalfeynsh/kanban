@@ -35,7 +35,6 @@ const PROJECT_MODULE_TOGGLES = [
   { key: 'module_meetings_enabled', label: 'Встречи и ВКС', hint: 'Вкладка «Встречи», комнаты и календарь встреч' },
   { key: 'module_whiteboard_enabled', label: 'Командная доска', hint: 'Вкладка «Доска» и BPMN-схемы' },
   { key: 'module_gantt_enabled', label: 'Диаграмма Ганта', hint: 'Планирование и ресурсы проекта' },
-  { key: 'module_secret_santa_enabled', label: 'Тайный Санта', hint: 'Модуль обмена подарками' },
   { key: 'module_analytics_enabled', label: 'Аналитика', hint: 'KPI и отчёты по проекту' },
 ];
 
