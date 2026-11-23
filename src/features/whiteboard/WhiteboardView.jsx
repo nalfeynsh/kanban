@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Copy,
   Download,
@@ -1819,10 +1819,51 @@ export default function WhiteboardView({ project, userId, profile, authorById, c
 
           {objects.filter((item) => item.type === 'drawing').map((item) => {
             const points = (item.data?.points || []).map((point) => `${point.x},${point.y}`).join(' ');
+            const selected = selectedId === item.id;
             return (
-              <svg key={item.id} className="pointer-events-none absolute overflow-visible" style={{ left: item.x, top: item.y }} width={Math.max(1, item.width)} height={Math.max(1, item.height)}>
-                <polyline points={points} fill="none" stroke={item.data?.color || '#6366f1'} strokeWidth={item.data?.strokeWidth || 3} strokeLinecap="round" strokeLinejoin="round" />
-              </svg>
+              <Fragment key={item.id}>
+                <svg
+                  className={`absolute overflow-visible ${selected ? 'z-20' : ''}`}
+                  style={{ left: item.x, top: item.y }}
+                  width={Math.max(1, item.width)}
+                  height={Math.max(1, item.height)}
+                >
+                  <polyline points={points} fill="none" stroke={item.data?.color || '#6366f1'} strokeWidth={item.data?.strokeWidth || 3} strokeLinecap="round" strokeLinejoin="round" pointerEvents="none" />
+                  {selected && (
+                    <rect x="-4" y="-4" width={Math.max(1, item.width) + 8} height={Math.max(1, item.height) + 8} rx="5" fill="none" stroke="#6366f1" strokeWidth="1.5" strokeDasharray="4 3" pointerEvents="none" />
+                  )}
+                  <polyline
+                    points={points}
+                    fill="none"
+                    stroke="transparent"
+                    strokeWidth={Math.max(18, (item.data?.strokeWidth || 3) + 14)}
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    pointerEvents="stroke"
+                    style={{ cursor: tool === 'eraser' ? 'crosshair' : 'pointer' }}
+                    onPointerDown={(event) => {
+                      event.stopPropagation();
+                      if (tool === 'eraser') deleteWithHistory(item);
+                      else setSelectedId(item.id);
+                    }}
+                    onClick={(event) => event.stopPropagation()}
+                  >
+                    <title>Нажмите, чтобы выбрать рисунок; Delete — удалить</title>
+                  </polyline>
+                </svg>
+                {selected && canEdit && (
+                  <button
+                    type="button"
+                    onPointerDown={(event) => { event.stopPropagation(); event.preventDefault(); deleteWithHistory(item); }}
+                    onClick={(event) => event.stopPropagation()}
+                    className="absolute z-30 rounded-lg border border-white/60 bg-white/95 p-1 text-slate-500 shadow-lg hover:bg-rose-500/10 hover:text-rose-600 dark:border-white/10 dark:bg-slate-900/95"
+                    style={{ left: item.x + item.width + 4, top: Math.max(0, item.y - 4) }}
+                    title="Удалить рисунок"
+                  >
+                    <Trash2 size={12} />
+                  </button>
+                )}
+              </Fragment>
             );
           })}
 
