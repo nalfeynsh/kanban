@@ -2785,6 +2785,9 @@ export default function App() {
             userId={userId}
             profile={profile}
             authorById={authorById}
+            tasks={tasks}
+            numberById={numberById}
+            onOpenTask={handleOpenTaskFromChat}
             canManageProject={
               ['admin', 'manager', 'deputy'].includes(profile?.role) ||
               currentProject.owner_id === userId

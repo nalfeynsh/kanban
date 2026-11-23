@@ -1,15 +1,20 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Copy,
+  Download,
   Eraser,
+  ExternalLink,
+  FileText,
   Frame,
   Hand,
   Image as ImageIcon,
   Link2,
+  ListTodo,
   MessageSquare,
   MousePointer2,
   Pencil,
   Plus,
+  Presentation,
   Redo2,
   Settings2,
   Square,
@@ -84,9 +89,293 @@ function clamp(value, min, max) {
   return Math.max(min, Math.min(max, value));
 }
 
+function normalizeLink(value) {
+  const link = String(value || '').trim();
+  if (!link) return '';
+  if (/^(https?:\/\/|mailto:|#|\/)/i.test(link)) return link;
+  return `https://${link}`;
+}
+
 function formatTimer(ms) {
   const total = Math.max(0, Math.ceil(ms / 1000));
   return `${String(Math.floor(total / 60)).padStart(2, '0')}:${String(total % 60).padStart(2, '0')}`;
+}
+
+function roundedRect(ctx, x, y, width, height, radius) {
+  const r = Math.min(radius, width / 2, height / 2);
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.arcTo(x + width, y, x + width, y + height, r);
+  ctx.arcTo(x + width, y + height, x, y + height, r);
+  ctx.arcTo(x, y + height, x, y, r);
+  ctx.arcTo(x, y, x + width, y, r);
+  ctx.closePath();
+}
+
+function wrapCanvasText(ctx, text, x, y, maxWidth, lineHeight, maxLines = 5) {
+  const paragraphs = String(text || '').split('\n');
+  const lines = [];
+  paragraphs.forEach((paragraph) => {
+    const words = paragraph.split(/\s+/).filter(Boolean);
+    let line = '';
+    words.forEach((word) => {
+      const next = line ? `${line} ${word}` : word;
+      if (ctx.measureText(next).width > maxWidth && line) {
+        lines.push(line);
+        line = word;
+      } else {
+        line = next;
+      }
+    });
+    if (line) lines.push(line);
+  });
+  const visible = lines.slice(0, maxLines);
+  visible.forEach((line, index) => ctx.fillText(line, x, y + index * lineHeight));
+  return visible.length;
+}
+
+function drawBpmnOnCanvas(ctx, item) {
+  const type = item.data?.bpmnType || 'task';
+  const { x, y, width, height } = item;
+  ctx.save();
+  ctx.lineWidth = 2;
+  ctx.strokeStyle = '#475569';
+  ctx.fillStyle = '#f8fafc';
+  if (['start', 'end', 'intermediate'].includes(type)) {
+    const radius = Math.min(width, height) / 2 - 3;
+    ctx.beginPath();
+    ctx.arc(x + width / 2, y + height / 2, radius, 0, Math.PI * 2);
+    ctx.fillStyle = type === 'start' ? '#ecfdf5' : '#f8fafc';
+    ctx.strokeStyle = type === 'end' ? '#334155' : '#10b981';
+    ctx.lineWidth = type === 'end' ? 4 : 2.5;
+    ctx.fill();
+    ctx.stroke();
+    if (type === 'intermediate') {
+      ctx.beginPath();
+      ctx.arc(x + width / 2, y + height / 2, radius - 6, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+    ctx.fillStyle = '#334155';
+    ctx.font = '600 11px Inter, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText(item.data?.text || '', x + width / 2, y + height + 17);
+  } else if (type.startsWith('gateway')) {
+    ctx.beginPath();
+    ctx.moveTo(x + width / 2, y + 2);
+    ctx.lineTo(x + width - 2, y + height / 2);
+    ctx.lineTo(x + width / 2, y + height - 2);
+    ctx.lineTo(x + 2, y + height / 2);
+    ctx.closePath();
+    ctx.fillStyle = '#fffbeb';
+    ctx.strokeStyle = '#f59e0b';
+    ctx.fill();
+    ctx.stroke();
+    ctx.fillStyle = '#b45309';
+    ctx.font = '700 18px Inter, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText(type === 'gatewayPlus' ? '+' : '×', x + width / 2, y + height / 2 + 6);
+    ctx.font = '600 11px Inter, sans-serif';
+    ctx.fillStyle = '#334155';
+    ctx.fillText(item.data?.text || '', x + width / 2, y + height + 17);
+  } else if (type === 'dataObject') {
+    ctx.beginPath();
+    ctx.moveTo(x + 8, y + 3);
+    ctx.lineTo(x + width - 28, y + 3);
+    ctx.lineTo(x + width - 8, y + 25);
+    ctx.lineTo(x + width - 8, y + height - 4);
+    ctx.lineTo(x + 8, y + height - 4);
+    ctx.closePath();
+    ctx.fillStyle = '#eff6ff';
+    ctx.strokeStyle = '#3b82f6';
+    ctx.fill();
+    ctx.stroke();
+    ctx.fillStyle = '#334155';
+    ctx.font = '600 11px Inter, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText(item.data?.text || '', x + width / 2, y + height / 2 + 4);
+  } else if (type === 'annotation') {
+    ctx.strokeStyle = '#94a3b8';
+    ctx.beginPath();
+    ctx.moveTo(x + 12, y + 4);
+    ctx.lineTo(x + 4, y + 4);
+    ctx.lineTo(x + 4, y + height - 4);
+    ctx.lineTo(x + 12, y + height - 4);
+    ctx.stroke();
+    ctx.fillStyle = '#334155';
+    ctx.font = '500 11px Inter, sans-serif';
+    ctx.textAlign = 'left';
+    wrapCanvasText(ctx, item.data?.text || '', x + 18, y + 20, width - 26, 15, 4);
+  } else {
+    roundedRect(ctx, x + 2, y + 2, width - 4, height - 4, 10);
+    ctx.fillStyle = '#f8fafc';
+    ctx.strokeStyle = type === 'subprocess' ? '#6366f1' : '#475569';
+    ctx.fill();
+    ctx.stroke();
+    if (type === 'subprocess') {
+      ctx.strokeStyle = '#475569';
+      ctx.strokeRect(x + width / 2 - 12, y + height - 17, 24, 14);
+      ctx.fillStyle = '#475569';
+      ctx.font = '700 12px Inter, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText('+', x + width / 2, y + height - 6);
+    }
+    ctx.fillStyle = '#334155';
+    ctx.font = '600 12px Inter, sans-serif';
+    ctx.textAlign = 'center';
+    wrapCanvasText(ctx, item.data?.text || '', x + width / 2, y + height / 2 - 2, width - 28, 16, 3);
+  }
+  ctx.restore();
+}
+
+async function renderBoardToCanvas(objects) {
+  const visible = objects.filter((item) => item.type !== 'connector' && item.type !== 'drawing');
+  if (!visible.length) return null;
+  const padding = 48;
+  const minX = Math.min(...visible.map((item) => item.x)) - padding;
+  const minY = Math.min(...visible.map((item) => item.y)) - padding;
+  const maxX = Math.max(...visible.map((item) => item.x + item.width)) + padding;
+  const maxY = Math.max(...visible.map((item) => item.y + item.height)) + padding;
+  const width = Math.max(320, maxX - minX);
+  const height = Math.max(220, maxY - minY);
+  const scale = Math.min(2, 4200 / width, 4200 / height);
+  const canvas = document.createElement('canvas');
+  canvas.width = Math.max(1, Math.round(width * scale));
+  canvas.height = Math.max(1, Math.round(height * scale));
+  const ctx = canvas.getContext('2d');
+  ctx.scale(scale, scale);
+  ctx.translate(-minX, -minY);
+  ctx.fillStyle = '#f1f5f9';
+  ctx.fillRect(minX, minY, width, height);
+  const byId = new Map(objects.map((item) => [item.id, item]));
+  ctx.lineCap = 'round';
+  objects.filter((item) => item.type === 'drawing').forEach((item) => {
+    const points = item.data?.points || [];
+    if (points.length < 2) return;
+    ctx.beginPath();
+    ctx.strokeStyle = item.data?.color || '#6366f1';
+    ctx.lineWidth = item.data?.strokeWidth || 3;
+    points.forEach((point, index) => {
+      if (index === 0) ctx.moveTo(point.x, point.y);
+      else ctx.lineTo(point.x, point.y);
+    });
+    ctx.stroke();
+  });
+  objects.filter((item) => item.type === 'connector').forEach((item) => {
+    const from = byId.get(item.data?.from);
+    const to = byId.get(item.data?.to);
+    if (!from || !to) return;
+    const x1 = from.x + from.width / 2;
+    const y1 = from.y + from.height / 2;
+    const x2 = to.x + to.width / 2;
+    const y2 = to.y + to.height / 2;
+    const bpmnFlow = item.data?.variant === 'bpmn' || from.type === 'bpmn' || to.type === 'bpmn';
+    ctx.strokeStyle = bpmnFlow ? '#334155' : '#64748b';
+    ctx.lineWidth = bpmnFlow ? 2.5 : 2;
+    ctx.beginPath();
+    ctx.moveTo(x1, y1);
+    ctx.lineTo(x2, y2);
+    ctx.stroke();
+    const angle = Math.atan2(y2 - y1, x2 - x1);
+    ctx.fillStyle = bpmnFlow ? '#334155' : '#64748b';
+    ctx.beginPath();
+    ctx.moveTo(x2, y2);
+    ctx.lineTo(x2 - 9 * Math.cos(angle - Math.PI / 6), y2 - 9 * Math.sin(angle - Math.PI / 6));
+    ctx.lineTo(x2 - 9 * Math.cos(angle + Math.PI / 6), y2 - 9 * Math.sin(angle + Math.PI / 6));
+    ctx.closePath();
+    ctx.fill();
+    if (item.data?.label) {
+      ctx.font = '600 11px Inter, sans-serif';
+      ctx.textAlign = 'center';
+      const midX = (x1 + x2) / 2;
+      const midY = (y1 + y2) / 2 - 8;
+      const textWidth = ctx.measureText(item.data.label).width;
+      ctx.fillStyle = '#f1f5f9';
+      ctx.fillRect(midX - textWidth / 2 - 3, midY - 10, textWidth + 6, 14);
+      ctx.fillStyle = '#334155';
+      ctx.fillText(item.data.label, midX, midY);
+    }
+  });
+  const ordered = [...visible].sort((a, b) => {
+    if (a.type === 'frame' && b.type !== 'frame') return -1;
+    if (b.type === 'frame' && a.type !== 'frame') return 1;
+    return (a.z || 0) - (b.z || 0);
+  });
+  for (const item of ordered) {
+    const { x, y, width: itemWidth, height: itemHeight } = item;
+    if (item.type === 'frame') {
+      roundedRect(ctx, x, y, itemWidth, itemHeight, 14);
+      ctx.fillStyle = 'rgba(255,255,255,.72)';
+      ctx.fill();
+      ctx.setLineDash([7, 5]);
+      ctx.strokeStyle = '#818cf8';
+      ctx.lineWidth = 2;
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.fillStyle = '#4f46e5';
+      ctx.font = '700 12px Inter, sans-serif';
+      ctx.textAlign = 'left';
+      ctx.fillText(item.data?.title || 'Фрейм', x + 12, y - 10);
+    } else if (item.type === 'sticky') {
+      roundedRect(ctx, x, y, itemWidth, itemHeight, 5);
+      ctx.fillStyle = item.data?.color || '#fef08a';
+      ctx.fill();
+      ctx.fillStyle = '#1e293b';
+      ctx.font = '500 13px Inter, sans-serif';
+      ctx.textAlign = 'left';
+      wrapCanvasText(ctx, item.data?.text || '', x + 14, y + 24, itemWidth - 28, 18, 6);
+    } else if (item.type === 'shape') {
+      ctx.fillStyle = item.data?.fill || '#6366f1';
+      ctx.globalAlpha = 0.88;
+      if (item.data?.shape === 'ellipse') {
+        ctx.beginPath();
+        ctx.ellipse(x + itemWidth / 2, y + itemHeight / 2, itemWidth / 2 - 2, itemHeight / 2 - 2, 0, 0, Math.PI * 2);
+        ctx.fill();
+      } else if (item.data?.shape === 'diamond') {
+        ctx.beginPath();
+        ctx.moveTo(x + itemWidth / 2, y + 2);
+        ctx.lineTo(x + itemWidth - 2, y + itemHeight / 2);
+        ctx.lineTo(x + itemWidth / 2, y + itemHeight - 2);
+        ctx.lineTo(x + 2, y + itemHeight / 2);
+        ctx.closePath();
+        ctx.fill();
+      } else {
+        roundedRect(ctx, x + 2, y + 2, itemWidth - 4, itemHeight - 4, 12);
+        ctx.fill();
+      }
+      ctx.globalAlpha = 1;
+      ctx.fillStyle = '#ffffff';
+      ctx.font = '600 13px Inter, sans-serif';
+      ctx.textAlign = 'center';
+      wrapCanvasText(ctx, item.data?.text || '', x + itemWidth / 2, y + itemHeight / 2 - 5, itemWidth - 24, 17, 4);
+    } else if (item.type === 'text') {
+      ctx.fillStyle = '#334155';
+      ctx.font = '600 16px Inter, sans-serif';
+      ctx.textAlign = 'left';
+      wrapCanvasText(ctx, item.data?.text || '', x + 4, y + 20, itemWidth - 8, 22, 6);
+    } else if (item.type === 'bpmn') {
+      drawBpmnOnCanvas(ctx, item);
+    } else if (item.type === 'image' && item.data?.url) {
+      try {
+        const image = await new Promise((resolve, reject) => {
+          const img = new Image();
+          img.crossOrigin = 'anonymous';
+          img.onload = () => resolve(img);
+          img.onerror = reject;
+          img.src = item.data.url;
+        });
+        ctx.drawImage(image, x, y, itemWidth, itemHeight);
+      } catch {
+        roundedRect(ctx, x, y, itemWidth, itemHeight, 8);
+        ctx.fillStyle = '#e2e8f0';
+        ctx.fill();
+        ctx.fillStyle = '#64748b';
+        ctx.font = '500 11px Inter, sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText(item.data?.name || 'Изображение', x + itemWidth / 2, y + itemHeight / 2);
+      }
+    }
+  }
+  return canvas;
 }
 
 function BpmnShape({ object }) {
@@ -158,7 +447,7 @@ function BpmnShape({ object }) {
   );
 }
 
-export default function WhiteboardView({ project, userId, profile, authorById, canManageProject = false }) {
+export default function WhiteboardView({ project, userId, profile, authorById, canManageProject = false, tasks = [], numberById = new Map(), onOpenTask }) {
   const viewportRef = useRef(null);
   const cameraRef = useRef({ x: 0, y: 0, zoom: 1 });
   const objectsRef = useRef([]);
@@ -177,6 +466,9 @@ export default function WhiteboardView({ project, userId, profile, authorById, c
   const [objects, setObjects] = useState([]);
   const [comments, setComments] = useState([]);
   const [votes, setVotes] = useState([]);
+  const frames = objects
+    .filter((item) => item.type === 'frame')
+    .sort((a, b) => (a.y - b.y) || (a.x - b.x));
   const [collaborators, setCollaborators] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -184,6 +476,13 @@ export default function WhiteboardView({ project, userId, profile, authorById, c
   const [tool, setTool] = useState('select');
   const [diagramMode, setDiagramMode] = useState('free');
   const [bpmnKind, setBpmnKind] = useState('task');
+  const [connectorEdit, setConnectorEdit] = useState(null);
+  const [connectorLabel, setConnectorLabel] = useState('');
+  const [presentIndex, setPresentIndex] = useState(-1);
+  const [artifactEditor, setArtifactEditor] = useState(null);
+  const [showExport, setShowExport] = useState(false);
+  const [taskPicker, setTaskPicker] = useState(null);
+  const [taskSearch, setTaskSearch] = useState('');
   const [shapeKind, setShapeKind] = useState('rect');
   const [selectedId, setSelectedId] = useState(null);
   const [editingId, setEditingId] = useState(null);
@@ -604,8 +903,42 @@ export default function WhiteboardView({ project, userId, profile, authorById, c
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [canEdit, setCameraSafe]);
 
+  const focusFrame = (frameId) => {
+    const frame = objectsRef.current.find((item) => item.id === frameId && item.type === 'frame');
+    if (!frame || !viewportRef.current) return;
+    const rect = viewportRef.current.getBoundingClientRect();
+    const zoom = Math.min(1.1, Math.max(0.3, Math.min(rect.width / (frame.width + 160), rect.height / (frame.height + 160))));
+    setCameraSafe({
+      zoom,
+      x: rect.width / 2 - (frame.x + frame.width / 2) * zoom,
+      y: rect.height / 2 - (frame.y + frame.height / 2) * zoom,
+    });
+    setSelectedId(frame.id);
+  };
+
   useEffect(() => {
     const onKeyDown = (event) => {
+      if (presentIndex >= 0) {
+        if (event.key === 'Escape') { setPresentIndex(-1); return; }
+        if (event.key === 'ArrowRight') {
+          event.preventDefault();
+          if (frames.length) {
+            const next = (presentIndex + 1) % frames.length;
+            setPresentIndex(next);
+            focusFrame(frames[next].id);
+          }
+          return;
+        }
+        if (event.key === 'ArrowLeft') {
+          event.preventDefault();
+          if (frames.length) {
+            const next = (presentIndex - 1 + frames.length) % frames.length;
+            setPresentIndex(next);
+            focusFrame(frames[next].id);
+          }
+          return;
+        }
+      }
       if ((event.ctrlKey || event.metaKey) && !event.target.closest('input, textarea, [contenteditable]')) {
         const key = event.key.toLowerCase();
         if (key === 'z') {
@@ -652,7 +985,7 @@ export default function WhiteboardView({ project, userId, profile, authorById, c
       window.removeEventListener('keyup', onKeyUp);
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [canEdit, selectedId]);
+  }, [canEdit, selectedId, presentIndex]);
 
   const handleCanvasPointerDown = async (event) => {
     stopFollowing();
@@ -768,7 +1101,25 @@ export default function WhiteboardView({ project, userId, profile, authorById, c
     await saveObject(object.id, { data: afterData });
   };
 
-  const insertBpmnTemplate = async () => {
+  const editConnectorLabel = (connector) => {
+    if (!canEdit) return;
+    setConnectorEdit(connector.id);
+    setConnectorLabel(connector.data?.label || '');
+  };
+
+  const saveConnectorLabel = async () => {
+    if (!connectorEdit) return;
+    const connector = objectsRef.current.find((item) => item.id === connectorEdit);
+    setConnectorEdit(null);
+    if (!connector) return;
+    const beforeData = connector.data || {};
+    const afterData = { ...beforeData, label: connectorLabel.trim() };
+    if (beforeData.label === afterData.label) return;
+    pushHistory({ type: 'patch', id: connector.id, before: { data: beforeData }, after: { data: afterData } });
+    await saveObject(connector.id, { data: afterData });
+  };
+
+  const insertBpmnTemplate = async (template = 'approval') => {
     if (!canEdit) return;
     const rect = viewportRef.current?.getBoundingClientRect();
     const center = screenToWorld(
@@ -777,29 +1128,67 @@ export default function WhiteboardView({ project, userId, profile, authorById, c
     );
     const baseX = center.x - 460;
     const baseY = center.y - 190;
-    const addBpmn = (kind, text, x, y, width, height) =>
-      addObject('bpmn', { bpmnType: kind, text }, { x: baseX + x, y: baseY + y, width, height });
-    const start = await addBpmn('start', 'Заявка', 0, 110, 84, 84);
-    const task = await addBpmn('userTask', 'Согласовать', 150, 106, 190, 92);
-    const gateway = await addBpmn('gatewayX', 'Одобрено?', 410, 94, 116, 116);
-    const approve = await addBpmn('task', 'Одобрить', 600, 10, 190, 92);
-    const reject = await addBpmn('task', 'Отклонить', 600, 220, 190, 92);
-    const endApprove = await addBpmn('end', 'Готово', 860, 14, 84, 84);
-    const endReject = await addBpmn('end', 'Отказ', 860, 224, 84, 84);
-    for (const [from, to] of [
-      [start, task],
-      [task, gateway],
-      [gateway, approve],
-      [gateway, reject],
-      [approve, endApprove],
-      [reject, endReject],
-    ]) {
+    const templates = {
+      approval: {
+        label: 'Согласование',
+        nodes: [
+          ['start', 'Заявка', 0, 110, 84, 84],
+          ['userTask', 'Согласовать', 150, 106, 190, 92],
+          ['gatewayX', 'Одобрено?', 410, 94, 116, 116],
+          ['task', 'Одобрить', 600, 10, 190, 92],
+          ['task', 'Отклонить', 600, 220, 190, 92],
+          ['end', 'Готово', 860, 14, 84, 84],
+          ['end', 'Отказ', 860, 224, 84, 84],
+        ],
+        links: [[0, 1], [1, 2], [2, 3, 'Да'], [2, 4, 'Нет'], [3, 5], [4, 6]],
+      },
+      support: {
+        label: 'Обработка обращения',
+        nodes: [
+          ['start', 'Обращение', 0, 110, 84, 84],
+          ['serviceTask', 'Классификация', 150, 106, 190, 92],
+          ['gatewayX', 'Тип?', 410, 94, 116, 116],
+          ['userTask', 'Ответить', 600, 10, 190, 92],
+          ['task', 'Эскалация', 600, 220, 190, 92],
+          ['end', 'Закрыто', 860, 14, 84, 84],
+          ['end', 'Эскалация', 860, 224, 84, 84],
+        ],
+        links: [[0, 1], [1, 2], [2, 3, 'Простой'], [2, 4, 'Сложный'], [3, 5], [4, 6]],
+      },
+      onboarding: {
+        label: 'Найм сотрудника',
+        nodes: [
+          ['start', 'Кандидат', 0, 110, 84, 84],
+          ['userTask', 'Интервью', 150, 106, 190, 92],
+          ['gatewayX', 'Подходит?', 410, 94, 116, 116],
+          ['task', 'Оформление', 600, 10, 190, 92],
+          ['task', 'Отказ', 600, 220, 190, 92],
+          ['end', 'Принят', 860, 14, 84, 84],
+          ['end', 'Завершено', 860, 224, 84, 84],
+        ],
+        links: [[0, 1], [1, 2], [2, 3, 'Да'], [2, 4, 'Нет'], [3, 5], [4, 6]],
+      },
+    };
+    const selectedTemplate = templates[template] || templates.approval;
+    const created = [];
+    for (const [kind, text, x, y, width, height] of selectedTemplate.nodes) {
+      created.push(
+        await addObject('bpmn', { bpmnType: kind, text }, { x: baseX + x, y: baseY + y, width, height }),
+      );
+    }
+    for (const [fromIndex, toIndex, label] of selectedTemplate.links) {
+      const from = created[fromIndex];
+      const to = created[toIndex];
       if (from && to) {
-        await addObject('connector', { from: from.id, to: to.id, variant: 'bpmn' }, { x: 0, y: 0, width: 1, height: 1 });
+        await addObject(
+          'connector',
+          { from: from.id, to: to.id, variant: 'bpmn', ...(label ? { label } : {}) },
+          { x: 0, y: 0, width: 1, height: 1 },
+        );
       }
     }
     setTool('select');
-    showToast('BPMN-шаблон добавлен');
+    showToast(`BPMN-шаблон «${selectedTemplate.label}» добавлен`);
   };
 
   const handleWheel = (event) => {
@@ -825,19 +1214,6 @@ export default function WhiteboardView({ project, userId, profile, authorById, c
     }
   };
 
-  const focusFrame = (frameId) => {
-    const frame = objectsRef.current.find((item) => item.id === frameId && item.type === 'frame');
-    if (!frame || !viewportRef.current) return;
-    const rect = viewportRef.current.getBoundingClientRect();
-    const zoom = Math.min(1.1, Math.max(0.3, Math.min(rect.width / (frame.width + 160), rect.height / (frame.height + 160))));
-    setCameraSafe({
-      zoom,
-      x: rect.width / 2 - (frame.x + frame.width / 2) * zoom,
-      y: rect.height / 2 - (frame.y + frame.height / 2) * zoom,
-    });
-    setSelectedId(frame.id);
-  };
-
   useEffect(() => {
     if (!objects.length) return;
     const params = new URLSearchParams(window.location.hash.replace(/^#whiteboard\??/, ''));
@@ -854,6 +1230,114 @@ export default function WhiteboardView({ project, userId, profile, authorById, c
     } catch {
       showToast(url);
     }
+  };
+
+  const startPresentation = () => {
+    if (!frames.length) {
+      showToast('Добавьте хотя бы один фрейм для презентации');
+      return;
+    }
+    setPresentIndex(0);
+    focusFrame(frames[0].id);
+  };
+
+  const goPresentation = (direction) => {
+    if (presentIndex < 0 || !frames.length) return;
+    const nextIndex = (presentIndex + direction + frames.length) % frames.length;
+    setPresentIndex(nextIndex);
+    focusFrame(frames[nextIndex].id);
+  };
+
+  const openArtifactEditor = (frame) => {
+    setArtifactEditor({
+      id: frame.id,
+      url: frame.data?.artifactUrl || '',
+      label: frame.data?.artifactLabel || '',
+    });
+  };
+
+  const saveArtifact = async () => {
+    if (!artifactEditor) return;
+    const frame = objectsRef.current.find((item) => item.id === artifactEditor.id);
+    if (!frame) {
+      setArtifactEditor(null);
+      return;
+    }
+    const beforeData = frame.data || {};
+    const afterData = {
+      ...beforeData,
+      artifactUrl: normalizeLink(artifactEditor.url),
+      artifactLabel: artifactEditor.label.trim(),
+    };
+    setArtifactEditor(null);
+    if (JSON.stringify(beforeData) === JSON.stringify(afterData)) return;
+    pushHistory({ type: 'patch', id: frame.id, before: { data: beforeData }, after: { data: afterData } });
+    await saveObject(frame.id, { data: afterData });
+  };
+
+  const exportBoard = async (format) => {
+    setShowExport(false);
+    try {
+      const canvas = await renderBoardToCanvas(objectsRef.current);
+      if (!canvas) {
+        showToast('На доске нет объектов для экспорта');
+        return;
+      }
+      if (format === 'png') {
+        const blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/png'));
+        if (!blob) throw new Error('Не удалось создать PNG');
+        const link = document.createElement('a');
+        link.href = URL.createObjectURL(blob);
+        link.download = `board-${new Date().toISOString().slice(0, 10)}.png`;
+        link.click();
+        URL.revokeObjectURL(link.href);
+        showToast('PNG-файл сформирован');
+        return;
+      }
+      const printWindow = window.open('', '_blank');
+      if (!printWindow) {
+        showToast('Разрешите всплывающие окна для экспорта в PDF');
+        return;
+      }
+      const dataUrl = canvas.toDataURL('image/png');
+      printWindow.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>Доска — ${project?.name || 'проект'}</title><style>body{margin:0;padding:24px;background:#fff;font-family:Inter,Arial,sans-serif}img{display:block;max-width:100%;margin:0 auto}@media print{body{padding:0}img{max-width:100%;max-height:98vh;object-fit:contain}}</style></head><body><img src="${dataUrl}" onload="setTimeout(()=>{window.print()},300)"></body></html>`);
+      printWindow.document.close();
+      showToast('Открыто окно печати — выберите «Сохранить как PDF»');
+    } catch (exportError) {
+      setError(exportError.message || 'Не удалось экспортировать доску');
+    }
+  };
+
+  const saveTaskLink = async (task) => {
+    if (!taskPicker || !task) return;
+    const object = objectsRef.current.find((item) => item.id === taskPicker.id);
+    if (!object) {
+      setTaskPicker(null);
+      return;
+    }
+    const beforeData = object.data || {};
+    const afterData = {
+      ...beforeData,
+      taskId: task.id,
+      taskTitle: task.title,
+      taskNo: numberById.get(task.id) || task.task_no || String(task.id).slice(0, 8),
+    };
+    setTaskPicker(null);
+    setTaskSearch('');
+    if (JSON.stringify(beforeData) === JSON.stringify(afterData)) return;
+    pushHistory({ type: 'patch', id: object.id, before: { data: beforeData }, after: { data: afterData } });
+    await saveObject(object.id, { data: afterData });
+    showToast('Объект связан с задачей');
+  };
+
+  const unlinkTask = async (object) => {
+    const beforeData = object.data || {};
+    const afterData = { ...beforeData };
+    delete afterData.taskId;
+    delete afterData.taskTitle;
+    delete afterData.taskNo;
+    pushHistory({ type: 'patch', id: object.id, before: { data: beforeData }, after: { data: afterData } });
+    await saveObject(object.id, { data: afterData });
   };
 
   const handleUpload = async (event) => {
@@ -979,6 +1463,24 @@ export default function WhiteboardView({ project, userId, profile, authorById, c
           <option value="free">Диаграмма: свободная</option>
           <option value="bpmn">Диаграмма: BPMN</option>
         </select>
+        <button type="button" onClick={startPresentation} className="rounded-xl p-2 text-slate-600 hover:bg-white/80 dark:text-slate-300 dark:hover:bg-white/10" title="Презентация по фреймам">
+          <Presentation size={16} />
+        </button>
+        <div className="relative">
+          <button type="button" onClick={() => setShowExport((value) => !value)} className="rounded-xl p-2 text-slate-600 hover:bg-white/80 dark:text-slate-300 dark:hover:bg-white/10" title="Экспорт доски">
+            <Download size={16} />
+          </button>
+          {showExport && (
+            <div className="glass-panel absolute top-11 right-0 z-50 w-48 rounded-2xl p-1.5 text-xs">
+              <button type="button" onClick={() => exportBoard('png')} className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-slate-700 hover:bg-white/60 dark:text-slate-200 dark:hover:bg-white/10">
+                <Download size={13} /> Скачать PNG
+              </button>
+              <button type="button" onClick={() => exportBoard('pdf')} className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-slate-700 hover:bg-white/60 dark:text-slate-200 dark:hover:bg-white/10">
+                <FileText size={13} /> PDF / печать
+              </button>
+            </div>
+          )}
+        </div>
         {tool === 'shape' && (
           <select value={shapeKind} onChange={(event) => setShapeKind(event.target.value)} className="glass-input !w-auto !py-1 !text-[0.62rem]" title="Тип фигуры">
             <option value="rect">Прямоугольник</option>
@@ -1074,6 +1576,103 @@ export default function WhiteboardView({ project, userId, profile, authorById, c
         </div>
       )}
 
+      {presentIndex >= 0 && frames[presentIndex] && (
+        <div className="no-print absolute top-20 left-1/2 z-40 flex max-w-[min(94vw,760px)] -translate-x-1/2 items-center gap-2 rounded-2xl border border-indigo-400/40 bg-slate-900/90 px-3 py-2 text-white shadow-2xl">
+          <button type="button" onClick={() => goPresentation(-1)} className="rounded-lg px-2 py-1 text-lg leading-none text-white/70 hover:bg-white/10 hover:text-white" title="Предыдущий фрейм">‹</button>
+          <div className="min-w-0 flex-1">
+            <p className="text-[0.58rem] text-white/55">Слайд {presentIndex + 1} из {frames.length}</p>
+            <p className="truncate text-xs font-semibold">{frames[presentIndex].data?.title || 'Фрейм'}</p>
+          </div>
+          {frames[presentIndex].data?.artifactUrl && (
+            <a href={frames[presentIndex].data.artifactUrl} target="_blank" rel="noreferrer" className="flex max-w-40 items-center gap-1 truncate rounded-lg bg-white/10 px-2 py-1 text-[0.62rem] text-white/85 hover:bg-white/20">
+              <ExternalLink size={11} /> {frames[presentIndex].data.artifactLabel || 'Артефакт'}
+            </a>
+          )}
+          <button type="button" onClick={() => goPresentation(1)} className="rounded-lg px-2 py-1 text-lg leading-none text-white/70 hover:bg-white/10 hover:text-white" title="Следующий фрейм">›</button>
+          <button type="button" onClick={() => setPresentIndex(-1)} className="ml-1 rounded-lg p-1 text-white/60 hover:bg-white/10 hover:text-white" title="Выйти из презентации (Esc)"><X size={15} /></button>
+        </div>
+      )}
+
+      {artifactEditor && (
+        <div className="absolute inset-0 z-50 flex items-center justify-center bg-slate-950/35 p-4 backdrop-blur-sm" onPointerDown={(event) => { if (event.target === event.currentTarget) setArtifactEditor(null); }}>
+          <div className="glass-panel w-full max-w-md rounded-3xl p-4">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <p className="flex items-center gap-1.5 text-sm font-bold text-slate-800 dark:text-slate-100"><ExternalLink size={15} /> Артефакт фрейма</p>
+                <p className="mt-0.5 text-[0.65rem] text-slate-500">Ссылка на документ, задачу или внешний файл.</p>
+              </div>
+              <button type="button" onClick={() => setArtifactEditor(null)} className="rounded-lg p-1 text-slate-500 hover:bg-white/60 dark:hover:bg-white/10"><X size={16} /></button>
+            </div>
+            <label className="mt-3 block">
+              <span className="mb-1 block text-[0.65rem] font-medium text-slate-600 dark:text-slate-300">Ссылка</span>
+              <input autoFocus value={artifactEditor.url} onChange={(event) => setArtifactEditor((prev) => ({ ...prev, url: event.target.value }))} placeholder="https://… или ссылка на задачу" className="glass-input !py-1.5 !text-xs" />
+            </label>
+            <label className="mt-2 block">
+              <span className="mb-1 block text-[0.65rem] font-medium text-slate-600 dark:text-slate-300">Подпись</span>
+              <input value={artifactEditor.label} onChange={(event) => setArtifactEditor((prev) => ({ ...prev, label: event.target.value }))} placeholder="Например, ТЗ или макет" className="glass-input !py-1.5 !text-xs" />
+            </label>
+            <div className="mt-3 flex justify-end gap-2">
+              <button type="button" onClick={() => setArtifactEditor(null)} className="glass-btn !px-3 !py-1.5 !text-xs">Отмена</button>
+              <button type="button" onClick={saveArtifact} className="glass-btn glass-btn-primary !px-3 !py-1.5 !text-xs">Сохранить</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {taskPicker && (
+        <div className="absolute inset-0 z-50 flex items-center justify-center bg-slate-950/35 p-4 backdrop-blur-sm" onPointerDown={(event) => { if (event.target === event.currentTarget) setTaskPicker(null); }}>
+          <div className="glass-panel flex max-h-[80vh] w-full max-w-lg flex-col rounded-3xl p-4">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <p className="flex items-center gap-1.5 text-sm font-bold text-slate-800 dark:text-slate-100"><ListTodo size={15} /> Связь с задачей</p>
+                <p className="mt-0.5 text-[0.65rem] text-slate-500">Объект будет ссылаться на задачу Канбана.</p>
+              </div>
+              <button type="button" onClick={() => setTaskPicker(null)} className="rounded-lg p-1 text-slate-500 hover:bg-white/60 dark:hover:bg-white/10"><X size={16} /></button>
+            </div>
+            <input
+              autoFocus
+              value={taskSearch}
+              onChange={(event) => setTaskSearch(event.target.value)}
+              placeholder="Поиск по названию или номеру"
+              className="glass-input mt-3 !py-1.5 !text-xs"
+            />
+            <div className="scrollbar-slim mt-2 min-h-0 flex-1 space-y-1 overflow-y-auto">
+              {tasks
+                .filter((task) => {
+                  const query = taskSearch.trim().toLowerCase();
+                  if (!query) return true;
+                  const number = numberById.get(task.id) || task.task_no || '';
+                  return `${task.title || ''} ${number}`.toLowerCase().includes(query);
+                })
+                .slice(0, 80)
+                .map((task) => {
+                  const number = numberById.get(task.id) || task.task_no || '';
+                  const linked = taskPicker.data?.taskId === task.id;
+                  return (
+                    <button
+                      key={task.id}
+                      type="button"
+                      onClick={() => saveTaskLink(task)}
+                      className={`flex w-full items-center gap-2 rounded-xl border px-2.5 py-2 text-left text-xs transition ${linked ? 'border-amber-400 bg-amber-500/10' : 'border-slate-300/50 bg-white/40 hover:border-indigo-300 dark:border-white/10 dark:bg-white/5'}`}
+                    >
+                      <span className="rounded bg-slate-500/10 px-1.5 py-0.5 text-[0.58rem] font-semibold text-slate-500">№ {number}</span>
+                      <span className="min-w-0 flex-1 truncate text-slate-700 dark:text-slate-200">{task.title || 'Без названия'}</span>
+                      {linked && <span className="text-[0.55rem] font-semibold text-amber-600">связана</span>}
+                    </button>
+                  );
+                })}
+              {tasks.length === 0 && <p className="py-6 text-center text-xs text-slate-400">В проекте пока нет задач</p>}
+            </div>
+            <div className="mt-3 flex justify-between gap-2">
+              {taskPicker.data?.taskId ? (
+                <button type="button" onClick={() => { unlinkTask(taskPicker); setTaskPicker(null); }} className="text-[0.65rem] font-medium text-rose-600 hover:underline">Отвязать задачу</button>
+              ) : <span />}
+              <button type="button" onClick={() => setTaskPicker(null)} className="glass-btn !px-3 !py-1.5 !text-xs">Закрыть</button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {timerEndsAt && (
         <div className="absolute bottom-4 left-1/2 z-30 flex -translate-x-1/2 items-center gap-2 rounded-2xl border border-white/60 bg-slate-900/85 px-3 py-1.5 text-white shadow-xl">
           <Timer size={14} />
@@ -1098,7 +1697,18 @@ export default function WhiteboardView({ project, userId, profile, authorById, c
             </button>
           ))}
           <span className="mx-1 h-5 w-px bg-slate-300/70 dark:bg-white/10" />
-          <button type="button" onClick={insertBpmnTemplate} disabled={!canEdit} className="glass-btn !px-2 !py-1 !text-[0.6rem]">Шаблон</button>
+          <select
+            value=""
+            onChange={(event) => { if (event.target.value) insertBpmnTemplate(event.target.value); }}
+            disabled={!canEdit}
+            className="glass-input !w-auto !py-1 !text-[0.6rem]"
+            title="BPMN-шаблоны"
+          >
+            <option value="">Шаблоны BPMN</option>
+            <option value="approval">Согласование</option>
+            <option value="support">Обработка обращения</option>
+            <option value="onboarding">Найм сотрудника</option>
+          </select>
         </div>
       )}
 
@@ -1134,11 +1744,78 @@ export default function WhiteboardView({ project, userId, profile, authorById, c
               const x2 = to.x + to.width / 2;
               const y2 = to.y + to.height / 2;
               const bpmnFlow = item.data?.variant === 'bpmn' || from.type === 'bpmn' || to.type === 'bpmn';
+              const midX = (x1 + x2) / 2;
+              const midY = (y1 + y2) / 2;
               return (
-                <line key={item.id} x1={x1} y1={y1} x2={x2} y2={y2} stroke={bpmnFlow ? '#334155' : '#64748b'} strokeWidth={bpmnFlow ? 2.5 : 2} markerEnd="url(#board-arrow)" />
+                <g key={item.id}>
+                  <line
+                    x1={x1}
+                    y1={y1}
+                    x2={x2}
+                    y2={y2}
+                    stroke={bpmnFlow ? '#334155' : '#64748b'}
+                    strokeWidth={bpmnFlow ? 2.5 : 2}
+                    markerEnd="url(#board-arrow)"
+                    pointerEvents="none"
+                  />
+                  <line
+                    x1={x1}
+                    y1={y1}
+                    x2={x2}
+                    y2={y2}
+                    stroke="transparent"
+                    strokeWidth="16"
+                    pointerEvents="stroke"
+                    style={{ cursor: 'pointer' }}
+                    onDoubleClick={(event) => { event.stopPropagation(); editConnectorLabel(item); }}
+                  >
+                    <title>Двойной клик — подпись связи</title>
+                  </line>
+                  {item.data?.label && (
+                    <text
+                      x={midX}
+                      y={midY - 7}
+                      textAnchor="middle"
+                      fontSize="11"
+                      fontWeight="600"
+                      fill={bpmnFlow ? '#334155' : '#475569'}
+                      stroke="#ffffff"
+                      strokeWidth="4"
+                      paintOrder="stroke"
+                      pointerEvents="none"
+                    >
+                      {item.data.label}
+                    </text>
+                  )}
+                </g>
               );
             })}
           </svg>
+
+          {connectorEdit && (() => {
+            const connector = objectById.get(connectorEdit);
+            const from = objectById.get(connector?.data?.from);
+            const to = objectById.get(connector?.data?.to);
+            if (!from || !to) return null;
+            const midX = (from.x + from.width / 2 + to.x + to.width / 2) / 2;
+            const midY = (from.y + from.height / 2 + to.y + to.height / 2) / 2;
+            return (
+              <input
+                autoFocus
+                value={connectorLabel}
+                onChange={(event) => setConnectorLabel(event.target.value)}
+                onBlur={saveConnectorLabel}
+                onPointerDown={(event) => event.stopPropagation()}
+                onKeyDown={(event) => {
+                  if (event.key === 'Escape') { setConnectorEdit(null); return; }
+                  if (event.key === 'Enter') { event.preventDefault(); event.currentTarget.blur(); }
+                }}
+                placeholder="Подпись связи"
+                className="glass-input absolute z-30 !w-44 !py-1 !text-center !text-[0.65rem]"
+                style={{ left: midX, top: midY, transform: 'translate(-50%, -50%)' }}
+              />
+            );
+          })()}
 
           {objects.filter((item) => item.type === 'drawing').map((item) => {
             const points = (item.data?.points || []).map((point) => `${point.x},${point.y}`).join(' ');
@@ -1181,6 +1858,19 @@ export default function WhiteboardView({ project, userId, profile, authorById, c
                 {frame && (
                   <div className="absolute -top-7 left-0 flex items-center gap-1 rounded-lg bg-indigo-500/90 px-2 py-0.5 text-[0.68rem] font-semibold text-white">
                     <Frame size={11} /> {item.data?.title || 'Фрейм'}
+                    {item.data?.artifactUrl && (
+                      <a
+                        href={item.data.artifactUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                        onPointerDown={(event) => event.stopPropagation()}
+                        onClick={(event) => event.stopPropagation()}
+                        className="ml-1 flex items-center gap-0.5 rounded bg-white/20 px-1 text-[0.55rem] font-medium text-white hover:bg-white/30"
+                        title={item.data.artifactLabel || 'Артефакт'}
+                      >
+                        <ExternalLink size={9} /> {item.data.artifactLabel || 'Артефакт'}
+                      </a>
+                    )}
                     <button type="button" onPointerDown={(event) => event.stopPropagation()} onClick={(event) => { event.stopPropagation(); copyFrameLink(item); }} className="ml-1 text-white/80 hover:text-white" title="Ссылка на фрейм"><Copy size={10} /></button>
                   </div>
                 )}
@@ -1230,10 +1920,23 @@ export default function WhiteboardView({ project, userId, profile, authorById, c
                       className="absolute right-0 bottom-0 h-3 w-3 cursor-se-resize rounded-tl bg-indigo-500"
                     />
                     <div className="absolute -bottom-10 left-0 flex items-center gap-1 rounded-xl border border-white/50 bg-white/90 p-1 shadow-lg dark:border-white/10 dark:bg-slate-900/90">
+                      {frame && <button type="button" onPointerDown={(event) => event.stopPropagation()} onClick={(event) => { event.stopPropagation(); openArtifactEditor(item); }} className="rounded-lg p-1 text-slate-500 hover:bg-indigo-500/10 hover:text-indigo-600" title="Ссылка на артефакт"><ExternalLink size={12} /></button>}
                       {frame && <button type="button" onPointerDown={(event) => event.stopPropagation()} onClick={(event) => { event.stopPropagation(); copyFrameLink(item); }} className="rounded-lg p-1 text-slate-500 hover:bg-indigo-500/10 hover:text-indigo-600" title="Ссылка"><Copy size={12} /></button>}
+                      <button type="button" onPointerDown={(event) => event.stopPropagation()} onClick={(event) => { event.stopPropagation(); setTaskPicker(item); setTaskSearch(''); }} className={`rounded-lg p-1 hover:bg-amber-500/10 hover:text-amber-600 ${item.data?.taskId ? 'text-amber-600' : 'text-slate-500'}`} title="Связать с задачей"><ListTodo size={12} /></button>
                       <button type="button" onPointerDown={(event) => { event.stopPropagation(); event.preventDefault(); deleteWithHistory(item); }} onClick={(event) => event.stopPropagation()} className="rounded-lg p-1 text-slate-500 hover:bg-rose-500/10 hover:text-rose-600" title="Удалить"><Trash2 size={12} /></button>
                     </div>
                   </>
+                )}
+                {item.data?.taskId && (
+                  <button
+                    type="button"
+                    onPointerDown={(event) => event.stopPropagation()}
+                    onClick={(event) => { event.stopPropagation(); onOpenTask?.(item.data.taskId); }}
+                    className="absolute -top-3 right-0 z-20 flex max-w-48 items-center gap-1 truncate rounded-md bg-amber-500 px-1.5 py-0.5 text-[0.56rem] font-semibold text-white shadow"
+                    title={`Открыть задачу: ${item.data.taskTitle || ''}`}
+                  >
+                    <ListTodo size={9} /> № {item.data.taskNo} · {item.data.taskTitle || 'Задача'}
+                  </button>
                 )}
                 {votes.filter((vote) => vote.object_id === item.id).length > 0 && (
                   <span className="absolute -top-2 -right-2 z-20 rounded-full bg-emerald-500 px-1.5 py-0.5 text-[0.58rem] font-bold text-white shadow">
