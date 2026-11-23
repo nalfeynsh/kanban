@@ -1152,8 +1152,12 @@ export default function WhiteboardView({ project, userId, profile, authorById, c
       return;
     }
     if (tool === 'text') {
-      await addObject('text', { text: 'Текст' }, { x: world.x, y: world.y, width: 260, height: 64 });
+      const saved = await addObject('text', { text: '' }, { x: world.x, y: world.y, width: 260, height: 64 });
       setTool('select');
+      if (saved) {
+        setEditingId(saved.id);
+        setEditValue('');
+      }
       return;
     }
     if (tool === 'bpmn') {
@@ -2230,12 +2234,13 @@ export default function WhiteboardView({ project, userId, profile, authorById, c
                         saveEditing();
                       }
                     }}
+                    placeholder={text ? 'Текст' : ''}
                     className="relative z-10 h-full w-full resize-none bg-transparent p-3 text-center text-xs font-medium text-slate-900 outline-none dark:text-slate-100"
                   />
                 ) : (
                   <div className={`relative z-10 h-full w-full ${bpmnLabelBelow ? 'overflow-visible' : 'overflow-hidden'} p-3 ${sticky || text ? 'font-medium' : ''} ${shape || image || bpmn ? 'flex items-center justify-center text-center' : ''}`}>
-                    <p className={`${bpmnContainer ? 'hidden' : ''} ${sticky ? 'text-slate-900' : 'text-slate-700 dark:text-slate-100'} ${bpmnLabelBelow ? 'absolute -bottom-5 left-1/2 -translate-x-1/2 rounded bg-white/85 px-1 py-0.5 text-[0.58rem] font-semibold whitespace-nowrap dark:bg-slate-900/80' : text ? 'text-lg' : bpmn ? 'text-[0.68rem] leading-tight' : 'text-sm'} leading-snug whitespace-pre-wrap`}>
-                      {item.data?.text || (sticky ? 'Двойной клик — текст' : bpmn ? 'Двойной клик — название' : '')}
+                    <p className={`${bpmnContainer ? 'hidden' : ''} ${text && !item.data?.text ? 'text-slate-400 italic dark:text-slate-500' : sticky ? 'text-slate-900' : 'text-slate-700 dark:text-slate-100'} ${bpmnLabelBelow ? 'absolute -bottom-5 left-1/2 -translate-x-1/2 rounded bg-white/85 px-1 py-0.5 text-[0.58rem] font-semibold whitespace-nowrap dark:bg-slate-900/80' : text ? 'text-lg' : bpmn ? 'text-[0.68rem] leading-tight' : 'text-sm'} leading-snug whitespace-pre-wrap`}>
+                      {item.data?.text || (sticky ? 'Двойной клик — текст' : text ? 'Текст' : bpmn ? 'Двойной клик — название' : '')}
                     </p>
                   </div>
                 )}
