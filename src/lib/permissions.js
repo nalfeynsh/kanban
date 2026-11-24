@@ -174,7 +174,12 @@ export function roleOptions(roleList = []) {
   if (Array.isArray(roleList) && roleList.length > 0) {
     return [...roleList]
       .sort((a, b) => Number(b.rank) - Number(a.rank))
-      .map((role) => ({ value: role.key, label: role.name }));
+      .map((role) => ({
+        value: role.key,
+        label: role.is_system && ROLE_META[role.key]?.label
+          ? ROLE_META[role.key].label
+          : (role.name || role.key),
+      }));
   }
   const fallback = ROLE_DEFINITIONS.size
     ? [...ROLE_DEFINITIONS.values()]
