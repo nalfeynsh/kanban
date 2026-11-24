@@ -76,6 +76,7 @@ import { clearLocalTelegram, getLocalTelegram, setLocalTelegram } from './lib/lo
 import { applyTaskUpdates, planTaskMove } from './lib/dnd';
 
 const SecretSantaModal = lazy(() => import('./features/secret-santa/SecretSantaModal'));
+const MAIN_PROJECT_ID = '0b6a96c0-6a4b-45fe-97f0-cdf044566c74';
 
 /** Приводим задачу к безопасному виду (старые записи могут иметь null) */
 function sanitizeTask(task) {
@@ -117,6 +118,7 @@ export default function App() {
   const [memberHoursByUser, setMemberHoursByUser] = useState({});
   const [allProfiles, setAllProfiles] = useState([]);
   const [projects, setProjects] = useState([]);
+  const [projectRoleMap, setProjectRoleMap] = useState({});
   const [trashedProjects, setTrashedProjects] = useState([]);
   const [projectNotices, setProjectNotices] = useState([]);
   const [currentProjectId, setCurrentProjectId] = useState(null);
@@ -128,6 +130,7 @@ export default function App() {
   const [personalFeatureVersion, setPersonalFeatureVersion] = useState(0);
   const [loading, setLoading] = useState(true);
   const [banner, setBanner] = useState('');
+  const [permissionRequested, setPermissionRequested] = useState(false);
   const [oauthNotice, setOauthNotice] = useState(() => {
     const error = readOAuthError();
     if (!error) return '';
@@ -197,6 +200,22 @@ export default function App() {
   const [profileSchema, setProfileSchema] = useState(new Set());
 
   const userId = session?.user?.id ?? null;
+
+  useEffect(() => {
+    if (!userId) return undefined;
+    let active = true;
+    supabase
+      .from('project_members')
+      .select('project_id,role')
+      .eq('profile_id', userId)
+      .then(({ data }) => {
+        if (!active) return;
+        const next = {};
+        (data || []).forEach((row) => { next[row.project_id] = row.role; });
+        setProjectRoleMap(next);
+      });
+    return () => { active = false; };
+  }, [userId]);
 
   const personalFeatures = useMemo(() => {
     void personalFeatureVersion;
@@ -1008,6 +1027,13 @@ export default function App() {
     analytics: effectiveFeatures.analytics !== false && currentProject?.module_analytics_enabled !== false,
   }), [effectiveFeatures, currentProject]);
 
+  const canEditCurrentProject = useMemo(() => {
+    if (!currentProject) return true;
+    if (['admin', 'manager', 'deputy'].includes(profile?.role)) return true;
+    if (currentProject.id === MAIN_PROJECT_ID) return false;
+    return Boolean(projectRoleMap[currentProject.id]);
+  }, [currentProject, profile?.role, projectRoleMap]);
+
   const taskFeatures = useMemo(
     () => ({
       planning: currentProject?.task_planning_enabled !== false,
@@ -1717,6 +1743,7 @@ export default function App() {
   }, []);
 
   const handleDragEnd = async (event) => {
+    if (!canEditCurrentProject) return;
     const { active } = event;
     setActiveTask(null);
     setDropPreview(null);
@@ -1762,6 +1789,7 @@ export default function App() {
 
   // --- CRUD задач ---
   const handleNewTask = (columnId) => {
+    if (!canEditCurrentProject) return;
     setDraftKey((key) => key + 1);
     setSelectedTask({
       id: null,
@@ -1779,6 +1807,7 @@ export default function App() {
 
   /** Перетаскивание задачи в календаре: меняем дату начала и/или срока */
   const handleCalendarTaskDateChange = async (taskId, patch) => {
+    if (!canEditCurrentProject) return false;
     const task = tasks.find((item) => item.id === taskId);
     if (!task) return false;
 
@@ -1851,7 +1880,7 @@ export default function App() {
   };
 
   const handleSaveTask = async (taskToSave, columnId) => {
-    if (!userId) return;
+    if (!userId || !canEditCurrentProject) return;
 
     const due = taskToSave.due_at || null;
     const isNew = !taskToSave.id;
@@ -1978,6 +2007,7 @@ export default function App() {
   };
 
   const handleDeleteTask = async (taskId, draft) => {
+    if (!canEditCurrentProject) return;
     if (!window.confirm('Переместить задачу в архив? Текущие изменения сохранятся, задачу можно восстановить.')) {
       return;
     }
@@ -2142,8 +2172,15 @@ export default function App() {
     setCurrentView(view);
   };
 
-  const handlePersonalFeatureChange = (key, enabled) => {
-    writePersonalFeature(userId, key, enabled);
+  const requestAccess = async () => {
+    const { error } = await supabase.rpc('request_permission', {
+      p_context: `Проект «${currentProject?.name || 'без проекта'}»: нужно редактирование`,
+    });
+    if (error) setBanner(`Не удалось отправить запрос: ${error.message}`);
+    else setPermissionRequested(true);
+  };
+
+  const handlePersonalFeatureChange = (key, enabled) => {    writePersonalFeature(userId, key, enabled);
     setPersonalFeatureVersion((value) => value + 1);
     if (enabled) return;
     if (key === 'calendar' && currentView === 'calendar') setCurrentView('board');
@@ -2729,9 +2766,30 @@ export default function App() {
       )}
 
       <main className="flex-1 px-4 py-4 sm:px-6">
+        {currentView === 'board' && !canEditCurrentProject && (
+          <div className="mx-auto mb-3 w-full max-w-[1800px] px-4 sm:px-6">
+            <div className="flex items-start gap-2 rounded-2xl border border-amber-400/50 bg-amber-400/15 px-3 py-2 text-xs text-amber-900 backdrop-blur dark:text-amber-200">
+              <AlertTriangle size={14} className="mt-0.5 shrink-0" />
+              <span>
+                <strong>Только чтение.</strong> В этом проекте вы можете просматривать задачи, но не менять их.
+                Редактирование доступно участникам проекта, руководителю, заму руководителя и администратору.
+              </span>
+              {permissionRequested ? (
+                <span className="ml-auto shrink-0 rounded-full bg-emerald-500/15 px-2 py-1 text-[0.62rem] font-semibold text-emerald-700 dark:text-emerald-300">
+                  Запрос отправлен
+                </span>
+              ) : (
+                <button type="button" onClick={requestAccess} className="glass-btn ml-auto shrink-0 !px-2 !py-1 !text-[0.62rem]">
+                  Запросить права
+                </button>
+              )}
+            </div>
+          </div>
+        )}
+
         {currentView === 'board' && (
           <DndContext
-            sensors={sensors}
+            sensors={canEditCurrentProject ? sensors : []}
             collisionDetection={collisionDetection}
             onDragStart={handleDragStart}
             onDragOver={handleDragOver}
@@ -2823,6 +2881,7 @@ export default function App() {
                         onSelectColumn={selectColumn}
                         dropPreview={dropPreview}
                         taskFeatures={taskFeatures}
+                        readOnly={!canEditCurrentProject}
                       />
                     ))}
                   </div>
@@ -2934,6 +2993,7 @@ export default function App() {
           isOpen
           onClose={() => setSelectedTask(null)}
           task={selectedTask}
+          readOnly={!canEditCurrentProject}
           number={selectedTask.id ? numberById.get(selectedTask.id) : undefined}
           onSaveTask={handleSaveTask}
           onDeleteTask={handleDeleteTask}

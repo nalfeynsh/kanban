@@ -27,6 +27,7 @@ export default function Column({
   onSelectColumn,
   dropPreview = null,
   taskFeatures = {},
+  readOnly = false,
 }) {
   const { setNodeRef, isOver } = useDroppable({
     id: column.id,
@@ -91,14 +92,16 @@ export default function Column({
             </button>
           )}
 
-          <button
-            type="button"
-            onClick={onAddNewTask}
-            className="rounded-lg p-1.5 text-slate-500 transition hover:bg-white/70 hover:text-indigo-600 dark:text-slate-400 dark:hover:bg-white/10 dark:hover:text-indigo-300"
-            title="Добавить задачу"
-          >
-            <Plus size={16} />
-          </button>
+          {!readOnly && (
+            <button
+              type="button"
+              onClick={onAddNewTask}
+              className="rounded-lg p-1.5 text-slate-500 transition hover:bg-white/70 hover:text-indigo-600 dark:text-slate-400 dark:hover:bg-white/10 dark:hover:text-indigo-300"
+              title="Добавить задачу"
+            >
+              <Plus size={16} />
+            </button>
+          )}
         </div>
       </header>
 
@@ -134,13 +137,15 @@ export default function Column({
         )}
       </div>
 
-      <button
-        type="button"
-        onClick={onAddNewTask}
-        className="mx-3 mb-3 flex items-center gap-1.5 rounded-xl px-2 py-2 text-xs font-medium text-slate-500 transition hover:bg-white/60 hover:text-indigo-600 dark:text-slate-400 dark:hover:bg-white/10 dark:hover:text-indigo-300"
-      >
-        <Plus size={14} /> Добавить задачу
-      </button>
+      {!readOnly && (
+        <button
+          type="button"
+          onClick={onAddNewTask}
+          className="mx-3 mb-3 flex items-center gap-1.5 rounded-xl px-2 py-2 text-xs font-medium text-slate-500 transition hover:bg-white/60 hover:text-indigo-600 dark:text-slate-400 dark:hover:bg-white/10 dark:hover:text-indigo-300"
+        >
+          <Plus size={14} /> Добавить задачу
+        </button>
+      )}
     </section>
   );
 }

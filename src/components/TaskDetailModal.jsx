@@ -110,6 +110,7 @@ export default function TaskDetailModal({
   onSaveChecklist,
   canManageLag = false,
   taskFeatures = {},
+  readOnly = false,
 }) {
   const [editedTask, setEditedTask] = useState(() => toEditableTask(task, dependencyIds, relatedTaskIds));
   const [dependencySettings, setDependencySettings] = useState(() =>
@@ -273,6 +274,7 @@ export default function TaskDetailModal({
   };
 
   const saveTask = async () => {
+    if (readOnly) return;
     setFormError('');
     setIsSaving(true);
     const saved = await onSaveTask(
@@ -306,6 +308,7 @@ export default function TaskDetailModal({
   };
 
   const handleSave = async () => {
+    if (readOnly) return;
     if (!editedTask.title.trim()) {
       setFormError('Название задачи не может быть пустым');
       return;
@@ -429,9 +432,16 @@ export default function TaskDetailModal({
                 )}
               </div>
 
+              {readOnly && (
+                <div className="mb-2 rounded-xl border border-amber-400/40 bg-amber-400/10 px-2.5 py-1.5 text-[0.65rem] text-amber-800 dark:text-amber-200">
+                  Только чтение: у вас нет прав на редактирование задач этого проекта.
+                </div>
+              )}
+
               <input
                 type="text"
                 value={editedTask.title}
+                disabled={readOnly}
                 spellCheck="true"
                 lang="ru"
                 onChange={(event) => setField('title', event.target.value)}
@@ -1435,7 +1445,7 @@ export default function TaskDetailModal({
                 <button
                   type="button"
                   onClick={handleSave}
-                  disabled={isSaving || isCheckingDuplicates}
+                  disabled={readOnly || isSaving || isCheckingDuplicates}
                   className="glass-btn glass-btn-primary w-full"
                   title={isNewTask ? 'Создать задачу и закрыть окно' : 'Сохранить изменения и закрыть окно'}
                 >
@@ -1457,6 +1467,7 @@ export default function TaskDetailModal({
                   <button
                     type="button"
                     onClick={() => onDeleteTask(editedTask.id, editedTask)}
+                    disabled={readOnly}
                     className="glass-btn glass-btn-danger w-full"
                     title="Сохранить изменения и переместить задачу в архив"
                   >
