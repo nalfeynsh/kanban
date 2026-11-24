@@ -7,6 +7,7 @@ import AccessModal from './AccessModal';
 import IntegrationsPanel from './IntegrationsPanel';
 import AnalyticsPanel from './AnalyticsPanel';
 import FeatureFlagsPanel from './FeatureFlagsPanel';
+import PersonalFeaturesPanel from './PersonalFeaturesPanel';
 import Avatar from './Avatar';
 
 export default function TeamModal({
@@ -30,6 +31,8 @@ export default function TeamModal({
   projects = [],
   currentProjectId = null,
   features = {},
+  personalFeatures = {},
+  onPersonalFeatureChange,
   onFeatureChange,
 }) {
   const [query, setQuery] = useState('');
@@ -149,6 +152,15 @@ export default function TeamModal({
             >
               <ShieldCheck size={14} />
               Доступ и права
+            </button>
+            <button
+              type="button"
+              className="glass-segment-btn"
+              data-active={tab === 'my-features'}
+              onClick={() => setTab('my-features')}
+            >
+              <ToggleLeft size={14} />
+              Мои функции
             </button>
             {currentRole === 'admin' && (
               <button
@@ -327,6 +339,17 @@ export default function TeamModal({
           )}
         </div>
           </>
+        )}
+
+        {tab === 'my-features' && (
+          <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
+            <PersonalFeaturesPanel
+              features={features}
+              personalFeatures={personalFeatures}
+              currentRole={currentRole}
+              onToggle={onPersonalFeatureChange}
+            />
+          </div>
         )}
 
         {tab === 'features' && currentRole === 'admin' && (

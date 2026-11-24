@@ -104,8 +104,13 @@ export default function Header({
           >
             <FolderKanban size={15} className="shrink-0 text-indigo-500 dark:text-indigo-300" />
             <span className="hidden max-w-[7.5rem] truncate text-xs font-semibold sm:inline">
-              {project?.name || 'Проекты'}
+              Проекты
             </span>
+            {project?.name && (
+              <span className="hidden max-w-[8rem] truncate text-[0.62rem] text-slate-500 lg:inline dark:text-slate-400">
+                · {project.name}
+              </span>
+            )}
             <ChevronDown size={12} className="shrink-0 text-slate-400" />
           </button>
         )}

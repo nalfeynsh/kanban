@@ -54,8 +54,8 @@ export function normalizePriority(value) {
 
 const ROLE_LABELS = {
   admin: 'Администратор',
-  manager: 'Менеджер',
-  deputy: 'Заместитель',
+  manager: 'Руководитель',
+  deputy: 'Зам руководителя',
   member: 'Сотрудник',
 };
 

@@ -50,7 +50,7 @@ export default function LoginPage() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [passwordRepeat, setPasswordRepeat] = useState('');
-  const [inviteCode, setInviteCode] = useState('');
+  const [inviteCode, setInviteCode] = useState(() => new URLSearchParams(window.location.search).get('code') || '');
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [inviteToken] = useState(() => new URLSearchParams(window.location.search).get('invite') || '');
@@ -59,6 +59,9 @@ export default function LoginPage() {
   const [inviteError, setInviteError] = useState('');
   const [oauthError, setOauthError] = useState(() => readOAuthError());
   const [errorMsg, setErrorMsg] = useState(() => {
+    if (new URLSearchParams(window.location.search).get('deleted')) {
+      return 'Доступ к сервису приостановлен. Обратитесь к администратору для восстановления аккаунта.';
+    }
     const info = explainOAuthError(readOAuthError());
     return info ? `${info.title}. ${info.text}` : '';
   });
@@ -72,6 +75,9 @@ export default function LoginPage() {
   // Ошибку из URL показали — чистим адрес, чтобы не висела после F5
   useEffect(() => {
     if (readOAuthError()) cleanOAuthUrl();
+    if (new URLSearchParams(window.location.search).get('deleted')) {
+      window.history.replaceState({}, '', window.location.pathname);
+    }
   }, []);
 
   useEffect(() => {

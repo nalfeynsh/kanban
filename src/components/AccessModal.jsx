@@ -181,7 +181,7 @@ export default function AccessModal({
     }
   };
 
-  const inviteUrl = (id) => `${window.location.origin}/?invite=${id}`;
+  const inviteUrl = (id, code = '') => `${window.location.origin}/?invite=${id}${code ? `&code=${encodeURIComponent(code)}` : ''}`;
 
   const sendInviteEmail = async (invite) => {
     setSendingInviteId(invite.id);
@@ -191,7 +191,7 @@ export default function AccessModal({
       email: invite.email,
       options: {
         shouldCreateUser: true,
-        emailRedirectTo: `${window.location.origin}/?invite=${invite.id}&welcome=1`,
+        emailRedirectTo: `${window.location.origin}/?invite=${invite.id}&welcome=1${invite.code ? `&code=${encodeURIComponent(invite.code)}` : ''}`,
         data: {
           invite_id: invite.id,
           invite_code: invite.code || null,
@@ -335,7 +335,7 @@ export default function AccessModal({
 
     setInvites((prev) => [data, ...prev]);
     setForm({ email: '', role: 'member', code: '' });
-    const url = inviteUrl(data.id);
+    const url = inviteUrl(data.id, data.code);
     setLastInvite({ url, email });
     await copy(`link-${data.id}`, url);
     setNotice(`Приглашение для ${email} создано. Ссылка скопирована — отправьте её сотруднику.`);
@@ -644,7 +644,7 @@ export default function AccessModal({
 
                         <button
                           type="button"
-                          onClick={() => copy(`link-${invite.id}`, inviteUrl(invite.id))}
+                          onClick={() => copy(`link-${invite.id}`, inviteUrl(invite.id, invite.code))}
                           className="glass-btn !px-2 !py-1 !text-[0.65rem]"
                           title="Скопировать ссылку-приглашение"
                         >

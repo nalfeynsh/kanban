@@ -32,6 +32,30 @@ export function rowsToFeatures(rows) {
   return next;
 }
 
+const PERSONAL_PREFIX = 'kanban.personalFeatures';
+
+export function readPersonalFeatures(userId) {
+  if (!userId) return {};
+  try {
+    const raw = localStorage.getItem(`${PERSONAL_PREFIX}.${userId}`);
+    const parsed = raw ? JSON.parse(raw) : {};
+    return parsed && typeof parsed === 'object' ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+export function writePersonalFeature(userId, key, enabled) {
+  if (!userId || !FEATURE_KEYS.includes(key)) return;
+  try {
+    const current = readPersonalFeatures(userId);
+    const next = { ...current, [key]: Boolean(enabled) };
+    localStorage.setItem(`${PERSONAL_PREFIX}.${userId}`, JSON.stringify(next));
+  } catch {
+    // localStorage может быть недоступен — работаем без сохранения.
+  }
+}
+
 export async function fetchFeatureFlags() {
   const { data, error } = await supabase
     .from('feature_flags')

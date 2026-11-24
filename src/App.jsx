@@ -60,7 +60,7 @@ import {
   softDeleteProject,
   restoreProject,
 } from './lib/projects';
-import { DEFAULT_FEATURES, fetchFeatureFlags, rowsToFeatures } from './lib/features';
+import { DEFAULT_FEATURES, fetchFeatureFlags, readPersonalFeatures, rowsToFeatures, writePersonalFeature } from './lib/features';
 import {
   createNotification,
   fetchNotifications,
@@ -125,6 +125,7 @@ export default function App() {
   const [secretSantaGameId, setSecretSantaGameId] = useState(null);
   const [workflowProject, setWorkflowProject] = useState(null);
   const [features, setFeatures] = useState(DEFAULT_FEATURES);
+  const [personalFeatureVersion, setPersonalFeatureVersion] = useState(0);
   const [loading, setLoading] = useState(true);
   const [banner, setBanner] = useState('');
   const [oauthNotice, setOauthNotice] = useState(() => {
@@ -196,6 +197,18 @@ export default function App() {
   const [profileSchema, setProfileSchema] = useState(new Set());
 
   const userId = session?.user?.id ?? null;
+
+  const personalFeatures = useMemo(() => {
+    void personalFeatureVersion;
+    return readPersonalFeatures(userId);
+  }, [userId, personalFeatureVersion]);
+
+  const effectiveFeatures = useMemo(() => ({
+    ...features,
+    ...personalFeatures,
+    // ВКС ещё в разработке и доступна только администратору.
+    meetings: features.meetings !== false && personalFeatures.meetings !== false && profile?.role === 'admin',
+  }), [features, personalFeatures, profile?.role]);
   const userEmail = session?.user?.email ?? '';
   const roomToken = useMemo(() => {
     const match = window.location.pathname.match(/^\/meet\/([^/]+)\/?$/);
@@ -657,7 +670,7 @@ export default function App() {
 
   // Напоминания о встречах: 30 и 5 минут. Работают, пока открыта вкладка.
   useEffect(() => {
-    if (!userId || meetings.length === 0 || features.meetings === false) return undefined;
+    if (!userId || meetings.length === 0 || effectiveFeatures.meetings === false) return undefined;
 
     const checkReminders = () => {
       const now = Date.now();
@@ -730,11 +743,11 @@ export default function App() {
     const timer = window.setInterval(checkReminders, 30_000);
     return () => window.clearInterval(timer);
     // handleOpenMeeting стабилен (useCallback), meetings обновляют замыкание
-  }, [meetings, meetingParticipants, userId, notificationsEnabled, handleOpenMeeting, features.meetings]);
+  }, [meetings, meetingParticipants, userId, notificationsEnabled, handleOpenMeeting, effectiveFeatures.meetings]);
 
   // Приглашение на встречу приходит в реальном времени.
   useEffect(() => {
-    if (!userId || features.meetings === false) return undefined;
+    if (!userId || effectiveFeatures.meetings === false) return undefined;
     const channel = supabase
       .channel(`meeting-invites-${userId}`)
       .on(
@@ -814,7 +827,7 @@ export default function App() {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [userId, loadMeetings, notificationsEnabled, handleOpenMeeting, features.meetings]);
+  }, [userId, loadMeetings, notificationsEnabled, handleOpenMeeting, effectiveFeatures.meetings]);
 
   // Автоочистка «Готово»: задачи, пробывшие там дольше 3 дней, уходят в архив.
   // Основная проверка живёт в pg_cron (миграция 011); это дублирующий запуск
@@ -900,7 +913,7 @@ export default function App() {
 
   const dueNotificationRef = useRef(new Set());
   useEffect(() => {
-    if (!userId || tasks.length === 0 || features.notifications === false) return undefined;
+    if (!userId || tasks.length === 0 || effectiveFeatures.notifications === false) return undefined;
 
     const checkDueTasks = async () => {
       const now = Date.now();
@@ -964,7 +977,7 @@ export default function App() {
     checkDueTasks();
     const timer = window.setInterval(checkDueTasks, 60_000);
     return () => window.clearInterval(timer);
-  }, [tasks, userId, doneColumnId, notificationsEnabled, features.notifications]);
+  }, [tasks, userId, doneColumnId, notificationsEnabled, effectiveFeatures.notifications]);
 
 
   const visibleTasks = useMemo(
@@ -987,13 +1000,13 @@ export default function App() {
   );
 
   const projectFeatures = useMemo(() => ({
-    ...features,
-    meetings: features.meetings !== false && currentProject?.module_meetings_enabled !== false,
-    whiteboard: features.whiteboard !== false && currentProject?.module_whiteboard_enabled !== false,
-    gantt: features.gantt !== false && currentProject?.module_gantt_enabled !== false,
-    secret_santa: features.secret_santa !== false,
-    analytics: features.analytics !== false && currentProject?.module_analytics_enabled !== false,
-  }), [features, currentProject]);
+    ...effectiveFeatures,
+    meetings: effectiveFeatures.meetings && currentProject?.module_meetings_enabled !== false,
+    whiteboard: effectiveFeatures.whiteboard !== false && currentProject?.module_whiteboard_enabled !== false,
+    gantt: effectiveFeatures.gantt !== false && currentProject?.module_gantt_enabled !== false,
+    secret_santa: effectiveFeatures.secret_santa !== false,
+    analytics: effectiveFeatures.analytics !== false && currentProject?.module_analytics_enabled !== false,
+  }), [effectiveFeatures, currentProject]);
 
   const taskFeatures = useMemo(
     () => ({
@@ -1421,7 +1434,7 @@ export default function App() {
 
 
   const upcomingMeetingCount = useMemo(() => {
-    if (features.meetings === false) return 0;
+    if (effectiveFeatures.meetings === false) return 0;
     const declined = new Set(
       meetingParticipants
         .filter((item) => item.user_id === userId && item.status === 'declined')
@@ -1430,7 +1443,7 @@ export default function App() {
     return meetings.filter(
       (meeting) => meeting.status === 'scheduled' && !declined.has(meeting.id),
     ).length;
-  }, [meetings, meetingParticipants, userId, features.meetings]);
+  }, [meetings, meetingParticipants, userId, effectiveFeatures.meetings]);
 
   const handleCreateMeeting = async ({
     title,
@@ -2129,8 +2142,22 @@ export default function App() {
     setCurrentView(view);
   };
 
-  const handleFeatureChange = (key, enabled) => {
-    setFeatures((prev) => ({ ...prev, [key]: enabled }));
+  const handlePersonalFeatureChange = (key, enabled) => {
+    writePersonalFeature(userId, key, enabled);
+    setPersonalFeatureVersion((value) => value + 1);
+    if (enabled) return;
+    if (key === 'calendar' && currentView === 'calendar') setCurrentView('board');
+    if (key === 'gantt' && currentView === 'gantt') setCurrentView('board');
+    if (key === 'whiteboard' && currentView === 'whiteboard') setCurrentView('board');
+    if (key === 'chat') setIsChatOpen(false);
+    if (key === 'meetings') setIsMeetingsOpen(false);
+    if (key === 'secret_santa') {
+      setIsSecretSantaOpen(false);
+      setSecretSantaGameId(null);
+    }
+  };
+
+  const handleFeatureChange = (key, enabled) => {    setFeatures((prev) => ({ ...prev, [key]: enabled }));
     if (enabled) return;
     if (key === 'calendar' && currentView === 'calendar') setCurrentView('board');
     if (key === 'gantt' && currentView === 'gantt') setCurrentView('board');
@@ -2157,7 +2184,7 @@ export default function App() {
 
   /** Открыть чат на главной, на диалоге с сотрудником или на конкретном диалоге */
   const openChat = (peerId = null, conversationId = null) => {
-    if (features.chat === false) return;
+    if (effectiveFeatures.chat === false) return;
     exitSelection();
     unlockAudio();
     setChatPeerId(peerId);
@@ -3056,6 +3083,8 @@ export default function App() {
         projects={projects}
         currentProjectId={currentProjectId}
         features={projectFeatures}
+        personalFeatures={personalFeatures}
+        onPersonalFeatureChange={handlePersonalFeatureChange}
         onFeatureChange={handleFeatureChange}
         onOpenChat={(member) => {
           setIsTeamOpen(false);

@@ -6,6 +6,7 @@ import {
   CalendarClock,
   CheckCheck,
   FolderKanban,
+  Gift,
   MessageSquare,
   X,
 } from 'lucide-react';
@@ -15,6 +16,7 @@ function NotificationIcon({ kind }) {
   if (kind === 'meeting') return <CalendarClock size={16} />;
   if (kind === 'task_due' || kind === 'task_overdue') return <AlarmClock size={16} />;
   if (kind === 'project') return <FolderKanban size={16} />;
+  if (kind === 'secret_santa') return <Gift size={16} />;
   return <Bell size={16} />;
 }
 
@@ -23,6 +25,7 @@ function notificationColor(kind) {
   if (kind === 'meeting') return '#0ea5e9';
   if (kind === 'task_overdue') return '#f43f5e';
   if (kind === 'task_due') return '#f59e0b';
+  if (kind === 'secret_santa') return '#e11d48';
   return '#8b5cf6';
 }
 

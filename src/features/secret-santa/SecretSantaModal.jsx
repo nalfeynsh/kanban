@@ -156,6 +156,14 @@ export default function SecretSantaModal({
 
   if (!isOpen) return null;
 
+  const snowflakes = Array.from({ length: 18 }, (_, index) => ({
+    left: `${(index * 37) % 96}%`,
+    size: 10 + (index % 4) * 4,
+    duration: 9 + (index % 5) * 2,
+    delay: -(index % 7) * 1.7,
+    drift: `${-24 + (index % 9) * 7}px`,
+  }));
+
   return createPortal(
     <div
       className="modal-overlay !z-[85]"
@@ -163,8 +171,29 @@ export default function SecretSantaModal({
         if (event.target === event.currentTarget) onClose?.();
       }}
     >
-      <div className="modal-panel glass-panel flex max-h-[88vh] w-full max-w-5xl flex-col overflow-hidden rounded-3xl">
-        <div className="flex items-start justify-between gap-4 border-b border-slate-300/50 px-5 py-4 dark:border-white/10">
+      <div className="modal-panel santa-panel relative flex max-h-[92vh] w-[calc(100vw-1.5rem)] max-w-6xl flex-col overflow-hidden rounded-3xl">
+        <div className="santa-snowfall" aria-hidden="true">
+          {snowflakes.map((flake, index) => (
+            <span
+              key={index}
+              className="santa-flake"
+              style={{
+                left: flake.left,
+                fontSize: `${flake.size}px`,
+                animationDuration: `${flake.duration}s`,
+                animationDelay: `${flake.delay}s`,
+                '--drift': flake.drift,
+              }}
+            >
+              ❄
+            </span>
+          ))}
+          <span className="santa-tree" style={{ left: '3%' }}>🎄</span>
+          <span className="santa-tree" style={{ right: '4%', bottom: '14px', fontSize: '1.8rem' }}>🎄</span>
+          <span className="santa-candy" style={{ right: '9%', bottom: '28px', transform: 'rotate(18deg)' }} />
+          <span className="santa-candy" style={{ left: '7%', bottom: '42px', transform: 'rotate(-15deg)' }} />
+        </div>
+        <div className="relative z-10 flex items-start justify-between gap-4 border-b border-slate-300/50 px-5 py-4 dark:border-white/10">
           <div>
             <h2 className="flex items-center gap-2 text-base font-bold text-slate-900 dark:text-white">
               <Gift size={19} className="text-rose-500" /> Тайный Санта
@@ -183,7 +212,7 @@ export default function SecretSantaModal({
           </button>
         </div>
 
-        <div className="scrollbar-slim min-h-0 flex-1 overflow-y-auto px-5 py-4">
+        <div className="scrollbar-slim relative z-10 min-h-0 flex-1 overflow-y-auto px-5 py-4">
           {error && (
             <p className="mb-3 rounded-xl border border-rose-400/40 bg-rose-500/10 px-3 py-2 text-xs text-rose-700 dark:text-rose-300">
               {error}

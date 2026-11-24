@@ -16,6 +16,7 @@ import {
 } from 'lucide-react';
 import Avatar from './Avatar';
 import ProjectDeleteModal from './ProjectDeleteModal';
+import ProjectMembersPanel from './ProjectMembersPanel';
 import { WORKFLOW_PRESETS, createProject } from '../lib/projects';
 import { roleOf } from '../lib/permissions';
 
@@ -72,7 +73,7 @@ export default function ProjectsModal({
   const [storyPointsEnabled, setStoryPointsEnabled] = useState(false);
   const [error, setError] = useState('');
 
-  const canCreate = CREATE_ROLES.includes(roleOf(currentRole));
+  const canCreate = true;
   const currentProject = projects.find((project) => project.id === currentProjectId) || null;
   const canManageWorkflow = Boolean(currentProject)
     && (CREATE_ROLES.includes(roleOf(currentRole)) || currentProject.owner_id === currentUserId);
@@ -444,6 +445,16 @@ export default function ProjectsModal({
                     ))}
                   </div>
                 </div>
+              )}
+
+              {currentProject && canManageWorkflow && (
+                <ProjectMembersPanel
+                  key={currentProject.id}
+                  project={currentProject}
+                  members={members}
+                  currentUserId={currentUserId}
+                  canManage={canManageWorkflow}
+                />
               )}
 
               {canCreate && (

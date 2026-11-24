@@ -40,7 +40,7 @@ export const PERMISSIONS = [
     key: 'tasks.manageAny',
     label: 'Управлять любыми задачами',
     hint: 'В том числе закрывать и переносить чужие',
-    roles: ['admin', 'manager'],
+    roles: ['admin', 'manager', 'deputy'],
   },
   {
     key: 'tasks.priority',
@@ -82,7 +82,7 @@ export const PERMISSIONS = [
     key: 'invites.create',
     label: 'Приглашать сотрудников',
     hint: 'Новая почта в списке доступа',
-    roles: ['admin', 'manager'],
+    roles: ['admin', 'manager', 'deputy'],
   },
   {
     key: 'invites.revoke',
@@ -107,16 +107,16 @@ export const ROLE_META = {
     dot: 'bg-rose-500',
   },
   manager: {
-    label: 'Менеджер',
-    short: 'Менеджер',
+    label: 'Руководитель',
+    short: 'Руководитель',
     description: 'Приглашает сотрудников, управляет задачами, назначает исполнителей.',
     chip: 'border-amber-400/50 bg-amber-400/12 text-amber-700 dark:text-amber-300',
     dot: 'bg-amber-400',
   },
   deputy: {
-    label: 'Заместитель',
+    label: 'Зам руководителя',
     short: 'Зам',
-    description: 'Помогает менеджеру: приоритеты, исполнители, задачи команды.',
+    description: 'Помогает руководителю: приоритеты, исполнители, задачи команды.',
     chip: 'border-sky-400/50 bg-sky-500/12 text-sky-700 dark:text-sky-300',
     dot: 'bg-sky-400',
   },

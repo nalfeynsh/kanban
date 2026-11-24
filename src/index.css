@@ -993,3 +993,62 @@ textarea.glass-input {
 		print-color-adjust: exact;
 	}
 }
+
+/* --- Тайный Санта: новогоднее оформление --- */
+.santa-panel {
+  background:
+    radial-gradient(circle at 10% 0%, rgba(244, 114, 182, 0.16), transparent 32%),
+    radial-gradient(circle at 90% 8%, rgba(56, 189, 248, 0.16), transparent 30%),
+    rgba(255, 255, 255, 0.9);
+}
+.dark .santa-panel {
+  background:
+    radial-gradient(circle at 10% 0%, rgba(244, 114, 182, 0.12), transparent 32%),
+    radial-gradient(circle at 90% 8%, rgba(56, 189, 248, 0.12), transparent 30%),
+    rgba(15, 23, 42, 0.94);
+}
+.santa-snowfall {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+  border-radius: inherit;
+}
+.santa-flake {
+  position: absolute;
+  top: -12%;
+  color: rgba(99, 102, 241, 0.5);
+  animation-name: santa-fall;
+  animation-timing-function: linear;
+  animation-iteration-count: infinite;
+}
+.dark .santa-flake { color: rgba(191, 219, 254, 0.65); }
+.santa-tree {
+  position: absolute;
+  bottom: 8px;
+  font-size: 1.4rem;
+  opacity: 0.55;
+  animation: santa-sway 5s ease-in-out infinite;
+}
+.santa-candy {
+  position: absolute;
+  width: 8px;
+  height: 34px;
+  border-radius: 999px;
+  background: repeating-linear-gradient(135deg, #ef4444 0 5px, #fff 5px 10px);
+  box-shadow: 0 2px 4px rgba(15, 23, 42, 0.12);
+  opacity: 0.55;
+  animation: santa-sway 6s ease-in-out infinite;
+}
+@keyframes santa-fall {
+  0% { transform: translate3d(0, -10%, 0) rotate(0deg); opacity: 0; }
+  12% { opacity: 0.8; }
+  100% { transform: translate3d(var(--drift, 18px), 760px, 0) rotate(220deg); opacity: 0; }
+}
+@keyframes santa-sway {
+  0%, 100% { transform: translateY(0) rotate(-4deg); }
+  50% { transform: translateY(-5px) rotate(5deg); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .santa-flake, .santa-tree, .santa-candy { animation: none; }
+}
