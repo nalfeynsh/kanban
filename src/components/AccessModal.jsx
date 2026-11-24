@@ -338,8 +338,7 @@ export default function AccessModal({
     const url = inviteUrl(data.id, data.code);
     setLastInvite({ url, email });
     await copy(`link-${data.id}`, url);
-    setNotice(`Приглашение для ${email} создано. Ссылка скопирована — отправьте её сотруднику.`);
-    await sendInviteEmail(data);
+    setNotice(`Приглашение для ${email} создано. Ссылка скопирована — передайте её сотруднику: он укажет свою почту, придумает пароль и сразу войдёт.`);
     setCreating(false);
   };
 
@@ -565,7 +564,7 @@ export default function AccessModal({
                     </button>
                   </div>
                   <p className="mt-1.5 text-[0.65rem] text-slate-500 dark:text-slate-400">
-                    Ссылка копируется и отправляется на почту через встроенную почту. Если письмо не пришло, отправьте ссылку вручную. Код доступа — по желанию.
+                    Ссылка создаётся и копируется. Передайте её сотруднику: он откроет сервис, увидит свою почту, придумает пароль и сразу войдёт. Кнопка с конвертом — попытка отправить письмо через Supabase (лимит около 2 писем в час); надёжнее отправить скопированную ссылку.
                   </p>
                   {formError && (
                     <p className="mt-2 flex items-start gap-1.5 rounded-lg border border-rose-400/40 bg-rose-500/10 px-2 py-1.5 text-[0.68rem] text-rose-700 dark:text-rose-300">
