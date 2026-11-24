@@ -40,9 +40,12 @@ function whenLabel(value) {
   return date.toLocaleDateString('ru-RU', { day: '2-digit', month: 'short' });
 }
 
-export default function NotificationsModal({ isOpen, notifications = [], onClose, onReadAll, onOpenNotification }) {
+export default function NotificationsModal({ isOpen, notifications = [], onClose, onReadAll, onOpenNotification, onRefresh }) {
   useEffect(() => {
-    if (isOpen) onReadAll?.();
+    if (isOpen) {
+      onReadAll?.();
+      onRefresh?.();
+    }
     // Открытие окна фиксирует текущие уведомления прочитанными.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen]);

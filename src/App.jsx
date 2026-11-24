@@ -2408,6 +2408,11 @@ export default function App() {
     handleReadAllNotifications();
   };
 
+  const handleRefreshNotifications = async () => {
+    const { notifications: rows } = await fetchNotifications();
+    setNotifications(Array.isArray(rows) ? rows : []);
+  };
+
   const handleOpenNotification = async (notification) => {
     setIsNotificationsOpen(false);
     if (!notification.read_at) {
@@ -3367,6 +3372,7 @@ export default function App() {
         onClose={() => setIsNotificationsOpen(false)}
         onReadAll={handleReadAllNotifications}
         onOpenNotification={handleOpenNotification}
+        onRefresh={handleRefreshNotifications}
       />
 
       <Toasts
