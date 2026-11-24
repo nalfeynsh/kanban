@@ -79,6 +79,7 @@ export default function MemberProfileModal({
   const [memberBusy, setMemberBusy] = useState(false);
   const [memberError, setMemberError] = useState('');
   const [restoreRole, setRestoreRole] = useState(member?.role || 'member');
+  const [actingUntil, setActingUntil] = useState(member?.acting_until ? String(member.acting_until).slice(0, 10) : '');
 
   if (!isOpen || !member) return null;
 
@@ -167,6 +168,11 @@ export default function MemberProfileModal({
               </h2>
               <p className="flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400">
                 <ShieldCheck size={12} /> {roleLabel(member.role)}
+                {member.acting_until && (
+                  <span className="text-indigo-600 dark:text-indigo-300">
+                    · и.о. до {new Date(member.acting_until).toLocaleDateString('ru-RU')}
+                  </span>
+                )}
                 {isSelf && <span className="text-indigo-600 dark:text-indigo-300">· это вы</span>}
               </p>
             </div>
@@ -335,6 +341,47 @@ export default function MemberProfileModal({
               <p className="mt-1 text-[0.62rem] text-indigo-700/80 dark:text-indigo-300/80">
                 Менять роли может только администратор. Роль влияет на права в базе.
               </p>
+
+              {member.role === 'deputy' && (
+                <div className="mt-2 rounded-lg border border-indigo-400/30 bg-white/45 p-2 dark:bg-white/5">
+                  <p className="text-[0.62rem] font-semibold text-indigo-800 dark:text-indigo-200">
+                    Исполнение обязанностей руководителя
+                  </p>
+                  <p className="mt-0.5 text-[0.58rem] text-slate-500 dark:text-slate-400">
+                    Укажите дату окончания — после неё роль автоматически вернётся к прежней.
+                  </p>
+                  <div className="mt-1.5 flex flex-wrap items-end gap-1.5">
+                    <label className="text-[0.58rem] text-slate-500 dark:text-slate-400">
+                      И.о. до
+                      <input
+                        type="date"
+                        value={actingUntil}
+                        min={new Date().toISOString().slice(0, 10)}
+                        onChange={(event) => setActingUntil(event.target.value)}
+                        className="glass-input mt-0.5 !py-1 !text-[0.65rem]"
+                      />
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() => onRoleChange?.(member.id, 'deputy', actingUntil ? new Date(`${actingUntil}T23:59:59`).toISOString() : null)}
+                      disabled={roleSaving || !actingUntil}
+                      className="glass-btn glass-btn-primary !px-2 !py-1 !text-[0.6rem]"
+                    >
+                      Назначить И.о.
+                    </button>
+                    {member.acting_until && (
+                      <button
+                        type="button"
+                        onClick={() => onRoleChange?.(member.id, 'deputy', null)}
+                        disabled={roleSaving}
+                        className="glass-btn !px-2 !py-1 !text-[0.6rem]"
+                      >
+                        Сделать бессрочно
+                      </button>
+                    )}
+                  </div>
+                </div>
+              )}
             </div>
           )}
 

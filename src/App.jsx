@@ -2634,24 +2634,28 @@ export default function App() {
   };
 
   /** Смена роли сотрудника — через серверную проверку иерархии. */
-  const handleRoleChange = async (memberId, role) => {
+  const handleRoleChange = async (memberId, role, until = null) => {
     const previous = allProfiles.find((item) => item.id === memberId);
-    if (!previous || previous.role === role) return;
+    if (!previous) return;
+    if (previous.role === role && !until && !previous.acting_until) return;
 
+    const nextUntil = role === 'deputy' ? (until || null) : null;
+    const nextPatch = { role, acting_until: nextUntil };
     setRoleSaving(true);
-    setAllProfiles((prev) => prev.map((item) => (item.id === memberId ? { ...item, role } : item)));
-    setSelectedMember((prev) => (prev?.id === memberId ? { ...prev, role } : prev));
-    if (memberId === userId) setProfile((prev) => (prev ? { ...prev, role } : prev));
+    setAllProfiles((prev) => prev.map((item) => (item.id === memberId ? { ...item, ...nextPatch } : item)));
+    setSelectedMember((prev) => (prev?.id === memberId ? { ...prev, ...nextPatch } : prev));
+    if (memberId === userId) setProfile((prev) => (prev ? { ...prev, ...nextPatch } : prev));
 
     const { error } = await supabase.rpc('assign_role', {
       p_user_id: memberId,
       p_role_key: role,
+      p_until: nextUntil,
     });
 
     if (error) {
       setAllProfiles((prev) => prev.map((item) => (item.id === memberId ? previous : item)));
       setSelectedMember((prev) => (prev?.id === memberId ? previous : prev));
-      if (memberId === userId) setProfile((prev) => (prev ? { ...prev, role: previous.role } : prev));
+      if (memberId === userId) setProfile((prev) => (prev ? { ...prev, role: previous.role, acting_until: previous.acting_until } : prev));
       const hint =
         error.code === '42501'
           ? ' Нужны права на управление ролями и миграция 034.'
