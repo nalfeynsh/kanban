@@ -10,6 +10,7 @@ import {
   MessageSquare,
   X,
 } from 'lucide-react';
+import { repairMojibake } from '../lib/text';
 
 function NotificationIcon({ kind }) {
   if (kind === 'chat') return <MessageSquare size={16} />;
@@ -91,6 +92,8 @@ export default function NotificationsModal({ isOpen, notifications = [], onClose
             <div className="space-y-1.5">
               {notifications.map((notification) => {
                 const unread = !notification.read_at;
+                const title = repairMojibake(notification.title);
+                const body = repairMojibake(notification.body);
                 return (
                   <button
                     key={notification.id}
@@ -117,15 +120,15 @@ export default function NotificationsModal({ isOpen, notifications = [], onClose
                               : 'text-slate-700 dark:text-slate-200'
                           }`}
                         >
-                          {notification.title}
+                          {title}
                         </span>
                         <span className="shrink-0 text-[0.58rem] text-slate-400">
                           {whenLabel(notification.created_at)}
                         </span>
                       </span>
-                      {notification.body && (
+                      {body && (
                         <span className="mt-0.5 block line-clamp-2 text-[0.7rem] text-slate-500 dark:text-slate-400">
-                          {notification.body}
+                          {body}
                         </span>
                       )}
                     </span>
