@@ -16,7 +16,7 @@ import {
   XCircle,
 } from 'lucide-react';
 import Avatar from '../../components/Avatar';
-import { STATUS_LABELS, budgetLabel, formatDate, participantName } from './utils';
+import { STATUS_LABELS, budgetLabel, countdownLabel, formatDate, participantName } from './utils';
 
 function safeUrl(value) {
   if (!value) return '';
@@ -137,6 +137,7 @@ export default function SecretSantaGame({
             </span>
             <span className="flex items-center gap-1">
               <CalendarDays size={12} /> обмен: {formatDate(game.exchange_at)}
+              {game.exchange_at && <span className="text-indigo-600 dark:text-indigo-300">· {countdownLabel(game.exchange_at)}</span>}
             </span>
             <span>{budgetLabel(game.budget_min, game.budget_max, game.currency)}</span>
             <span>
@@ -453,6 +454,16 @@ export default function SecretSantaGame({
                     className="glass-btn !px-2.5 !py-1.5 !text-xs"
                   >
                     <RotateCcw size={13} /> Обновить
+                  </button>
+                )}
+                {game.status === 'drawn' && (
+                  <button
+                    type="button"
+                    onClick={() => onSetStatus?.('completed')}
+                    disabled={busy}
+                    className="glass-btn glass-btn-primary !px-2.5 !py-1.5 !text-xs"
+                  >
+                    <CheckCircle2 size={13} /> Завершить игру
                   </button>
                 )}
                 {['draft', 'collecting'].includes(game.status) && (

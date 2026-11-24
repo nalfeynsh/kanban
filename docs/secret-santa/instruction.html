@@ -1,0 +1,440 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Тайный Санта 2026 — инструкция</title>
+  <style>
+    :root {
+      --ink: #172033;
+      --muted: #63708a;
+      --line: #e4e9f2;
+      --indigo: #4f46e5;
+      --indigo-soft: #eef0ff;
+      --rose: #e11d48;
+      --green: #059669;
+      --amber: #b45309;
+      --paper: #ffffff;
+      --bg: #f4f6fb;
+    }
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--ink);
+      font-family: "Segoe UI", Arial, sans-serif;
+      line-height: 1.35;
+      font-size: 11px;
+    }
+    .topbar {
+      position: sticky; top: 0; z-index: 20;
+      background: rgba(255,255,255,.92);
+      border-bottom: 1px solid var(--line);
+      backdrop-filter: blur(10px);
+      padding: 8px 14px;
+    }
+    .topbar-inner {
+      max-width: 1120px; margin: 0 auto;
+      display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+    }
+    .brand { font-weight: 800; font-size: 13px; letter-spacing: -.02em; }
+    .brand span { color: var(--indigo); }
+    .nav { display: flex; gap: 5px; flex-wrap: wrap; margin-left: auto; }
+    .nav a {
+      color: var(--ink); text-decoration: none; font-size: 10px; font-weight: 600;
+      border: 1px solid var(--line); background: #fff; border-radius: 999px; padding: 4px 8px;
+    }
+    .nav a:hover { border-color: var(--indigo); color: var(--indigo); }
+    .print-btn {
+      border: 0; background: var(--indigo); color: #fff; border-radius: 999px;
+      padding: 5px 10px; font-size: 10px; font-weight: 700; cursor: pointer;
+    }
+    main { max-width: 1120px; margin: 0 auto; padding: 14px; }
+    .sheet {
+      background: var(--paper); border: 1px solid var(--line); border-radius: 18px;
+      padding: 18px 20px; box-shadow: 0 12px 35px rgba(27, 38, 70, .07);
+      margin-bottom: 16px;
+    }
+    .hero {
+      display: grid; grid-template-columns: 1.55fr 1fr; gap: 16px;
+      align-items: stretch; margin-bottom: 12px;
+    }
+    .hero-main {
+      border-radius: 16px; padding: 16px; color: #fff;
+      background:
+        radial-gradient(circle at 88% 10%, rgba(255,255,255,.23), transparent 28%),
+        linear-gradient(135deg, #4338ca, #7c3aed 55%, #db2777);
+      position: relative; overflow: hidden;
+    }
+    .hero-main:after { content: "❄"; position: absolute; right: 18px; bottom: 0; font-size: 72px; opacity: .22; }
+    .kicker { font-size: 9px; text-transform: uppercase; letter-spacing: .13em; opacity: .85; font-weight: 700; }
+    h1 { margin: 5px 0 4px; font-size: 24px; line-height: 1.08; letter-spacing: -.04em; }
+    .subtitle { font-size: 11px; opacity: .92; max-width: 620px; }
+    .hero-badges { display: flex; gap: 5px; flex-wrap: wrap; margin-top: 10px; }
+    .hero-badges span {
+      border: 1px solid rgba(255,255,255,.33); background: rgba(255,255,255,.12);
+      border-radius: 999px; padding: 3px 7px; font-size: 9px; font-weight: 600;
+    }
+    .params {
+      border: 1px solid var(--line); border-radius: 16px; padding: 12px;
+      background: #fbfcff;
+    }
+    .params h2 { margin: 0 0 6px; font-size: 11px; color: var(--indigo); text-transform: uppercase; letter-spacing: .09em; }
+    .params-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+    .param { background: #fff; border: 1px solid var(--line); border-radius: 10px; padding: 6px 7px; }
+    .param b { display: block; font-size: 9px; color: var(--muted); font-weight: 600; }
+    .param span { font-size: 11px; font-weight: 700; }
+    .note { font-size: 9px; color: var(--muted); margin: 7px 0 0; }
+    .route {
+      display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin: 4px 0 12px;
+    }
+    .route div {
+      border: 1px solid var(--line); border-left: 4px solid var(--indigo);
+      border-radius: 10px; padding: 7px 9px; background: #fbfcff;
+    }
+    .route b { font-size: 10px; }
+    .route p { margin: 2px 0 0; font-size: 9px; color: var(--muted); }
+    h2.section {
+      margin: 0 0 7px; font-size: 15px; letter-spacing: -.02em;
+      display: flex; align-items: center; gap: 7px;
+    }
+    h2.section .num {
+      width: 21px; height: 21px; border-radius: 7px; background: var(--indigo);
+      color: #fff; display: inline-grid; place-items: center; font-size: 11px;
+    }
+    h3 { margin: 0 0 4px; font-size: 11px; }
+    p { margin: 3px 0; }
+    .lead { color: var(--muted); font-size: 10px; margin-bottom: 7px; }
+    .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; align-items: start; }
+    .steps { margin: 0; padding: 0; list-style: none; }
+    .steps li {
+      display: grid; grid-template-columns: 18px 1fr; gap: 7px;
+      padding: 4px 0; border-bottom: 1px dashed #edf0f7;
+    }
+    .steps li:last-child { border-bottom: 0; }
+    .steps .n {
+      width: 18px; height: 18px; border-radius: 50%; background: var(--indigo-soft);
+      color: var(--indigo); display: grid; place-items: center; font-size: 9px; font-weight: 800;
+    }
+    .steps b { font-size: 10px; }
+    .steps span { display: block; color: var(--muted); font-size: 9px; }
+    .figure { margin: 0; border: 1px solid var(--line); border-radius: 12px; overflow: hidden; background: #fff; }
+    .figure .img-wrap { position: relative; }
+    .figure img { width: 100%; display: block; }
+    .figure figcaption { padding: 6px 8px; font-size: 8.5px; color: var(--muted); border-top: 1px solid var(--line); }
+    .pin {
+      position: absolute; width: 19px; height: 19px; border-radius: 50%;
+      background: var(--rose); color: #fff; font-size: 9px; font-weight: 800;
+      display: grid; place-items: center; border: 2px solid #fff;
+      box-shadow: 0 1px 5px rgba(0,0,0,.25);
+    }
+    .pin.indigo { background: var(--indigo); }
+    .pin.green { background: var(--green); }
+    .callout {
+      border-radius: 10px; padding: 8px 10px; font-size: 9.5px;
+      border: 1px solid #f4c76a; background: #fff8e6; color: #734f08;
+    }
+    .callout b { color: #5a3b00; }
+    .rules { display: grid; grid-template-columns: 1fr 1fr; gap: 5px 12px; margin: 0; padding: 0; list-style: none; }
+    .rules li { display: flex; gap: 6px; font-size: 9.5px; padding: 3px 0; }
+    .rules li:before { content: "✓"; color: var(--green); font-weight: 800; }
+    .table { width: 100%; border-collapse: collapse; font-size: 9px; }
+    .table th, .table td { border-bottom: 1px solid var(--line); padding: 5px 6px; text-align: left; vertical-align: top; }
+    .table th { background: #f8faff; color: var(--muted); font-size: 8px; text-transform: uppercase; letter-spacing: .07em; }
+    .pill { display: inline-block; border-radius: 999px; padding: 1px 6px; font-size: 8px; font-weight: 700; white-space: nowrap; }
+    .pill.draft { background: #eef0ff; color: #4338ca; }
+    .pill.collecting { background: #fff4d6; color: #a16207; }
+    .pill.drawn { background: #dff7ec; color: #047857; }
+    .pill.done { background: #e8eef6; color: #475569; }
+    .split { display: grid; grid-template-columns: 1.05fr .95fr; gap: 12px; align-items: start; }
+    .mini { font-size: 9px; color: var(--muted); }
+    .footer {
+      margin-top: 8px; padding-top: 7px; border-top: 1px solid var(--line);
+      display: flex; justify-content: space-between; gap: 10px; font-size: 8px; color: var(--muted);
+    }
+    .anchor { scroll-margin-top: 70px; }
+    @media (max-width: 820px) {
+      .hero, .two-col, .split { grid-template-columns: 1fr; }
+      .route { grid-template-columns: 1fr; }
+      .rules { grid-template-columns: 1fr; }
+    }
+    @media print {
+      @page { size: A4; margin: 8mm; }
+      body { background: #fff; font-size: 8.2pt; }
+      .topbar, .print-btn, .no-print { display: none !important; }
+      main { max-width: none; padding: 0; }
+      .sheet {
+        border: 0; border-radius: 0; box-shadow: none;
+        padding: 0; margin: 0; page-break-after: always;
+      }
+      .sheet:last-child { page-break-after: auto; }
+      .hero-main { padding: 12px; }
+      h1 { font-size: 20pt; }
+      h2.section { font-size: 12pt; }
+      .figure, .params, .callout, .route div { break-inside: avoid; }
+      .steps li, .rules li, .table tr { break-inside: avoid; }
+      a { color: var(--ink); text-decoration: none; }
+    }
+  
+/* Компактная печать: ровно две страницы */
+@media print {
+  body { font-size: 7.1pt; line-height: 1.25; }
+  main { padding: 0; }
+  .sheet { padding: 0; margin: 0; border: 0; box-shadow: none; border-radius: 0; }
+  .hero { gap: 7px; margin-bottom: 5px; grid-template-columns: 1.5fr 1fr; }
+  .hero-main { padding: 9px 10px; border-radius: 10px; }
+  h1 { font-size: 17pt; margin: 3px 0 2px; }
+  .subtitle { font-size: 7.5pt; }
+  .kicker { font-size: 6.5pt; }
+  .hero-badges { margin-top: 5px; }
+  .hero-badges span { font-size: 6.3pt; padding: 2px 5px; }
+  .params { padding: 7px; border-radius: 10px; }
+  .params h2 { font-size: 7pt; margin-bottom: 3px; }
+  .params-grid { gap: 3px; }
+  .param { padding: 3px 5px; border-radius: 6px; }
+  .param b { font-size: 6pt; }
+  .param span { font-size: 7.5pt; }
+  .note { font-size: 6.2pt; margin-top: 3px; }
+  .route { display: none; }
+  .two-col, .split { gap: 8px; }
+  .figure { border-radius: 7px; }
+  .figure img { max-height: 118px; width: 100%; object-fit: contain; background: #fbfcff; }
+  .figure figcaption { display: none; }
+  .pin { width: 12px; height: 12px; font-size: 6px; border-width: 1px; }
+  h2.section { font-size: 9.5pt; margin: 0 0 2px; }
+  h2.section .num { width: 16px; height: 16px; border-radius: 5px; font-size: 8px; }
+  .lead { font-size: 6.8pt; margin-bottom: 3px; }
+  .steps { margin-top: 3px !important; }
+  .steps li { padding: 1.5px 0; grid-template-columns: 14px 1fr; gap: 4px; }
+  .steps .n { width: 14px; height: 14px; font-size: 6.5px; }
+  .steps b { font-size: 7.1pt; }
+  .steps span { font-size: 6.4pt; }
+  .callout { font-size: 6.5pt; padding: 4px 6px; border-radius: 6px; }
+  .rules li { font-size: 6.7pt; padding: 1px 0; }
+  .table th, .table td { padding: 2px 4px; font-size: 6.3pt; }
+  .table th { font-size: 5.8pt; }
+  .mini { font-size: 6.2pt; }
+  #final { margin-top: 4px !important; }
+  .footer { font-size: 5.8pt; padding-top: 3px; margin-top: 4px; }
+  .sheet { page-break-after: always; }
+  .sheet:last-child { page-break-after: auto; }
+  #registration .figure img, #participate .figure img { max-height: 185px; }
+  #organizer .figure img, #progress > .figure img { max-height: 150px; }
+  #rules, #progress { break-inside: avoid; }
+  .hide-print { display: none !important; }
+  .pin { display: none !important; }
+}
+
+</style>
+</head>
+<body>
+  <div class="topbar">
+    <div class="topbar-inner">
+      <div class="brand">Тайный Санта <span>2026</span></div>
+      <nav class="nav">
+        <a href="#start">Старт</a>
+        <a href="#registration">Регистрация</a>
+        <a href="#participate">Участие</a>
+        <a href="#organizer">Организатору</a>
+        <a href="#progress">Ход игры</a>
+        <a href="#rules">Правила</a>
+        <a href="#final">Финал</a>
+      </nav>
+      <button class="print-btn" onclick="window.print()">Печать / PDF</button>
+    </div>
+  </div>
+
+  <main>
+    <section class="sheet">
+      <div class="hero">
+        <div class="hero-main">
+          <div class="kicker">Инструкция для участников</div>
+          <h1>Тайный Санта<br />2026</h1>
+          <p class="subtitle">Обмен подарками для сотрудников. Жеребьёвка решает, кому вы дарите. Кто дарит вам — остаётся сюрпризом до вручения.</p>
+          <div class="hero-badges">
+            <span>1 подарок</span><span>1 получатель</span><span>бюджет 1 000–2 000 ₽</span><span>обмен 25 декабря</span>
+          </div>
+        </div>
+        <div class="params">
+          <h2>Параметры этой игры</h2>
+          <div class="params-grid">
+            <div class="param"><b>Бюджет</b><span>1 000–2 000 ₽</span></div>
+            <div class="param"><b>Набор</b><span>до 20 декабря</span></div>
+            <div class="param"><b>Жеребьёвка</b><span>20 декабря</span></div>
+            <div class="param"><b>Обмен</b><span>25 декабря</span></div>
+            <div class="param"><b>Участники</b><span>все сотрудники</span></div>
+            <div class="param"><b>Формат</b><span>тайный получатель</span></div>
+          </div>
+          <p class="note">Даты и бюджет может изменить организатор. Всегда смотрите карточку игры: там актуальные условия.</p>
+        </div>
+      </div>
+
+      <div class="route">
+        <div><b>1. Зарегистрируйтесь</b><p>Если вы новый сотрудник — откройте ссылку-приглашение и задайте пароль.</p></div>
+        <div><b>2. Подайте заявку</b><p>Откройте «Санта», выберите игру и заполните пожелания.</p></div>
+        <div><b>3. Дождитесь жеребьёвки</b><p>После неё вы увидите только своего получателя и его пожелания.</p></div>
+      </div>
+
+      <div class="two-col">
+        <div id="registration" class="anchor">
+          <h2 class="section"><span class="num">1</span> Новый сотрудник: регистрация</h2>
+          <p class="lead">Регистрация только по приглашению. Самостоятельно зарегистрироваться нельзя.</p>
+          <figure class="figure">
+            <div class="img-wrap">
+              <img src="screens/crop-08-registration.png" alt="Экран регистрации по приглашению" />
+              <span class="pin" style="left:35%;top:44%">1</span>
+              <span class="pin" style="left:35%;top:57%">2</span>
+              <span class="pin green" style="left:56%;top:76%">3</span>
+            </div>
+            <figcaption>Почта уже подставлена. Пароль — не короче 8 символов.</figcaption>
+          </figure>
+          <ol class="steps" style="margin-top:6px">
+            <li><span class="n">1</span><span><b>Откройте ссылку из сообщения</b><span>Организатор пришлёт её в мессенджере или на почту. Если письма нет — попросите ссылку у администратора.</span></span></li>
+            <li><span class="n">2</span><span><b>Проверьте почту и задайте пароль</b><span>Почта уже заполнена. Если организатор задал код доступа — введите его (или он подставлен из ссылки).</span></span></li>
+            <li><span class="n">3</span><span><b>Нажмите «Создать пароль и войти»</b><span>Аккаунт создаётся сразу, вход выполняется автоматически. Пароль сохраните — он нужен для следующих входов.</span></span></li>
+          </ol>
+        </div>
+
+        <div id="participate" class="anchor">
+          <h2 class="section"><span class="num">2</span> Участие и пожелания</h2>
+          <p class="lead">Заявка и пожелания занимают пару минут. Пожелания увидит только ваш даритель.</p>
+          <figure class="figure">
+            <div class="img-wrap">
+              <img src="screens/crop-05b-wishlist.png" alt="Карточка игры и пожелания" />
+              <span class="pin" style="left:18%;top:30%">1</span>
+              <span class="pin" style="left:18%;top:57%">2</span>
+              <span class="pin green" style="left:55%;top:89%">3</span>
+            </div>
+            <figcaption>Участники, пожелания и бюджет — в одной карточке игры.</figcaption>
+          </figure>
+          <ol class="steps" style="margin-top:6px">
+            <li><span class="n">1</span><span><b>Откройте «Санта» в шапке</b><span>Выберите игру «Тайный Санта 2026» и нажмите «Подать заявку». Участвовать могут все сотрудники.</span></span></li>
+            <li><span class="n">2</span><span><b>Заполните «Мои пожелания»</b><span>Напишите 2–4 идеи в рамках бюджета 1 000–2 000 ₽: книга, игра, плед, набор для чая. Можно добавить ссылку на вишлист и предпочтения: размер, цвет, аллергии.</span></span></li>
+            <li><span class="n">3</span><span><b>Сохраните пожелания</b><span>Кнопка «Сохранить пожелания». До жеребьёвки их можно менять. Отозвать участие — кнопка «Отозвать участие».</span></span></li>
+          </ol>
+          <div class="callout" style="margin-top:7px"><b>Важно:</b> не указывайте в пожеланиях подарки дороже бюджета и личные данные. Сумма и дата обмена всегда видны в карточке игры.</div>
+        </div>
+      </div>
+
+      <div id="final" class="anchor" style="margin-top:10px">
+        <h2 class="section"><span class="num">7</span> Финал: что сделать после обмена</h2>
+        <div class="two-col">
+          <div>
+            <ol class="steps">
+              <li><span class="n">1</span><span><b>Вручите подарок 25 декабря</b><span>Принесите его на общее мероприятие. Подпишите открытку, но не раскрывайте себя раньше времени, если игра предполагает интригу.</span></span></li>
+              <li><span class="n">2</span><span><b>Поблагодарите дарителя</b><span>Если хотите — напишите в общий чат или скажите лично. Это не обязательно, но приятно.</span></span></li>
+              <li><span class="n">3</span><span><b>Организатор завершает игру</b><span>После обмена ответственный нажимает «Завершить игру». Статус меняется на «Завершена», новые заявки и изменения закрываются.</span></span></li>
+            </ol>
+          </div>
+          <div>
+            <div class="callout">
+              <b>Коротко:</b> ссылка → пароль → «Санта» → «Подать заявку» → пожелания → жеребьёвка → подарок → обмен → «Завершить игру».<br /><br />
+              <b>Если что-то не работает:</b> проверьте, что вы вошли под своей почтой; обновите страницу; напишите организатору или администратору. Не создавайте второй аккаунт.
+            </div>
+            <p class="mini" style="margin-top:6px">Инструкцию можно распечатать: кнопка «Печать / PDF» сверху. На печати останутся обе страницы.</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="footer"><span>Мой Канбан · Тайный Санта 2026</span><span>Стр. 1 из 2 · регистрация и участие</span></div>
+    </section>
+
+    <section class="sheet">
+      <div class="split">
+        <div id="organizer" class="anchor">
+          <h2 class="section"><span class="num">3</span> Организатору: создать и пригласить</h2>
+          <p class="lead">Игру создаёт ответственный сотрудник. Удалить игру может руководитель, зам или администратор.</p>
+          <figure class="figure">
+            <div class="img-wrap">
+              <img src="screens/crop-03-create-filled.png" alt="Создание игры Тайный Санта" />
+              <span class="pin" style="left:18%;top:22%">1</span>
+              <span class="pin" style="left:42%;top:49%">2</span>
+              <span class="pin" style="left:42%;top:67%">3</span>
+              <span class="pin green" style="left:91%;top:91%">4</span>
+            </div>
+            <figcaption>Название, описание, бюджет, даты и правила — на одном экране.</figcaption>
+          </figure>
+          <ol class="steps" style="margin-top:6px">
+            <li><span class="n">1</span><span><b>«Санта» → «Создать игру»</b><span>Укажите название и описание. Создатель становится ответственным.</span></span></li>
+            <li><span class="n">2</span><span><b>Задайте бюджет и даты</b><span>Бюджет «от» и «до» в рублях; дата жеребьёвки и дата обмена. Валюта — только ₽.</span></span></li>
+            <li><span class="n">3</span><span><b>Добавьте правила</b><span>Например: подарок в пределах бюджета, вручение на общем мероприятии, сохранять интригу.</span></span></li>
+            <li><span class="n">4</span><span><b>Создайте и откройте набор</b><span>После создания нажмите «Открыть набор» — сотрудники смогут подавать заявки.</span></span></li>
+          </ol>
+        </div>
+
+        <div id="progress" class="anchor">
+          <h2 class="section"><span class="num">4</span> Приглашения и ход игры</h2>
+          <figure class="figure">
+            <div class="img-wrap">
+              <img src="screens/crop-04-game-detail.png" alt="Управление игрой и приглашения" />
+              <span class="pin" style="left:23%;top:35%">1</span>
+              <span class="pin" style="left:23%;top:59%">2</span>
+              <span class="pin" style="left:67%;top:42%">3</span>
+            </div>
+            <figcaption>Участники и приглашения слева, управление игрой справа.</figcaption>
+          </figure>
+          <ol class="steps" style="margin-top:6px">
+            <li><span class="n">1</span><span><b>Пригласите сотрудников</b><span>В блоке «Пригласить сотрудника» выберите коллегу. Он получит личное уведомление и сможет принять или отклонить приглашение.</span></span></li>
+            <li><span class="n">2</span><span><b>Новым — ссылка-приглашение</b><span>«Команда → Доступ и права → Приглашения»: укажите почту, создайте ссылку и передайте её вручную. Письмо через Supabase — только дополнительная кнопка.</span></span></li>
+            <li><span class="n">3</span><span><b>Следите за этапом</b><span>Статус: Черновик → Набор → Жеребьёвка проведена → Завершена. В карточке видны число участников, бюджет, дата обмена и «до обмена N дней».</span></span></li>
+          </ol>
+          <div class="callout" style="margin-top:7px"><b>Кто что хочет — не видно.</b> Организатор видит только участников и факт заполнения пожеланий. Пары не показываются даже организатору. После жеребьёвки каждый видит только своего получателя.</div>
+        </div>
+      </div>
+
+      <div class="split" style="margin-top:10px">
+        <div>
+          <h2 class="section"><span class="num">5</span> Где смотреть состояние</h2>
+          <div class="two-col" style="grid-template-columns:1.2fr .8fr">
+            <figure class="figure hide-print">
+              <div class="img-wrap">
+                <img src="screens/crop-06-santa-list-with-game.png" alt="Список игр Тайный Санта" />
+                <span class="pin" style="left:26%;top:46%">1</span>
+                <span class="pin indigo" style="left:88%;top:30%">2</span>
+              </div>
+              <figcaption>1 — карточка игры; 2 — создать новую игру.</figcaption>
+            </figure>
+            <figure class="figure hide-print">
+              <div class="img-wrap">
+                <img src="screens/crop-07-notifications.png" alt="Центр уведомлений" />
+                <span class="pin" style="left:52%;top:24%">1</span>
+              </div>
+              <figcaption>Уведомления: приглашение, заявка, ответ, напоминания.</figcaption>
+            </figure>
+          </div>
+          <table class="table" style="margin-top:7px">
+            <thead><tr><th>Этап</th><th>Что видите</th><th>Что делать</th></tr></thead>
+            <tbody>
+              <tr><td><span class="pill draft">Черновик</span></td><td>Игра создана, участников 0</td><td>Проверить правила, открыть набор</td></tr>
+              <tr><td><span class="pill collecting">Набор</span></td><td>Участники и приглашения</td><td>Подать заявку и заполнить пожелания</td></tr>
+              <tr><td><span class="pill drawn">Жеребьёвка</span></td><td>Только ваш получатель</td><td>Купить подарок в рамках бюджета</td></tr>
+              <tr><td><span class="pill done">Завершена</span></td><td>Обмен состоялся</td><td>Вручить подарок, сохранить сюрприз</td></tr>
+            </tbody>
+          </table>
+          <p class="mini" style="margin-top:4px">Если организатор отменил игру — статус «Отменена». Уточните причину у ответственного.</p>
+        </div>
+
+        <div id="rules" class="anchor">
+          <h2 class="section"><span class="num">6</span> Правила и условия</h2>
+          <ul class="rules">
+            <li>Участие добровольное. Заявка — до жеребьёвки.</li>
+            <li>Бюджет подарка — 1 000–2 000 ₽, не дороже и не дешевле обозначенного диапазона.</li>
+            <li>Один участник — один подарок одному получателю.</li>
+            <li>Пожелания видны только дарителю. Не пишите личные данные и адреса.</li>
+            <li>Пары не раскрываются. Организатор тоже не видит, кто кому дарит.</li>
+            <li>Отозвать участие можно до жеребьёвки. После — только через организатора.</li>
+            <li>Подарок вручается лично на обмене 25 декабря.</li>
+            <li>Не подписывайте подарок явно, если хотите сохранить интригу.</li>
+            <li>Если не можете участвовать — предупредите ответственного заранее.</li>
+            <li>Уважение и безопасность: без обидных и опасных подарков.</li>
+          </ul>
+          <div class="callout" style="margin-top:6px"><b>Что подарить:</b> книга, настольная игра, плед, набор для чая/кофе, свеча, ежедневник, что-то для хобби. Сомневаетесь — смотрите пожелания получателя.</div>
+        </div>
+      </div>
+
+      <div class="footer"><span>Мой Канбан · Тайный Санта 2026</span><span>Стр. 2 из 2 · организация, статусы, правила, финал</span></div>
+    </section>
+  </main>
+</body>
+</html>

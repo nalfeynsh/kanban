@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Gift, Loader2, Plus, Users, X } from 'lucide-react';
+import { BookOpen, Gift, Loader2, Plus, Users, X } from 'lucide-react';
 import SecretSantaCreateForm from './SecretSantaCreateForm';
 import SecretSantaGame from './SecretSantaGame';
 import {
@@ -18,7 +18,7 @@ import {
   secretSantaError,
   setSecretSantaStatus,
 } from './api';
-import { budgetLabel, formatDate, STATUS_LABELS } from './utils';
+import { budgetLabel, countdownLabel, formatDate, STATUS_LABELS } from './utils';
 
 export default function SecretSantaModal({
   isOpen,
@@ -202,14 +202,25 @@ export default function SecretSantaModal({
               Для всех сотрудников сервиса · обмен подарками
             </p>
           </div>
-          <button
-            type="button"
-            onClick={onClose}
-            className="rounded-xl p-1.5 text-slate-500 hover:bg-white/60 dark:text-slate-400 dark:hover:bg-white/10"
-            title="Закрыть"
-          >
-            <X size={18} />
-          </button>
+          <div className="flex items-center gap-2">
+            <a
+              href="/santa-instruction.html"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="glass-btn !px-2.5 !py-1.5 !text-xs"
+              title="Открыть инструкцию по участию"
+            >
+              <BookOpen size={14} /> Инструкция
+            </a>
+            <button
+              type="button"
+              onClick={onClose}
+              className="rounded-xl p-1.5 text-slate-500 hover:bg-white/60 dark:text-slate-400 dark:hover:bg-white/10"
+              title="Закрыть"
+            >
+              <X size={18} />
+            </button>
+          </div>
         </div>
 
         <div className="scrollbar-slim relative z-10 min-h-0 flex-1 overflow-y-auto px-5 py-4">
@@ -328,6 +339,7 @@ export default function SecretSantaModal({
                           <Users size={10} /> {game.participants.length}
                         </span>
                         <span>{formatDate(game.exchange_at)}</span>
+                        <span className="text-indigo-600 dark:text-indigo-300">{countdownLabel(game.exchange_at)}</span>
                         <span>{budgetLabel(game.budget_min, game.budget_max, game.currency)}</span>
                       </div>
                     </button>

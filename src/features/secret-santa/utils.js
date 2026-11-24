@@ -8,8 +8,6 @@ export const STATUS_LABELS = {
 
 export const CURRENCIES = [
   { value: 'RUB', label: '₽' },
-  { value: 'USD', label: '$' },
-  { value: 'EUR', label: '€' },
 ];
 
 export function formatMoney(value, currency = 'RUB') {
@@ -45,8 +43,19 @@ export function formatDate(value) {
   });
 }
 
-export function formatDateTime(value) {
-  if (!value) return 'не указана';
+export function countdownLabel(value) {
+  if (!value) return '';
+  const target = new Date(value).getTime();
+  if (Number.isNaN(target)) return '';
+  const days = Math.ceil((target - Date.now()) / 86_400_000);
+  if (days < 0) return 'обмен уже прошёл';
+  if (days === 0) return 'обмен сегодня';
+  if (days === 1) return 'до обмена 1 день';
+  if (days < 5) return `до обмена ${days} дня`;
+  return `до обмена ${days} дней`;
+}
+
+export function formatDateTime(value) {  if (!value) return 'не указана';
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return 'не указана';
   return date.toLocaleDateString('ru-RU', {
